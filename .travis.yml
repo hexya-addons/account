@@ -14,7 +14,7 @@ install:
   - npm install less -g
 
 before_script:
-  - hexya generate -t .
+  - travis_wait hexya generate -t .
 
 script:
   - ./run_tests.sh
