@@ -1820,7 +1820,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			      #when running the manual reconciliation wizard, don't check the partials separately for full
 			      #reconciliation or exchange rate because it is handled manually after the whole processing
 			      return self
-			  #check if the reconcilation is full
+			  #check if the reconciliation is full
 			  #first, gather all journal items involved in the reconciliation just created
 			  partial_rec_set = OrderedDict.fromkeys([x for x in self])
 			  aml_set = aml_to_balance = self.env['account.move.line']

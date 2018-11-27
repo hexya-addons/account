@@ -146,7 +146,7 @@ func init() {
 	//		      self.complete_tax_set = self.chart_template_id.complete_tax_set
 	//		      if self.chart_template_id.complete_tax_set:
 	//		          ir_values_obj = self.env['ir.values']
-	//		          # default tax is given by the lowest sequence. For same sequence we will take the latest created as it will be the case for tax created while isntalling the generic chart of account
+	//		          # default tax is given by the lowest sequence. For same sequence we will take the latest created as it will be the case for tax created while installing the generic chart of account
 	//		          sale_tax = tax_templ_obj.search(
 	//		              [('chart_template_id', 'parent_of', self.chart_template_id.id), ('type_tax_use', '=', 'sale')], limit=1,
 	//		              order="sequence, id desc")

@@ -404,7 +404,7 @@ defined on this template is complete`},
 		func(rs h.AccountChartTemplateSet, company h.CompanySet, accountTemplate h.AccountAccountSet,
 			codeAcc string, taxTemplateRef map[int64]int64) *h.AccountAccountData {
 			/*def _get_account_vals(self, company, account_template, code_acc, tax_template_ref):
-			  """ This method generates a dictionnary of all the values for the account that will be created.
+			  """ This method generates a dictionary of all the values for the account that will be created.
 			  """
 			  self.ensure_one()
 			  tax_ids = []
@@ -464,7 +464,7 @@ defined on this template is complete`},
 		func(rs h.AccountChartTemplateSet, company h.CompanySet, accountReconcileModel h.AccountReconcileModelTemplateSet,
 			taxTemplateRef, accTemplateRef map[int64]int64) *h.AccountReconcileModelData {
 			/*def _prepare_reconcile_model_vals(self, company, account_reconcile_model, acc_template_ref, tax_template_ref):
-			  """ This method generates a dictionnary of all the values for the account.reconcile.model that will be created.
+			  """ This method generates a dictionary of all the values for the account.reconcile.model that will be created.
 			  """
 			  self.ensure_one()
 			  return {
@@ -624,7 +624,7 @@ the same analytic account as the invoice line (if any)`},
 		`GetTaxVals`,
 		func(rs h.AccountTaxTemplateSet, company h.CompanySet) *h.AccountTaxData {
 			/*def _get_tax_vals(self, company):
-			  """ This method generates a dictionnary of all the values for the tax that will be created.
+			  """ This method generates a dictionary of all the values for the tax that will be created.
 			  """
 			  self.ensure_one()
 			  val = {
@@ -820,7 +820,7 @@ set of tax defined for the chosen template is complete`},
 			      self.complete_tax_set = self.chart_template_id.complete_tax_set
 			      self.currency_id = currency_id
 			      if self.chart_template_id.complete_tax_set:
-			      # default tax is given by the lowest sequence. For same sequence we will take the latest created as it will be the case for tax created while isntalling the generic chart of account
+			      # default tax is given by the lowest sequence. For same sequence we will take the latest created as it will be the case for tax created while installing the generic chart of account
 			          chart_ids = self._get_chart_parent_ids(self.chart_template_id)
 			          base_tax_domain = [('chart_template_id', 'parent_of', chart_ids)]
 			          sale_tax_domain = base_tax_domain + [('type_tax_use', '=', 'sale')]
@@ -945,7 +945,7 @@ set of tax defined for the chosen template is complete`},
 			  it's not the case, it creates the templates for account.tax object accordingly to the provided sale/purchase rates.
 			  Then it saves the new tax templates as default taxes to use for this chart template.
 
-			  :param company_id: id of the company for wich the wizard is running
+			  :param company_id: id of the company for which the wizard is running
 			  :return: True
 			  '''
 			  obj_tax_temp = self.env['account.tax.template']

@@ -206,7 +206,7 @@ func init() {
 			/*def get_fiscal_position(self, partner_id, delivery_id=None):
 			  if not partner_id:
 			      return False
-			  # This can be easily overriden to apply more complex fiscal rules
+			  # This can be easily overridden to apply more complex fiscal rules
 			  PartnerObj = self.env['res.partner']
 			  partner = PartnerObj.browse(partner_id)
 
