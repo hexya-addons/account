@@ -23,4 +23,4 @@ before_script:
 #  - bash <(curl -s https://codecov.io/bash)
 
 env:
-  - HEXYA_DB_DRIVER=postgres HEXYA_DB_USER=postgres HEXYA_DB_PASSWORD= HEXYA_DB_PREFIX=hexya_test GO111MODULE=on GOMAXPROCS=2
+  - HEXYA_DB_DRIVER=postgres HEXYA_DB_USER=postgres HEXYA_DB_PASSWORD= HEXYA_DB_PREFIX=hexya_test GO111MODULE=on GOMAXPROCS=2 GOGC=20
