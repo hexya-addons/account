@@ -16,6 +16,9 @@ install:
 before_script:
   - hexya generate -t .
 
+script:
+  - go get -v -p 2 ./...
+
 #script:
 #  - travis_wait ./run_tests.sh
 #
