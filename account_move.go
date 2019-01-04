@@ -165,7 +165,7 @@ will be created in 'Posted' status.'`},
 		})
 
 	h.AccountMove().Methods().Create().Extend("",
-		func(rs h.AccountMoveSet, data *h.AccountMoveData, fieldsToReset ...models.FieldNamer) h.AccountMoveSet {
+		func(rs h.AccountMoveSet, data *h.AccountMoveData) h.AccountMoveSet {
 			//@api.model
 			/*def create(self, vals):
 			  move = super(AccountMove, self.with_context(check_move_validity=False, partner_id=vals.get('partner_id'))).create(vals)
@@ -177,7 +177,7 @@ will be created in 'Posted' status.'`},
 		})
 
 	h.AccountMove().Methods().Write().Extend("",
-		func(rs h.AccountMoveSet, data *h.AccountMoveData, fieldsToReset ...models.FieldNamer) bool {
+		func(rs h.AccountMoveSet, data *h.AccountMoveData) bool {
 			//@api.multi
 			/*def write(self, vals):
 			  if 'line_ids' in vals:
@@ -188,7 +188,7 @@ will be created in 'Posted' status.'`},
 			  return res
 
 			*/
-			return rs.Super().Write(data, fieldsToReset...)
+			return rs.Super().Write(data)
 		})
 
 	h.AccountMove().Methods().Post().DeclareMethod(
@@ -1341,7 +1341,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 		})
 
 	h.AccountMoveLine().Methods().Create().Extend("",
-		func(rs h.AccountMoveLineSet, data *h.AccountMoveLineData, fieldsToReset ...models.FieldNamer) h.AccountMoveLineSet {
+		func(rs h.AccountMoveLineSet, data *h.AccountMoveLineData) h.AccountMoveLineSet {
 			/*
 				@api.model
 				def create(self, vals):
@@ -1476,7 +1476,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 		})
 
 	h.AccountMoveLine().Methods().Write().Extend("",
-		func(rs h.AccountMoveLineSet, data *h.AccountMoveLineData, fieldsToReset ...models.FieldNamer) bool {
+		func(rs h.AccountMoveLineSet, data *h.AccountMoveLineData) bool {
 			//@api.multi
 			/*def write(self, vals):
 				if ('account_id' in vals) and self.env['account.account'].browse(vals['account_id']).deprecated:
@@ -1507,7 +1507,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 					self.env['account.move'].browse(list(move_ids))._post_validate()
 			return result
 			*/
-			return rs.Super().Write(data, fieldsToReset...)
+			return rs.Super().Write(data)
 		})
 
 	h.AccountMoveLine().Methods().UpdateCheck().DeclareMethod(
@@ -1884,7 +1884,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 		})
 
 	h.AccountPartialReconcile().Methods().Create().Extend("",
-		func(rs h.AccountPartialReconcileSet, data *h.AccountPartialReconcileData, fieldsToReset ...models.FieldNamer) h.AccountPartialReconcileSet {
+		func(rs h.AccountPartialReconcileSet, data *h.AccountPartialReconcileData) h.AccountPartialReconcileSet {
 			//@api.model
 			/*def create(self, vals):
 							res = super(AccountPartialReconcile, self).create(vals)

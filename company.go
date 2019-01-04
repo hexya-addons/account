@@ -172,7 +172,7 @@ Best Regards,`)},
 		})
 
 	h.Company().Methods().Write().Extend("",
-		func(rs h.CompanySet, data *h.CompanyData, fieldsToReset ...models.FieldNamer) bool {
+		func(rs h.CompanySet, data *h.CompanyData) bool {
 			//@api.multi
 			/*def write(self, values):
 			  #restrict the closing of FY if there are still unposted entries
@@ -191,7 +191,7 @@ Best Regards,`)},
 			          company.reflect_code_digits_change(digits)
 			  return super(ResCompany, self).write(values)
 			*/
-			return rs.Super().Write(data, fieldsToReset...)
+			return rs.Super().Write(data)
 		})
 
 }

@@ -38,7 +38,7 @@ to value expenses for the current product.`},
 	})
 
 	h.ProductTemplate().Methods().Write().Extend("",
-		func(rs h.ProductTemplateSet, data *h.ProductTemplateData, fieldsToReset ...models.FieldNamer) bool {
+		func(rs h.ProductTemplateSet, data *h.ProductTemplateData) bool {
 			//@api.multi
 			/*def write(self, vals):
 			  #TODO: really? i don't see the reason we'd need that constraint..
@@ -56,7 +56,7 @@ to value expenses for the current product.`},
 			  return res
 
 			*/
-			return rs.Super().Write(data, fieldsToReset...)
+			return rs.Super().Write(data)
 		})
 
 	h.ProductTemplate().Methods().GetProductDirectAccounts().DeclareMethod(

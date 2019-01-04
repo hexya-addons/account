@@ -17,10 +17,13 @@ before_script:
   - hexya generate -t .
 
 script:
-  - ./run_tests.sh
+  - go test -v -p 2 ./...
 
-after_success:
-  - bash <(curl -s https://codecov.io/bash)
+#script:
+#  - travis_wait ./run_tests.sh
+#
+#after_success:
+#  - bash <(curl -s https://codecov.io/bash)
 
 env:
-  - HEXYA_DB_DRIVER=postgres HEXYA_DB_USER=postgres HEXYA_DB_PASSWORD= HEXYA_DB_PREFIX=hexya_test GO111MODULE=on
+  - HEXYA_DB_DRIVER=postgres HEXYA_DB_USER=postgres HEXYA_DB_PASSWORD= HEXYA_DB_PREFIX=hexya_test GO111MODULE=on GOMAXPROCS=2 GOGC=20
