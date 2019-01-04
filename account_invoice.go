@@ -379,7 +379,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		})
 
 	h.AccountInvoice().Methods().Create().Extend("",
-		func(rs h.AccountInvoiceSet, data *h.AccountInvoiceData, fieldsToReset ...models.FieldNamer) h.AccountInvoiceSet {
+		func(rs h.AccountInvoiceSet, data *h.AccountInvoiceData) h.AccountInvoiceSet {
 			//@api.model
 			/*def create(self, vals):
 			  onchanges = {
@@ -408,7 +408,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		})
 
 	h.AccountInvoice().Methods().Write().Extend("",
-		func(rs h.AccountInvoiceSet, vals *h.AccountInvoiceData, fieldsToReset ...models.FieldNamer) bool {
+		func(rs h.AccountInvoiceSet, vals *h.AccountInvoiceData) bool {
 			//@api.multi
 			/*def _write(self, vals):
 			  pre_not_reconciled = self.filtered(lambda invoice: not invoice.reconciled)
@@ -421,7 +421,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			  return res
 
 			*/
-			return rs.Super().Write(vals, fieldsToReset...)
+			return rs.Super().Write(vals)
 		})
 
 	h.AccountInvoice().Methods().FieldsViewGet().Extend("",
@@ -554,7 +554,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().OnchangeInvoiceLines().DeclareMethod(
 		`OnchangeInvoiceLines`,
-		func(rs h.AccountInvoiceSet) (*h.AccountInvoiceData, []models.FieldNamer) {
+		func(rs h.AccountInvoiceSet) *h.AccountInvoiceData {
 			//@api.onchange('invoice_line_ids')
 			/*def _onchange_invoice_line_ids(self):
 			  taxes_grouped = self.get_taxes_values()
@@ -565,12 +565,12 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			  return
 
 			*/
-			return new(h.AccountInvoiceData), []models.FieldNamer{}
+			return h.AccountInvoice().NewData()
 		})
 
 	h.AccountInvoice().Methods().OnchangePartner().DeclareMethod(
 		`OnchangePartner`,
-		func(rs h.AccountInvoiceSet) (*h.AccountInvoiceData, []models.FieldNamer) {
+		func(rs h.AccountInvoiceSet) *h.AccountInvoiceData {
 			//@api.onchange('partner_id','company_id')
 			/*def _onchange_partner_id(self):
 			  account_id = False
@@ -632,7 +632,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			  return res
 
 			*/
-			return new(h.AccountInvoiceData), []models.FieldNamer{}
+			return h.AccountInvoice().NewData()
 		})
 
 	h.AccountInvoice().Methods().GetDeliveryPartner().DeclareMethod(
@@ -649,19 +649,19 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().OnchangeJournal().DeclareMethod(
 		`OnchangeJournal`,
-		func(rs h.AccountInvoiceSet) (*h.AccountInvoiceData, []models.FieldNamer) {
+		func(rs h.AccountInvoiceSet) *h.AccountInvoiceData {
 			//@api.onchange('journal_id')
 			/*def _onchange_journal_id(self):
 			  if self.journal_id:
 			      self.currency_id = self.journal_id.currency_id.id or self.journal_id.company_id.currency_id.id
 
 			*/
-			return new(h.AccountInvoiceData), []models.FieldNamer{}
+			return h.AccountInvoice().NewData()
 		})
 
 	h.AccountInvoice().Methods().OnchangePaymentTermDateInvoice().DeclareMethod(
 		`OnchangePaymentTermDateInvoice`,
-		func(rs h.AccountInvoiceSet) (*h.AccountInvoiceData, []models.FieldNamer) {
+		func(rs h.AccountInvoiceSet) *h.AccountInvoiceData {
 			//@api.onchange('payment_term_id','date_invoice')
 			/*
 				def _onchange_payment_term_date_invoice(self):
@@ -676,7 +676,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 						pterm_list = pterm.with_context(currency_id=self.company_id.currency_id.id).compute(value=1, date_ref=date_invoice)[0]
 						self.date_due = max(line[0] for line in pterm_list)
 			*/
-			return new(h.AccountInvoiceData), []models.FieldNamer{}
+			return h.AccountInvoice().NewData()
 		})
 
 	h.AccountInvoice().Methods().ActionInvoiceDraft().DeclareMethod(
@@ -1622,7 +1622,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoiceLine().Methods().OnchangeProduct().DeclareMethod(
 		`OnchangeProduct`,
-		func(rs h.AccountInvoiceLineSet) (*h.AccountInvoiceLineData, []models.FieldNamer) {
+		func(rs h.AccountInvoiceLineSet) *h.AccountInvoiceLineData {
 			//@api.onchange('product_id')
 			/*def _onchange_product_id(self):
 			  domain = {}
@@ -1678,12 +1678,12 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			  return {'domain': domain}
 
 			*/
-			return new(h.AccountInvoiceLineData), []models.FieldNamer{}
+			return h.AccountInvoiceLine().NewData()
 		})
 
 	h.AccountInvoiceLine().Methods().OnchangeAccount().DeclareMethod(
 		`OnchangeAccount`,
-		func(rs h.AccountInvoiceLineSet) (*h.AccountInvoiceLineData, []models.FieldNamer) {
+		func(rs h.AccountInvoiceLineSet) *h.AccountInvoiceLineData {
 			//@api.onchange('account_id')
 			/*def _onchange_account_id(self):
 			  if not self.account_id:
@@ -1695,12 +1695,12 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			      self._set_taxes()
 
 			*/
-			return new(h.AccountInvoiceLineData), []models.FieldNamer{}
+			return h.AccountInvoiceLine().NewData()
 		})
 
 	h.AccountInvoiceLine().Methods().OnchangeUom().DeclareMethod(
 		`OnchangeUom`,
-		func(rs h.AccountInvoiceLineSet) (*h.AccountInvoiceLineData, []models.FieldNamer) {
+		func(rs h.AccountInvoiceLineSet) *h.AccountInvoiceLineData {
 			//@api.onchange('uom_id')
 			/*def _onchange_uom_id(self):
 			  warning = {}
@@ -1719,7 +1719,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			  return result
 
 			*/
-			return new(h.AccountInvoiceLineData), []models.FieldNamer{}
+			return h.AccountInvoiceLine().NewData()
 		})
 
 	h.AccountInvoiceLine().Methods().DefineAdditionalFields().DeclareMethod(
@@ -1806,13 +1806,12 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		"Lines": models.One2ManyField{RelationModel: h.AccountPaymentTermLine(), ReverseFK: "Payment",
 			JSON: "line_ids", String: "Terms",
 			Default: func(env models.Environment) interface{} {
-				return h.AccountPaymentTermLine().Create(env, &h.AccountPaymentTermLineData{
-					Value:       "balance",
-					ValueAmount: 0,
-					Sequence:    9,
-					Days:        0,
-					Option:      "day_after_invoice_date",
-				})
+				return h.AccountPaymentTermLine().Create(env, h.AccountPaymentTermLine().NewData().
+					SetValue("balance").
+					SetValueAmount(0).
+					SetSequence(9).
+					SetDays(0).
+					SetOption("day_after_invoice_date"))
 			}, Constraint: h.AccountPaymentTerm().Methods().CheckLines()},
 		"Company": models.Many2OneField{RelationModel: h.Company(), Required: true,
 			Default: func(env models.Environment) interface{} {
@@ -1930,14 +1929,14 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountPaymentTermLine().Methods().OnchangeOption().DeclareMethod(
 		`OnchangeOption`,
-		func(rs h.AccountPaymentTermLineSet) (*h.AccountPaymentTermLineData, []models.FieldNamer) {
+		func(rs h.AccountPaymentTermLineSet) *h.AccountPaymentTermLineData {
 			//@api.onchange('option')
 			/*def _onchange_option(self):
 			  if self.option in ('last_day_current_month', 'last_day_following_month'):
 			      self.days = 0
 
 			*/
-			return new(h.AccountPaymentTermLineData), []models.FieldNamer{}
+			return h.AccountPaymentTermLine().NewData()
 		})
 
 	//h.MailComposeMessage().Methods().SendMail().DeclareMethod(

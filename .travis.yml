@@ -1,7 +1,7 @@
 language: go
 go:
  - "1.11"
- - "tip"
+# - "tip"
 
 addons:
   postgresql: "9.6"
@@ -17,7 +17,7 @@ before_script:
   - hexya generate -t .
 
 script:
-  - go get -v -p 2 ./...
+  - go test -v -p 2 ./...
 
 #script:
 #  - travis_wait ./run_tests.sh

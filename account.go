@@ -166,7 +166,7 @@ or if you click the "Done" button.`},
 		})
 
 	h.AccountAccount().Methods().Copy().Extend("",
-		func(rs h.AccountAccountSet, overrides *h.AccountAccountData, fieldsToReset ...models.FieldNamer) h.AccountAccountSet {
+		func(rs h.AccountAccountSet, overrides *h.AccountAccountData) h.AccountAccountSet {
 			//@api.returns('self',lambdavalue:value.id)
 			/*def copy(self, default=None):
 			  default = dict(default or {})
@@ -174,11 +174,11 @@ or if you click the "Done" button.`},
 			  return super(AccountAccount, self).copy(default)
 
 			*/
-			return rs.Super().Copy(overrides, fieldsToReset...)
+			return rs.Super().Copy(overrides)
 		})
 
 	h.AccountAccount().Methods().Write().Extend("",
-		func(rs h.AccountAccountSet, vals *h.AccountAccountData, fieldsToReset ...models.FieldNamer) bool {
+		func(rs h.AccountAccountSet, vals *h.AccountAccountData) bool {
 			//@api.multi
 			/*def write(self, vals):
 			  # Dont allow changing the company_id when account_move_line already exist
@@ -197,7 +197,7 @@ or if you click the "Done" button.`},
 			  return super(AccountAccount, self).write(vals)
 
 			*/
-			return rs.Super().Write(vals, fieldsToReset...)
+			return rs.Super().Write(vals)
 		})
 
 	h.AccountAccount().Methods().Unlink().Extend("",
@@ -433,7 +433,7 @@ to manage payments outside of the software.`},
 		})
 
 	h.AccountJournal().Methods().Copy().Extend("",
-		func(rs h.AccountJournalSet, overrides *h.AccountJournalData, fieldsToReset ...models.FieldNamer) h.AccountJournalSet {
+		func(rs h.AccountJournalSet, overrides *h.AccountJournalData) h.AccountJournalSet {
 			//@api.returns('self',lambdavalue:value.id)
 			/*def copy(self, default=None):
 			default = dict(default or {})
@@ -442,11 +442,11 @@ to manage payments outside of the software.`},
 				name=_("%s (copy)") % (self.name or ''))
 			return super(AccountJournal, self).copy(default)
 			*/
-			return rs.Super().Copy(overrides, fieldsToReset...)
+			return rs.Super().Copy(overrides)
 		})
 
 	h.AccountJournal().Methods().Write().Extend("",
-		func(rs h.AccountJournalSet, vals *h.AccountJournalData, fieldsToReset ...models.FieldNamer) bool {
+		func(rs h.AccountJournalSet, vals *h.AccountJournalData) bool {
 			//@api.multi
 			/*def write(self, vals):
 			for journal in self:
@@ -486,7 +486,7 @@ to manage payments outside of the software.`},
 
 			return result
 			*/
-			return rs.Super().Write(vals, fieldsToReset...)
+			return rs.Super().Write(vals)
 		})
 
 	h.AccountJournal().Methods().GetSequencePrefix().DeclareMethod(
@@ -502,21 +502,20 @@ to manage payments outside of the software.`},
 	h.AccountJournal().Methods().CreateSequence().DeclareMethod(
 		`CreateSequence creates new no_gap entry sequence for every new Journal`,
 		func(rs h.AccountJournalSet, vals *h.AccountJournalData, refund bool) h.SequenceSet {
-			prefix := rs.GetSequencePrefix(vals.Code, refund)
-			name := vals.Name
+			prefix := rs.GetSequencePrefix(vals.Code(), refund)
+			name := vals.Name()
 			if refund {
 				name = rs.T("%s: Refund", name)
 			}
-			seq := h.SequenceData{
-				Name:            name,
-				Implementation:  "no_gap",
-				Prefix:          prefix,
-				Padding:         4,
-				NumberIncrement: 1,
-				UseDateRange:    true,
-				Company:         vals.Company,
-			}
-			return h.Sequence().Create(rs.Env(), &seq)
+			seq := h.Sequence().NewData().
+				SetName(name).
+				SetImplementation("no_gap").
+				SetPrefix(prefix).
+				SetPadding(4).
+				SetNumberIncrement(1).
+				SetUseDateRange(true).
+				SetCompany(vals.Company())
+			return h.Sequence().Create(rs.Env(), seq)
 		})
 
 	h.AccountJournal().Methods().PrepareLiquidityAccount().DeclareMethod(
@@ -551,28 +550,27 @@ to manage payments outside of the software.`},
 			liquidityType := h.AccountAccountType().Search(rs.Env(),
 				q.AccountAccountType().HexyaExternalID().Equals("account.data_account_type_liquidity"))
 
-			return &h.AccountAccountData{
-				Name:     name,
-				Currency: currency,
-				Code:     newCode,
-				UserType: liquidityType,
-				Company:  company,
-			}
+			return h.AccountAccount().NewData().
+				SetName(name).
+				SetCurrency(currency).
+				SetCode(newCode).
+				SetUserType(liquidityType).
+				SetCompany(company)
 		})
 
 	h.AccountJournal().Methods().Create().Extend("",
-		func(rs h.AccountJournalSet, vals *h.AccountJournalData, fieldsToReset ...models.FieldNamer) h.AccountJournalSet {
-			company := vals.Company
+		func(rs h.AccountJournalSet, vals *h.AccountJournalData) h.AccountJournalSet {
+			company := vals.Company()
 			if company.IsEmpty() {
 				company = h.User().NewSet(rs.Env()).CurrentUser().Company()
 			}
-			if vals.Type == "bank" || vals.Type == "cash" {
+			if vals.Type() == "bank" || vals.Type() == "cash" {
 				// # For convenience, the name can be inferred from account number
 				// if not vals.get('name') and 'bank_acc_number' in vals:
 				//    vals['name'] = vals['bank_acc_number']
-				if vals.Code == "" {
+				if vals.Code() == "" {
 					journalCodeBase := "BNK"
-					if vals.Type == "cash" {
+					if vals.Type() == "cash" {
 						journalCodeBase = "CSH"
 					}
 					journals := h.AccountJournal().Search(rs.Env(),
@@ -585,33 +583,33 @@ to manage payments outside of the software.`},
 						// journal_code has a maximal size of 5, hence we can enforce the boundary num < 100
 						jCode := journalCodeBase + strconv.Itoa(num)
 						if _, exists := journalCodes[jCode]; !exists {
-							vals.Code = jCode
+							vals.SetCode(jCode)
 							break
 						}
 					}
-					if vals.Code == "" {
+					if vals.Code() == "" {
 						panic(rs.T("Cannot generate an unused journal code. Please fill the 'Shortcode' field."))
 					}
 				}
 				// Create a default debit/credit account if not given
-				defaultAccount := vals.DefaultDebitAccount
+				defaultAccount := vals.DefaultDebitAccount()
 				if defaultAccount.IsEmpty() {
-					defaultAccount = vals.DefaultCreditAccount
+					defaultAccount = vals.DefaultCreditAccount()
 				}
 				if defaultAccount.IsEmpty() {
-					accountVals := rs.PrepareLiquidityAccount(vals.Name, company, vals.Currency, vals.Type)
+					accountVals := rs.PrepareLiquidityAccount(vals.Name(), company, vals.Currency(), vals.Type())
 					defaultAccount = h.AccountAccount().Create(rs.Env(), accountVals)
-					vals.DefaultDebitAccount = defaultAccount
-					vals.DefaultCreditAccount = defaultAccount
+					vals.SetDefaultDebitAccount(defaultAccount)
+					vals.SetDefaultCreditAccount(defaultAccount)
 				}
 
 			}
 			// We just need to create the relevant sequences according to the chosen options
-			if vals.EntrySequence.IsEmpty() {
-				vals.EntrySequence = rs.Sudo().CreateSequence(vals, false)
+			if vals.EntrySequence().IsEmpty() {
+				vals.SetEntrySequence(rs.Sudo().CreateSequence(vals, false))
 			}
-			if (vals.Type == "sale" || vals.Type == "purchase") && vals.RefundSequence && vals.RefundEntrySequence.IsEmpty() {
-				vals.RefundEntrySequence = rs.Sudo().CreateSequence(vals, true)
+			if (vals.Type() == "sale" || vals.Type() == "purchase") && vals.RefundSequence() && vals.RefundEntrySequence().IsEmpty() {
+				vals.SetRefundEntrySequence(rs.Sudo().CreateSequence(vals, true))
 			}
 			journal := rs.Super().Create(vals)
 
@@ -845,14 +843,14 @@ to the same analytic account as the invoice line (if any)`},
 		})
 
 	h.AccountTax().Methods().Copy().Extend("",
-		func(rs h.AccountTaxSet, overrides *h.AccountTaxData, fieldsToReset ...models.FieldNamer) h.AccountTaxSet {
+		func(rs h.AccountTaxSet, overrides *h.AccountTaxData) h.AccountTaxSet {
 			//@api.returns('self',lambdavalue:value.id)
 			/*def copy(self, default=None):
 			default = dict(default or {}, name=_("%s (Copy)") % self.name)
 			return super(AccountTax, self).copy(default=default)
 
 			*/
-			return rs.Super().Copy(overrides, fieldsToReset...)
+			return rs.Super().Copy(overrides)
 		})
 
 	h.AccountTax().Methods().SearchByName().Extend("",

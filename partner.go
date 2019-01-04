@@ -54,9 +54,7 @@ func init() {
 	h.AccountFiscalPosition().Methods().ComputeStatesCount().DeclareMethod(
 		`ComputeStatesCount returns the number of states of the partner's country'`,
 		func(rs h.AccountFiscalPositionSet) *h.AccountFiscalPositionData {
-			return &h.AccountFiscalPositionData{
-				StatesCount: rs.Country().States().Len(),
-			}
+			return h.AccountFiscalPosition().NewData().SetStatesCount(rs.Country().States().Len())
 		})
 
 	h.AccountFiscalPosition().Methods().CheckZip().DeclareMethod(
@@ -124,7 +122,7 @@ func init() {
 
 	h.AccountFiscalPosition().Methods().OnchangeCountry().DeclareMethod(
 		`OnchangeCountryId`,
-		func(rs h.AccountFiscalPositionSet) (*h.AccountFiscalPositionData, []models.FieldNamer) {
+		func(rs h.AccountFiscalPositionSet) *h.AccountFiscalPositionData {
 			//@api.onchange('country_id')
 			/*def _onchange_country_id(self):
 			  if self.country_id:
@@ -133,12 +131,12 @@ func init() {
 			      self.states_count = len(self.country_id.state_ids)
 
 			*/
-			return &h.AccountFiscalPositionData{}, []models.FieldNamer{}
+			return h.AccountFiscalPosition().NewData()
 		})
 
 	h.AccountFiscalPosition().Methods().OnchangeCountryGroup().DeclareMethod(
 		`OnchangeCountryGroupId`,
-		func(rs h.AccountFiscalPositionSet) (*h.AccountFiscalPositionData, []models.FieldNamer) {
+		func(rs h.AccountFiscalPositionSet) *h.AccountFiscalPositionData {
 			//@api.onchange('country_group_id')
 			/*def _onchange_country_group_id(self):
 			  if self.country_group_id:
@@ -146,7 +144,7 @@ func init() {
 			      self.state_ids = [(5,)]
 
 			*/
-			return &h.AccountFiscalPositionData{}, []models.FieldNamer{}
+			return h.AccountFiscalPosition().NewData()
 		})
 
 	h.AccountFiscalPosition().Methods().GetFposByRegion().DeclareMethod(

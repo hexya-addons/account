@@ -269,7 +269,7 @@ set to draft and re-processed again." `},
 			Filter: q.AccountJournal().Type().In([]string{"bank", "cash"})},
 		"Invoices": models.Many2ManyField{RelationModel: h.AccountInvoice(), JSON: "invoice_ids",
 			NoCopy: true, ReadOnly: true},
-		"HasInvoices": models.BooleanField{Compute: h.AccountPayment().Methods().ComputeHasInvoices(),
+		"HasInvoice": models.BooleanField{Compute: h.AccountPayment().Methods().ComputeHasInvoice(),
 			Help: "Technical field used for usability purposes"},
 		"PaymentDifference": models.FloatField{Compute: h.AccountPayment().Methods().ComputePaymentDifference()},
 		"PaymentDifferenceHandling": models.SelectionField{String: "Payment Difference", Selection: types.Selection{
@@ -288,8 +288,8 @@ set to draft and re-processed again." `},
 	//
 	//h.AccountPayment().Fields().PartnerType().SetOnchange(h.AccountPayment().Methods().OnchangePartnerType())
 
-	h.AccountPayment().Methods().ComputeHasInvoices().DeclareMethod(
-		`ComputeHasInvoices`,
+	h.AccountPayment().Methods().ComputeHasInvoice().DeclareMethod(
+		`ComputeHasInvoice`,
 		func(rs h.AccountPaymentSet) *h.AccountPaymentData {
 			//@api.depends('invoice_ids')
 			/*def _get_has_invoices(self):
