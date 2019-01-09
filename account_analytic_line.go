@@ -56,7 +56,7 @@ func init() {
 
 	h.AccountAnalyticLine().Methods().OnChangeUnitAmount().DeclareMethod(
 		`OnChangeUnitAmount`,
-		func(rs h.AccountAnalyticLineSet) (*h.AccountAnalyticAccountData, []models.FieldNamer) {
+		func(rs h.AccountAnalyticLineSet) *h.AccountAnalyticAccountData {
 			//@api.onchange('product_id','product_uom_id','unit_amount','currency_id')
 			/*def on_change_unit_amount(self):
 			  if not self.product_id:
@@ -78,6 +78,6 @@ func init() {
 			  self.product_uom_id = unit
 
 			*/
-			return new(h.AccountAnalyticAccountData), []models.FieldNamer{}
+			return h.AccountAnalyticAccount().NewData()
 		})
 }

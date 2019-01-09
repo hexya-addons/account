@@ -269,13 +269,13 @@ func init() {
 
 	h.AccountBankStatement().Methods().OnchangeJournal().DeclareMethod(
 		`OnchangeJournalId`,
-		func(rs h.AccountBankStatementSet) (*h.AccountBankStatementData, []models.FieldNamer) {
+		func(rs h.AccountBankStatementSet) *h.AccountBankStatementData {
 			//@api.onchange('journal_id')
 			/*def onchange_journal_id(self):
 			  self._set_opening_balance(self.journal_id.id)
 
 			*/
-			return new(h.AccountBankStatementData), []models.FieldNamer{}
+			return h.AccountBankStatement().NewData()
 		})
 
 	h.AccountBankStatement().Methods().BalanceCheck().DeclareMethod(

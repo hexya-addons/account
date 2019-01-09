@@ -141,14 +141,14 @@ or if you click the "Done" button.`},
 
 	h.AccountAccount().Methods().OnchangeInternalType().DeclareMethod(
 		`OnchangeInternalType`,
-		func(rs h.AccountAccountSet) (*h.AccountAccountSet, []models.FieldNamer) {
+		func(rs h.AccountAccountSet) *h.AccountAccountData {
 			//@api.onchange('internal_type')
 			/*def onchange_internal_type(self):
 			  if self.internal_type in ('receivable', 'payable'):
 			      self.reconcile = True
 
 			*/
-			return new(h.AccountAccountSet), []models.FieldNamer{}
+			return h.AccountAccount().NewData()
 		})
 
 	h.AccountAccount().Methods().NameGet().Extend("",
@@ -394,26 +394,26 @@ to manage payments outside of the software.`},
 
 	h.AccountJournal().Methods().OnchangeDebitAccountId().DeclareMethod(
 		`OnchangeDebitAccountId`,
-		func(rs h.AccountJournalSet) (*h.AccountJournalData, []models.FieldNamer) {
+		func(rs h.AccountJournalSet) *h.AccountJournalData {
 			//@api.onchange('default_debit_account_id')
 			/*def onchange_debit_account_id(self):
 			  if not self.default_credit_account_id:
 			      self.default_credit_account_id = self.default_debit_account_id
 
 			*/
-			return new(h.AccountJournalData), []models.FieldNamer{}
+			return h.AccountJournal().NewData()
 		})
 
 	h.AccountJournal().Methods().OnchangeCreditAccountId().DeclareMethod(
 		`OnchangeCreditAccountId`,
-		func(rs h.AccountJournalSet) (*h.AccountJournalData, []models.FieldNamer) {
+		func(rs h.AccountJournalSet) *h.AccountJournalData {
 			//@api.onchange('default_credit_account_id')
 			/*def onchange_credit_account_id(self):
 			  if not self.default_debit_account_id:
 			      self.default_debit_account_id = self.default_credit_account_id
 
 			*/
-			return new(h.AccountJournalData), []models.FieldNamer{}
+			return h.AccountJournal().NewData()
 		})
 
 	h.AccountJournal().Methods().Unlink().Extend("",
@@ -897,37 +897,37 @@ to the same analytic account as the invoice line (if any)`},
 
 	h.AccountTax().Methods().OnchangeAmount().DeclareMethod(
 		`OnchangeAmount`,
-		func(rs h.AccountTaxSet) (*h.AccountTaxData, []models.FieldNamer) {
+		func(rs h.AccountTaxSet) *h.AccountTaxData {
 			//@api.onchange('amount')
 			/*def onchange_amount(self):
 			  if self.amount_type in ('percent', 'division') and self.amount != 0.0 and not self.description:
 			      self.description = "{0:.4g}%".format(self.amount)
 
 			*/
-			return new(h.AccountTaxData), []models.FieldNamer{}
+			return h.AccountTax().NewData()
 		})
 
 	h.AccountTax().Methods().OnchangeAccount().DeclareMethod(
 		`OnchangeAccount`,
-		func(rs h.AccountTaxSet) (*h.AccountTaxData, []models.FieldNamer) {
+		func(rs h.AccountTaxSet) *h.AccountTaxData {
 			//@api.onchange('account_id')
 			/*def onchange_account_id(self):
 			  self.refund_account_id = self.account_id
 
 			*/
-			return new(h.AccountTaxData), []models.FieldNamer{}
+			return h.AccountTax().NewData()
 		})
 
 	h.AccountTax().Methods().OnchangePriceInclude().DeclareMethod(
 		`OnchangePriceInclude`,
-		func(rs h.AccountTaxSet) (*h.AccountTaxData, []models.FieldNamer) {
+		func(rs h.AccountTaxSet) *h.AccountTaxData {
 			//@api.onchange('price_include')
 			/*def onchange_price_include(self):
 			  if self.price_include:
 			      self.include_base_amount = True
 
 			*/
-			return new(h.AccountTaxData), []models.FieldNamer{}
+			return h.AccountTax().NewData()
 		})
 
 	h.AccountTax().Methods().GetGroupingKey().DeclareMethod(
@@ -1183,12 +1183,12 @@ to the same analytic account as the invoice line (if any)`},
 
 	h.AccountReconcileModel().Methods().OnchangeName().DeclareMethod(
 		`OnchangeName`,
-		func(rs h.AccountReconcileModelSet) (*h.AccountReconcileModelData, []models.FieldNamer) {
+		func(rs h.AccountReconcileModelSet) *h.AccountReconcileModelData {
 			//@api.onchange('name')
 			/*def onchange_name(self):
 			  self.label = self.name
 			*/
-			return new(h.AccountReconcileModelData), []models.FieldNamer{}
+			return h.AccountReconcileModel().NewData()
 		})
 
 }

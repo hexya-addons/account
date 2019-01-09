@@ -87,7 +87,7 @@ has only one available which is 'manual'`},
 
 	h.AccountAbstractPayment().Methods().OnchangeJournal().DeclareMethod(
 		`OnchangeJournal`,
-		func(rs h.AccountAbstractPaymentSet) (*h.AccountAbstractPaymentData, []models.FieldNamer) {
+		func(rs h.AccountAbstractPaymentSet) *h.AccountAbstractPaymentData {
 			//@api.onchange('journal_id')
 			/*def _onchange_journal(self):
 			  if self.journal_id:
@@ -101,7 +101,7 @@ has only one available which is 'manual'`},
 			  return {}
 
 			*/
-			return new(h.AccountAbstractPaymentData), []models.FieldNamer{}
+			return h.AccountAbstractPayment().NewData()
 		})
 
 	h.AccountAbstractPayment().Methods().GetInvoices().DeclareMethod(
@@ -146,14 +146,14 @@ has only one available which is 'manual'`},
 
 	h.AccountRegisterPayments().Methods().OnchangePaymentType().DeclareMethod(
 		`OnchangePaymentType`,
-		func(rs h.AccountRegisterPaymentsSet) (*h.AccountRegisterPaymentsData, []models.FieldNamer) {
+		func(rs h.AccountRegisterPaymentsSet) *h.AccountRegisterPaymentsData {
 			//@api.onchange('payment_type')
 			/*def _onchange_payment_type(self):
 			  if self.payment_type:
 			      return {'domain': {'payment_method_id': [('payment_type', '=', self.payment_type)]}}
 
 			*/
-			return new(h.AccountRegisterPaymentsData), []models.FieldNamer{}
+			return h.AccountRegisterPayments().NewData()
 		})
 
 	h.AccountRegisterPayments().Methods().GetInvoices().Extend("",
@@ -338,7 +338,7 @@ set to draft and re-processed again." `},
 
 	h.AccountPayment().Methods().OnchangePartnerType().DeclareMethod(
 		`OnchangePartnerType`,
-		func(rs h.AccountPaymentSet) (*h.AccountPaymentData, []models.FieldNamer) {
+		func(rs h.AccountPaymentSet) *h.AccountPaymentData {
 			//@api.onchange('partner_type')
 			/*def _onchange_partner_type(self):
 			  # Set partner_id domain
@@ -346,12 +346,12 @@ set to draft and re-processed again." `},
 			      return {'domain': {'partner_id': [(self.partner_type, '=', True)]}}
 
 			*/
-			return &h.AccountPaymentData{}, []models.FieldNamer{}
+			return h.AccountPayment().NewData()
 		})
 
 	h.AccountPayment().Methods().OnchangePaymentType().DeclareMethod(
 		`OnchangePaymentType`,
-		func(rs h.AccountPaymentSet) (*h.AccountPaymentData, []models.FieldNamer) {
+		func(rs h.AccountPaymentSet) *h.AccountPaymentData {
 			//@api.onchange('payment_type')
 			/*def _onchange_payment_type(self):
 			    # Set partner_id domain
@@ -359,7 +359,7 @@ set to draft and re-processed again." `},
 					return {'domain': {'partner_id': [(self.partner_type, '=', True)]}}
 
 			*/
-			return &h.AccountPaymentData{}, []models.FieldNamer{}
+			return h.AccountPayment().NewData()
 		})
 
 	h.AccountPayment().Methods().DefaultGet().Extend("",

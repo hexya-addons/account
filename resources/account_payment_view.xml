@@ -79,9 +79,9 @@
                                 icon="fa-bars"/>
                         <field name="move_line_ids" invisible="1"/>
                         <button class="oe_stat_button" name="button_invoices" string="Invoices" type="object"
-                                attrs="{&apos;invisible&apos;:[(&apos;has_invoices&apos;,&apos;=&apos;,False)]}"
+                                attrs="{&apos;invisible&apos;:[(&apos;has_invoice&apos;,&apos;=&apos;,False)]}"
                                 icon="fa-bars"/>
-                        <field name="has_invoices" invisible="1"/>
+                        <field name="has_invoice" invisible="1"/>
                     </div>
                     <field name="id" invisible="1"/>
                     <div class="oe_title"

@@ -799,18 +799,18 @@ set of tax defined for the chosen template is complete`},
 
 	h.WizardMultiChartsAccounts().Methods().OnchangeTaxRate().DeclareMethod(
 		`OnchangeTaxRate`,
-		func(rs h.WizardMultiChartsAccountsSet) (*h.WizardMultiChartsAccountsData, []models.FieldNamer) {
+		func(rs h.WizardMultiChartsAccountsSet) *h.WizardMultiChartsAccountsData {
 			//@api.onchange('sale_tax_rate')
 			/*def onchange_tax_rate(self):
 			  self.purchase_tax_rate = self.sale_tax_rate or False
 
 			*/
-			return &h.WizardMultiChartsAccountsData{}, []models.FieldNamer{}
+			return h.WizardMultiChartsAccounts().NewData()
 		})
 
 	h.WizardMultiChartsAccounts().Methods().OnchangeChartTemplate().DeclareMethod(
 		`OnchangeChartTemplateId`,
-		func(rs h.WizardMultiChartsAccountsSet) (*h.WizardMultiChartsAccountsData, []models.FieldNamer) {
+		func(rs h.WizardMultiChartsAccountsSet) *h.WizardMultiChartsAccountsData {
 			//@api.onchange('chart_template_id')
 			/*def onchange_chart_template_id(self):
 			  res = {}
@@ -843,7 +843,7 @@ set of tax defined for the chosen template is complete`},
 			  return res
 
 			*/
-			return &h.WizardMultiChartsAccountsData{}, []models.FieldNamer{}
+			return h.WizardMultiChartsAccounts().NewData()
 		})
 
 	h.WizardMultiChartsAccounts().Methods().GetDefaultBankAccountIds().DeclareMethod(
