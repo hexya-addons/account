@@ -7,30 +7,49 @@ import (
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/pool/h"
 	"github.com/hexya-erp/pool/q"
+	"math"
 )
 
 func init() {
 
 	h.AccountAnalyticLine().AddFields(map[string]models.FieldDefinition{
-		"ProductUom": models.Many2OneField{String: "Unit of Measure", RelationModel: h.ProductUom(),
-			OnChange: h.AccountAnalyticLine().Methods().OnChangeUnitAmount()},
-		"Product": models.Many2OneField{RelationModel: h.ProductProduct(),
-			OnChange: h.AccountAnalyticLine().Methods().OnChangeUnitAmount()},
-		"GeneralAccount": models.Many2OneField{String: "Financial Account", RelationModel: h.AccountAccount(),
-			OnDelete: models.Restrict, ReadOnly: true, Related: "Move.Account",
-			Filter: q.AccountAccount().Deprecated().Equals(false)},
-		"Move": models.Many2OneField{String: "Move Line", RelationModel: h.AccountMoveLine(),
-			JSON: "move_id", OnDelete: models.Cascade, Index: true},
-		"Code": models.CharField{String: "Code", Size: 8},
-		"Ref":  models.CharField{},
-		"CompanyCurrency": models.Many2OneField{RelationModel: h.Currency(),
-			Related: "Company.Currency", ReadOnly: true, Help: "Utility field to express amount currency"},
-		"AmountCurrency": models.FloatField{Related: "Move.AmountCurrency",
+		"ProductUom": models.Many2OneField{
+			String:        "Unit of Measure",
+			RelationModel: h.ProductUom(),
+			OnChange:      h.AccountAnalyticLine().Methods().OnChangeUnitAmount()},
+		"Product": models.Many2OneField{
+			RelationModel: h.ProductProduct(),
+			OnChange:      h.AccountAnalyticLine().Methods().OnChangeUnitAmount()},
+		"GeneralAccount": models.Many2OneField{
+			String:        "Financial Account",
+			RelationModel: h.AccountAccount(),
+			OnDelete:      models.Restrict,
+			ReadOnly:      true,
+			Related:       "Move.Account",
+			Filter:        q.AccountAccount().Deprecated().Equals(false)},
+		"Move": models.Many2OneField{
+			String:        "Move Line",
+			RelationModel: h.AccountMoveLine(),
+			JSON:          "move_id",
+			OnDelete:      models.Cascade, Index: true},
+		"Code": models.CharField{
+			String: "Code",
+			Size:   8},
+		"Ref": models.CharField{},
+		"CompanyCurrency": models.Many2OneField{
+			RelationModel: h.Currency(),
+			Related:       "Company.Currency",
+			ReadOnly:      true,
+			Help:          "Utility field to express amount currency"},
+		"AmountCurrency": models.FloatField{
+			Related:  "Move.AmountCurrency",
 			Help:     "The amount expressed in the related account currency if not equal to the company one.",
 			ReadOnly: true},
-		"AnalyticAmountCurrency": models.FloatField{String: "Amount Currency",
-			Compute: h.AccountAnalyticLine().Methods().GetAnalyticAmountCurrency(), ReadOnly: true,
-			Help: "The amount expressed in the related account currency if not equal to the company one."},
+		"AnalyticAmountCurrency": models.FloatField{
+			String:   "Amount Currency",
+			Compute:  h.AccountAnalyticLine().Methods().GetAnalyticAmountCurrency(),
+			ReadOnly: true,
+			Help:     "The amount expressed in the related account currency if not equal to the company one."},
 	})
 
 	h.AccountAnalyticLine().Fields().Currency().
@@ -45,13 +64,13 @@ func init() {
 
 	h.AccountAnalyticLine().Methods().GetAnalyticAmountCurrency().DeclareMethod(
 		`GetAnalyticAmountCurrency`,
-		func(rs h.AccountAnalyticLineSet) *h.AccountAnalyticAccountData {
-			/*def _get_analytic_amount_currency(self):
-			  for line in self:
-			      line.analytic_amount_currency = abs(line.amount_currency) * copysign(1, line.amount)
-
-			*/
-			return new(h.AccountAnalyticAccountData)
+		func(rs h.AccountAnalyticLineSet) *h.AccountAnalyticLineData {
+			r := h.AccountAnalyticLine().NewData()
+			value := math.Abs(rs.AmountCurrency()) * math.Copysign(1.0, rs.Amount())
+			if rs.AnalyticAmountCurrency() != value {
+				r.SetAnalyticAmountCurrency(value)
+			}
+			return r
 		})
 
 	h.AccountAnalyticLine().Methods().OnChangeUnitAmount().DeclareMethod(
