@@ -4,19 +4,18 @@
 package account
 
 import (
-	"context"
 	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/hexya-addons/web/webdata"
 	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/hexya/src/tools/nbutils"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
-	"github.com/hexya-erp/pool/q/currency"
-	"google.golang.org/appengine/log"
-	"strconv"
-	"strings"
 )
 
 func init() {
@@ -73,11 +72,12 @@ is common to both several times).`},
 	//h.AccountChartTemplate().Fields().DisplayName().SetDepends([]string{"Name", "Code"})
 
 	h.AccountAccountTemplate().Methods().NameGet().Extend("",
-		func(rs h.AccountAccountTemplateSet) string {
+		func(rs m.AccountAccountTemplateSet) string {
 			name := rs.Name()
 			if rs.Code() != "" {
 				name = rs.Code() + " " + name
 			}
+			return name
 		})
 
 	h.AccountChartTemplate().DeclareModel()
@@ -172,9 +172,9 @@ defined on this template is complete`},
 
 	h.AccountChartTemplate().Methods().TryLoadingForCurrentCompany().DeclareMethod(
 		`TryLoadingForCurrentCompany`,
-		func(rs h.AccountChartTemplateSet) *actions.Action {
-			var company h.CompanySet
-			var wizard h.WizardMultiChartsAccountsSet
+		func(rs m.AccountChartTemplateSet) *actions.Action {
+			var company m.CompanySet
+			var wizard m.WizardMultiChartsAccountsSet
 
 			rs.EnsureOne()
 			company = h.User().NewSet(rs.Env()).CurrentUser().Company()
@@ -198,7 +198,7 @@ defined on this template is complete`},
 
 	h.AccountChartTemplate().Methods().OpenSelectTemplateWizard().DeclareMethod(
 		`OpenSelectTemplateWizard`,
-		func(rs h.AccountChartTemplateSet) *actions.Action {
+		func(rs m.AccountChartTemplateSet) *actions.Action {
 			actionRec := &actions.Action{
 				Type: actions.ActionCloseWindow,
 			}
@@ -215,10 +215,10 @@ defined on this template is complete`},
 			  :param acc_template_ref: Account templates reference.
 			  :param company_id: company_id selected from wizard.multi.charts.accounts.
 			  :returns: True`,
-		func(rs h.AccountChartTemplateSet, accTemplateRef map[int64]int64, company h.CompanySet,
-			journalsData []*h.AccountJournalData) bool {
+		func(rs m.AccountChartTemplateSet, accTemplateRef map[int64]int64, company m.CompanySet,
+			journalsData []m.AccountJournalData) bool {
 
-			var journal h.AccountJournalSet
+			var journal m.AccountJournalSet
 			for _, valsJournal := range rs.PrepareAllJournals(accTemplateRef, company, journalsData) {
 				journal = h.AccountJournal().Create(rs.Env(), valsJournal)
 				if valsJournal.Type() == "general" && valsJournal.Code() == rs.T(`EXCH`) {
@@ -230,10 +230,10 @@ defined on this template is complete`},
 
 	h.AccountChartTemplate().Methods().PrepareAllJournals().DeclareMethod(
 		`PrepareAllJournals`,
-		func(rs h.AccountChartTemplateSet, accTemplateRef map[int64]int64, company h.CompanySet,
-			journalsData []*h.AccountJournalData) []*h.AccountJournalData {
+		func(rs m.AccountChartTemplateSet, accTemplateRef map[int64]int64, company m.CompanySet,
+			journalsData []m.AccountJournalData) []m.AccountJournalData {
 
-			getDefaultAccount := func(data *h.AccountJournalData, typ string) h.AccountAccountSet {
+			getDefaultAccount := func(data m.AccountJournalData, typ string) m.AccountAccountSet {
 				var id int64
 				// Get the default accounts
 				switch {
@@ -251,12 +251,12 @@ defined on this template is complete`},
 				return h.AccountAccount().BrowseOne(rs.Env(), id)
 			}
 
-			var journals []*h.AccountJournalData
-			var journalsOut []*h.AccountJournalData
-			var journalOut *h.AccountJournalData
+			var journals []m.AccountJournalData
+			var journalsOut []m.AccountJournalData
+			var journalOut m.AccountJournalData
 
 			rs.EnsureOne()
-			journals = []*h.AccountJournalData{
+			journals = []m.AccountJournalData{
 				h.AccountJournal().NewData().
 					SetName(rs.T("Customer Invoices")).
 					SetType("sale").
@@ -308,7 +308,7 @@ defined on this template is complete`},
 			  :param acc_template_ref: Mapping between ids of account templates and real accounts created from them
 			  :param company_id: company_id selected from wizard.multi.charts.accounts.
 			  :returns: True`,
-		func(rs h.AccountChartTemplateSet, accTemplateRef map[int64]int64, company h.CompanySet) bool {
+		func(rs m.AccountChartTemplateSet, accTemplateRef map[int64]int64, company m.CompanySet) bool {
 
 			// tovalid missing self.env['ir.property']
 			// tovalid missing self.env['ir.model.fields']
@@ -372,13 +372,13 @@ defined on this template is complete`},
 			            from them, as first item,
 			          * a similar dictionary for mapping the tax templates and taxes, as second item,
 			      :rtype: tuple(dict, dict, dict)`,
-		func(rs h.AccountChartTemplateSet, company h.CompanySet, codeDigits int64, transferAccount h.AccountAccountSet,
-			objWizard h.WizardMultiChartsAccountsSet, accRef, taxesRef map[int64]int64) (map[int64]int64, map[int64]int64) {
+		func(rs m.AccountChartTemplateSet, company m.CompanySet, codeDigits int64, transferAccount m.AccountAccountTemplateSet,
+			objWizard m.WizardMultiChartsAccountsSet, accRef, taxesRef map[int64]int64) (map[int64]int64, map[int64]int64) {
 
 			rs.EnsureOne()
 
 			if rs.Parent().IsNotEmpty() {
-				tmp1, tmp2 := rs.Parent().InstallTemplate(company, codeDigits, transferAccount, h.WizardMultiChartsAccountsSet{}, accRef, taxesRef)
+				tmp1, tmp2 := rs.Parent().InstallTemplate(company, codeDigits, transferAccount, h.WizardMultiChartsAccounts().NewSet(rs.Env()), accRef, taxesRef)
 				for key, val := range tmp1 {
 					accRef[key] = val
 				}
@@ -409,10 +409,10 @@ defined on this template is complete`},
 			            from them, as first item,
 			          * a similar dictionary for mapping the tax templates and taxes, as second item,
 			      :rtype: tuple(dict, dict, dict)`,
-		func(rs h.AccountChartTemplateSet, company h.CompanySet, codeDigits int64, transferAccount h.AccountAccountTemplateSet,
+		func(rs m.AccountChartTemplateSet, company m.CompanySet, codeDigits int64, transferAccount m.AccountAccountTemplateSet,
 			accountRef, taxesRef map[int64]int64) (map[int64]int64, map[int64]int64) {
 
-			var data *h.AccountTaxData
+			var data m.AccountTaxData
 			var taxTemplateToTax map[int64]int64
 			var accountTemplateRef map[int64]int64
 			var AccountDict map[int64]struct {
@@ -472,11 +472,11 @@ defined on this template is complete`},
 
 	h.AccountChartTemplate().Methods().GetAccountVals().DeclareMethod(
 		`GetAccountVals This method generates a dictionary of all the values for the account that will be created.`,
-		func(rs h.AccountChartTemplateSet, company h.CompanySet, accountTemplate h.AccountAccountTemplateSet,
-			codeAcc string, taxTemplateRef map[int64]int64) *h.AccountAccountData {
+		func(rs m.AccountChartTemplateSet, company m.CompanySet, accountTemplate m.AccountAccountTemplateSet,
+			codeAcc string, taxTemplateRef map[int64]int64) m.AccountAccountData {
 
 			var taxIds []int64
-			var data *h.AccountAccountData
+			var data m.AccountAccountData
 
 			rs.EnsureOne()
 
@@ -512,14 +512,14 @@ defined on this template is complete`},
 			      :param company_id: company_id selected from wizard.multi.charts.accounts.
 			      :returns: return acc_template_ref for reference purpose.
 			      :rtype: dict`,
-		func(rs h.AccountChartTemplateSet, taxTemplateRef, accTemplateRef map[int64]int64, codeDigits int,
-			company h.CompanySet) map[int64]int64 {
+		func(rs m.AccountChartTemplateSet, taxTemplateRef, accTemplateRef map[int64]int64, codeDigits int,
+			company m.CompanySet) map[int64]int64 {
 
-			var accTemplate h.AccountAccountTemplateSet
+			var accTemplate m.AccountAccountTemplateSet
 			var query q.AccountAccountTemplateCondition
 			var code string
-			var data *h.AccountAccountData
-			var newAccount h.AccountAccountSet
+			var data m.AccountAccountData
+			var newAccount m.AccountAccountSet
 
 			rs.EnsureOne()
 			query = q.AccountAccountTemplate().
@@ -541,13 +541,11 @@ defined on this template is complete`},
 
 	h.AccountChartTemplate().Methods().PrepareReconcileModelVals().DeclareMethod(
 		`PrepareReconcileModelVals This method generates a dictionary of all the values for the account.reconcile.model that will be created.`,
-		func(rs h.AccountChartTemplateSet, company h.CompanySet, accountReconcileModel h.AccountReconcileModelTemplateSet,
-			taxTemplateRef, accTemplateRef map[int64]int64) *h.AccountReconcileModelData {
-
-			var data *h.AccountReconcileModelData
+		func(rs m.AccountChartTemplateSet, company m.CompanySet, accountReconcileModel m.AccountReconcileModelTemplateSet,
+			taxTemplateRef, accTemplateRef map[int64]int64) m.AccountReconcileModelData {
 
 			rs.EnsureOne()
-			data = h.AccountReconcileModel().NewData().
+			data := h.AccountReconcileModel().NewData().
 				SetName(accountReconcileModel.Name()).
 				SetSequence(accountReconcileModel.Sequence()).
 				SetHasSecondLine(accountReconcileModel.HasSecondLine()).
@@ -581,10 +579,10 @@ defined on this template is complete`},
 			      :param company_id: company_id selected from wizard.multi.charts.accounts.
 			      :returns: return new_account_reconcile_model for reference purpose.
 			      :rtype: dict`,
-		func(rs h.AccountChartTemplateSet, taxTemplateRef, accTemplateRef map[int64]int64, company h.CompanySet) bool {
+		func(rs m.AccountChartTemplateSet, taxTemplateRef, accTemplateRef map[int64]int64, company m.CompanySet) bool {
 
-			var accountReconcileModels h.AccountReconcileModelTemplateSet
-			var vals *h.AccountReconcileModelData
+			var accountReconcileModels m.AccountReconcileModelTemplateSet
+			var vals m.AccountReconcileModelData
 
 			rs.EnsureOne()
 			accountReconcileModels = h.AccountReconcileModelTemplate().Search(rs.Env(),
@@ -605,11 +603,11 @@ defined on this template is complete`},
 			      :param acc_template_ref: Account templates reference for generating account.fiscal.position.account.
 			      :param company_id: company_id selected from wizard.multi.charts.accounts.
 			      :returns: True`,
-		func(rs h.AccountChartTemplateSet, taxTemplateRef, accTemplateRef map[int64]int64, company h.CompanySet) bool {
-			var positions h.AccountFiscalPositionTemplateSet
-			var newFp h.AccountFiscalPositionSet
-			var taxData *h.AccountFiscalPositionTaxData
-			var accountData *h.AccountFiscalPositionAccountData
+		func(rs m.AccountChartTemplateSet, taxTemplateRef, accTemplateRef map[int64]int64, company m.CompanySet) bool {
+			var positions m.AccountFiscalPositionTemplateSet
+			var newFp m.AccountFiscalPositionSet
+			var taxData m.AccountFiscalPositionTaxData
+			var accountData m.AccountFiscalPositionAccountData
 
 			rs.EnsureOne()
 			positions = h.AccountFiscalPositionTemplate().Search(rs.Env(),
@@ -729,7 +727,7 @@ the same analytic account as the invoice line (if any)`},
 		"Tax names must be unique !")
 
 	h.AccountTaxTemplate().Methods().NameGet().Extend("",
-		func(rs h.AccountTaxTemplateSet) string {
+		func(rs m.AccountTaxTemplateSet) string {
 			var name string
 
 			name = rs.Description()
@@ -741,12 +739,10 @@ the same analytic account as the invoice line (if any)`},
 
 	h.AccountTaxTemplate().Methods().GetTaxVals().DeclareMethod(
 		`GetTaxVals This method generates a dictionary of all the values for the tax that will be created.`,
-		func(rs h.AccountTaxTemplateSet, company h.CompanySet) *h.AccountTaxData {
+		func(rs m.AccountTaxTemplateSet, company m.CompanySet) m.AccountTaxData {
 
-			var data *h.AccountTaxData
 			rs.EnsureOne()
-
-			data = h.AccountTax().NewData().
+			data := h.AccountTax().NewData().
 				SetName(rs.Name()).
 				SetTypeTaxUse(rs.TypeTaxUse()).
 				SetAmountType(rs.AmountType()).
@@ -763,7 +759,7 @@ the same analytic account as the invoice line (if any)`},
 			if rs.TaxGroup().IsNotEmpty() {
 				data.SetTaxGroup(rs.TaxGroup())
 			}
-			return &h.AccountTaxData{}
+			return data
 		})
 
 	h.AccountTaxTemplate().Methods().GenerateTax().DeclareMethod(
@@ -775,12 +771,12 @@ the same analytic account as the invoice line (if any)`},
 			          'tax_template_to_tax': mapping between tax template and the newly generated taxes corresponding,
 			          'account_dict': dictionary containing a to-do list with all the accounts to assign on new taxes
 			      }`,
-		func(rs h.AccountTaxTemplateSet, company h.CompanySet) (map[int64]int64, map[int64]struct {
+		func(rs m.AccountTaxTemplateSet, company m.CompanySet) (map[int64]int64, map[int64]struct {
 			AccountID       int64
 			RefundAccountID int64
 		}) {
-			var taxData *h.AccountTaxData
-			var newTax h.AccountTaxSet
+			var taxData m.AccountTaxData
+			var newTax m.AccountTaxSet
 			var childrenIds []int64
 			var taxTemplateToTax map[int64]int64
 			var todoDict map[int64]struct {
@@ -855,7 +851,7 @@ the same analytic account as the invoice line (if any)`},
 	})
 
 	h.AccountFiscalPositionTaxTemplate().Methods().NameGet().Extend("",
-		func(rs h.AccountFiscalPositionTaxTemplateSet) string {
+		func(rs m.AccountFiscalPositionTaxTemplateSet) string {
 			return rs.Position().NameGet()
 		})
 
@@ -878,7 +874,7 @@ the same analytic account as the invoice line (if any)`},
 	})
 
 	h.AccountFiscalPositionAccountTemplate().Methods().NameGet().Extend("",
-		func(rs h.AccountFiscalPositionAccountTemplateSet) string {
+		func(rs m.AccountFiscalPositionAccountTemplateSet) string {
 			return rs.Position().NameGet()
 		})
 
@@ -949,8 +945,8 @@ set of tax defined for the chosen template is complete`},
 
 			      :param browse_record chart_template: the account.chart.template record
 			      :return: the IDS of all ancestor charts, including the chart itself.`,
-		func(rs h.WizardMultiChartsAccountsSet, chartTemplate h.AccountChartTemplateSet) h.AccountChartTemplateSet {
-			var result h.AccountChartTemplateSet
+		func(rs m.WizardMultiChartsAccountsSet, chartTemplate m.AccountChartTemplateSet) m.AccountChartTemplateSet {
+			var result m.AccountChartTemplateSet
 
 			result = chartTemplate
 			for chartTemplate.Parent().IsNotEmpty() {
@@ -963,7 +959,7 @@ set of tax defined for the chosen template is complete`},
 
 	h.WizardMultiChartsAccounts().Methods().OnchangeTaxRate().DeclareMethod(
 		`OnchangeTaxRate`,
-		func(rs h.WizardMultiChartsAccountsSet) *h.WizardMultiChartsAccountsData {
+		func(rs m.WizardMultiChartsAccountsSet) m.WizardMultiChartsAccountsData {
 			data := h.WizardMultiChartsAccounts().NewData()
 			if val := rs.SaleTaxRate(); val != 0.0 {
 				data.SetPurchaseTaxRate(val)
@@ -973,12 +969,12 @@ set of tax defined for the chosen template is complete`},
 
 	h.WizardMultiChartsAccounts().Methods().OnchangeChartTemplate().DeclareMethod(
 		`OnchangeChartTemplateId`,
-		func(rs h.WizardMultiChartsAccountsSet) *h.WizardMultiChartsAccountsData {
-			var data *h.WizardMultiChartsAccountsData
-			var currency h.CurrencySet
-			var charts h.AccountChartTemplateSet
-			var saleTax h.AccountTaxTemplateSet
-			var purchaseTax h.AccountTaxTemplateSet
+		func(rs m.WizardMultiChartsAccountsSet) m.WizardMultiChartsAccountsData {
+			var data m.WizardMultiChartsAccountsData
+			var currency m.CurrencySet
+			var charts m.AccountChartTemplateSet
+			var saleTax m.AccountTaxTemplateSet
+			var purchaseTax m.AccountTaxTemplateSet
 			var baseTaxCond q.AccountTaxTemplateCondition
 			var saleTaxCond q.AccountTaxTemplateCondition
 			var purchaseTaxCond q.AccountTaxTemplateCondition
@@ -993,7 +989,9 @@ set of tax defined for the chosen template is complete`},
 				SetCurrency(currency)
 			if rs.ChartTemplate().CompleteTaxSet() {
 				//default tax is given by the lowest sequence. For same sequence we will take the latest created as it will be the case for tax created while installing the generic chart of account
-				charts = rs.GetChartParentIds(rs.ChartTemplate())
+				charts = rs.GetChartParents(rs.ChartTemplate())
+				// FIXME
+				fmt.Println("chart", charts)
 				/* base_tax_domain = [('chart_template_id', 'parent_of', chart_ids)] tovalid missing "parent_of" Operator */
 				saleTaxCond = baseTaxCond.And().TypeTaxUse().Equals("sale")
 				purchaseTaxCond = baseTaxCond.And().TypeTaxUse().Equals("purchase")
@@ -1024,7 +1022,7 @@ set of tax defined for the chosen template is complete`},
 
 	h.WizardMultiChartsAccounts().Methods().GetDefaultBankAccountIds().DeclareMethod(
 		`GetDefaultBankAccountIds`,
-		func(rs h.WizardMultiChartsAccountsSet) h.AccountBankAccountsWizardSet {
+		func(rs m.WizardMultiChartsAccountsSet) m.AccountBankAccountsWizardSet {
 			//@api.model
 			/*def _get_default_bank_account_ids(self):
 			  return [{'acc_name': _('Cash'), 'account_type': 'cash'}, {'acc_name': _('Bank'), 'account_type': 'bank'}]
@@ -1034,25 +1032,27 @@ set of tax defined for the chosen template is complete`},
 		})
 
 	h.WizardMultiChartsAccounts().Methods().DefaultGet().Extend("",
-		func(rs h.WizardMultiChartsAccountsSet) models.FieldMap {
-			var context *types.Context
-			var res models.FieldMap
-			var model *models.Model
-			var chartTemplates h.AccountChartTemplateSet
+		func(rs m.WizardMultiChartsAccountsSet) models.FieldMap {
+			var chartTemplates m.AccountChartTemplateSet
 			var chartID int64
-			var chart h.AccountChartTemplateSet
-			var chartHierarchies h.AccountChartTemplateSet
+			var chart m.AccountChartTemplateSet
+			var chartHierarchies m.AccountChartTemplateSet
 			var baseTaxCondition q.AccountTaxTemplateCondition
-			var saleTax h.AccountTaxTemplateSet
-			var purchaseTax h.AccountTaxTemplateSet
+			var saleTax m.AccountTaxTemplateSet
+			var purchaseTax m.AccountTaxTemplateSet
 
-			context = rs.Env().Context()
-			res = rs.Super().DefaultGet()
-			model = rs.Model().Model
-			res.Set("BankAccounts", rs.GetDefaultBankAccountIds(), model)
-			res.Set("Company", h.User().NewSet(rs.Env()).CurrentUser().Company(), model)
-			if val, ok := res.Get("Company", model); ok {
-				res.Set("Currency", h.Company().BrowseOne(rs.Env(), val.(int64)), model)
+			res := h.WizardMultiChartsAccounts().NewData(rs.Super().DefaultGet())
+			if res.HasBankAccounts() {
+				res.SetBankAccounts(rs.GetDefaultBankAccountIds())
+			}
+			if res.HasCompany() {
+				res.SetCompany(h.User().NewSet(rs.Env()).CurrentUser().Company())
+			}
+			if res.HasCurrency() {
+				if res.Company().IsNotEmpty() {
+					currency := res.Company().OnChangeCountry().Currency()
+					res.SetCurrency(currency)
+				}
 			}
 
 			chartTemplates = h.AccountChartTemplate().Search(rs.Env(), q.AccountChartTemplate().Visible().Equals(true))
@@ -1060,7 +1060,7 @@ set of tax defined for the chosen template is complete`},
 				// in order to set default chart which was last created set max of ids.
 				for _, id := range chartTemplates.Ids() {
 					if id > chartID {
-						id = chartID
+						chartID = id
 					}
 				}
 				/*
@@ -1070,53 +1070,47 @@ set of tax defined for the chosen template is complete`},
 					      chart_id = model_data[0]['res_id']
 				*/
 				chart = h.AccountChartTemplate().BrowseOne(rs.Env(), chartID)
-				chartHierarchies = rs.GetChartParentIds(chart)
-				res.Set("OnlyOneChartTemplate", chartTemplates.Len() == 1, model)
-				res.Set("ChartTemplate", chart, model)
+				chartHierarchies = rs.GetChartParents(chart)
+				res.SetOnlyOneChartTemplate(chartTemplates.Len() == 1)
+				res.SetChartTemplate(chart)
 				baseTaxCondition = q.AccountTaxTemplate().ChartTemplate().In(chartHierarchies)
 				saleTax = h.AccountTaxTemplate().Search(rs.Env(), baseTaxCondition.And().TypeTaxUse().Equals("sale")).
 					Limit(1).OrderBy("sequence")
 				if saleTax.IsNotEmpty() {
-					res.Set("SaleTax", saleTax, model)
+					res.SetSaleTax(saleTax)
 				}
 				purchaseTax = h.AccountTaxTemplate().Search(rs.Env(), baseTaxCondition.And().TypeTaxUse().Equals("purchase")).
 					Limit(1).OrderBy("sequence")
 				if purchaseTax.IsNotEmpty() {
-					res.Set("PurchaseTax", purchaseTax, model)
+					res.SetPurchaseTax(purchaseTax)
 				}
 			}
-			res.Set("PurchaseTaxRate", 15.0, model)
-			res.Set("SaleTaxRate", 15.0, model)
-			return res
+			res.SetPurchaseTaxRate(15.0)
+			res.SetSaleTaxRate(15.0)
+			return res.Underlying()
 		})
 
 	h.WizardMultiChartsAccounts().Methods().FieldsViewGet().Extend("",
-		func(rs h.WizardMultiChartsAccountsSet, args webdata.FieldsViewGetParams) *webdata.FieldsViewData {
-			var res *webdata.FieldsViewData
-			var companies h.CompanySet
-			var condition q.AccountAccountCondition
-			var configuredCmp h.CompanySet
-			var unconfiguredCmp h.CompanySet
-			var selectionMap map[string]interface{}
-
-			res = rs.Super().FieldsViewGet(args)
-			companies = h.Company().Search(rs.Env(), q.CompanyCondition{})
-			condition = q.AccountAccount().Deprecated().Equals(false).
+		func(rs m.WizardMultiChartsAccountsSet, args webdata.FieldsViewGetParams) *webdata.FieldsViewData {
+			res := rs.Super().FieldsViewGet(args)
+			companies := h.Company().Search(rs.Env(), q.CompanyCondition{})
+			condition := q.AccountAccount().Deprecated().Equals(false).
 				And().Name().NotEquals("Chart For Automated Tests").
 				AndNotCond(q.AccountAccount().Name().Like("%(test)"))
+			var configuredCmp m.CompanySet
 			for _, cmp := range h.AccountAccount().Search(rs.Env(), condition).Records() {
 				configuredCmp = configuredCmp.Union(cmp.Company())
 			}
-			unconfiguredCmp = companies.Subtract(configuredCmp)
-			if val, ok := res.Fields["Company"]; ok {
-				val.Domain = q.WizardMultiChartsAccounts().ID().In(unconfiguredCmp.Ids())
-				val.Selection = types.Selection{}
+			unconfiguredCmp := companies.Subtract(configuredCmp)
+			if _, ok := res.Fields["Company"]; ok {
+				res.Fields["Company"].Domain = q.WizardMultiChartsAccounts().ID().In(unconfiguredCmp.Ids())
+				res.Fields["Company"].Selection = types.Selection{}
 				if unconfiguredCmp.Len() > 0 {
-					selectionMap = make(map[string]interface{})
+					selectionMap := make(types.Selection)
 					for _, line := range h.Company().Browse(rs.Env(), unconfiguredCmp.Ids()).Records() {
 						selectionMap[strconv.Itoa(int(line.ID()))] = line.Name()
 					}
-					val.Selection = types.Selection{selectionMap}
+					res.Fields["Company"].Selection = selectionMap
 				}
 			}
 			return res
@@ -1130,13 +1124,13 @@ set of tax defined for the chosen template is complete`},
 
 			  :param company_id: id of the company for which the wizard is running
 			  :return: True`,
-		func(rs h.WizardMultiChartsAccountsSet, company h.CompanySet) bool {
-			var allParents h.AccountChartTemplateSet
+		func(rs m.WizardMultiChartsAccountsSet, company m.CompanySet) bool {
+			var allParents m.AccountChartTemplateSet
 			var value float64
 			var cond q.AccountTaxTemplateCondition
-			var refTaxs h.AccountTaxTemplateSet
+			var refTaxs m.AccountTaxTemplateSet
 
-			allParents = rs.GetChartParentIds(rs.ChartTemplate())
+			allParents = rs.GetChartParents(rs.ChartTemplate())
 			// create tax templates from purchase_tax_rate and sale_tax_rate fields
 			if rs.ChartTemplate().CompleteTaxSet() {
 				return true
@@ -1165,7 +1159,7 @@ set of tax defined for the chosen template is complete`},
 		`Execute This function is called at the confirmation of the wizard to generate the COA from the templates. It will read
 			  all the provided information to create the accounts, the banks, the journals, the taxes, the
 			  accounting properties... accordingly for the chosen company.`,
-		func(rs h.WizardMultiChartsAccountsSet) bool {
+		func(rs m.WizardMultiChartsAccountsSet) bool {
 			if !h.User().NewSet(rs.Env()).CurrentUser().IsAdmin() {
 				panic(rs.T(`Only administrators can change the settings.`))
 			}
@@ -1173,7 +1167,7 @@ set of tax defined for the chosen template is complete`},
 			if h.AccountAccount().Search(rs.Env(), q.AccountAccount().Company().Equals(rs.Company())).Len() > 0 {
 				// We are in a case where we already have some accounts existing, meaning that user has probably
 				// created its own accounts and does not need a coa, so skip installation of coa.
-				log.Infof(nil, "Could not install chart of account since some accounts already exists for the company (%s)", rs.Company().ID())
+				log.Info("Could not install chart of account since some accounts already exists for the company", "Company", rs.Company().Name())
 				return true
 			}
 
@@ -1203,7 +1197,7 @@ set of tax defined for the chosen template is complete`},
 			rs.CreateTaxTemplatesFromRates(company)
 
 			// Install all the templates objects and generate the real objects
-			accTemplateRef, taxesRef := rs.ChartTemplate().InstallTemplate(company, rs.CodeDigits(), rs.TransferAccount(), h.WizardMultiChartsAccountsSet{}, nil, nil)
+			accTemplateRef, _ := rs.ChartTemplate().InstallTemplate(company, rs.CodeDigits(), rs.TransferAccount(), h.WizardMultiChartsAccounts().NewSet(rs.Env()), nil, nil)
 
 			// write values of default taxes for product as super user
 			/*
@@ -1240,7 +1234,7 @@ set of tax defined for the chosen template is complete`},
 			  :param company: the company for which the wizard is running.
 			  :param acc_template_ref: the dictionary containing the mapping between the ids of account templates and the ids
 			      of the accounts that have been generated from them.`,
-		func(rs h.WizardMultiChartsAccountsSet, company h.CompanySet, accTemplateRef map[int64]int64) {
+		func(rs m.WizardMultiChartsAccountsSet, company m.CompanySet, accTemplateRef map[int64]int64) {
 			rs.EnsureOne()
 			// Create the journals that will trigger the account.account creation
 			for _, acc := range rs.BankAccounts().Records() {

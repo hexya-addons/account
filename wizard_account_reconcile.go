@@ -7,6 +7,7 @@ import (
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/tools/nbutils"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 )
 
 func init() {
@@ -27,7 +28,7 @@ func init() {
 	})
 	h.AccountMoveLineReconcile().Methods().DefaultGet().DeclareMethod(
 		`DefaultGet`,
-		func(rs h.AccountMoveLineReconcileSet, args struct {
+		func(rs m.AccountMoveLineReconcileSet, args struct {
 			Fields interface{}
 		}) {
 			//@api.model
@@ -48,7 +49,7 @@ func init() {
 		})
 	h.AccountMoveLineReconcile().Methods().TransRecGet().DeclareMethod(
 		`TransRecGet`,
-		func(rs h.AccountMoveLineReconcileSet) {
+		func(rs m.AccountMoveLineReconcileSet) {
 			//@api.multi
 			/*def trans_rec_get(self):
 			  context = self._context or {}
@@ -68,7 +69,7 @@ func init() {
 		})
 	h.AccountMoveLineReconcile().Methods().TransRecAddendumWriteoff().DeclareMethod(
 		`TransRecAddendumWriteoff`,
-		func(rs h.AccountMoveLineReconcileSet) {
+		func(rs m.AccountMoveLineReconcileSet) {
 			//@api.multi
 			/*def trans_rec_addendum_writeoff(self):
 			  return self.env['account.move.line.reconcile.writeoff'].trans_rec_addendum()
@@ -77,7 +78,7 @@ func init() {
 		})
 	h.AccountMoveLineReconcile().Methods().TransRecReconcilePartialReconcile().DeclareMethod(
 		`TransRecReconcilePartialReconcile`,
-		func(rs h.AccountMoveLineReconcileSet) {
+		func(rs m.AccountMoveLineReconcileSet) {
 			//@api.multi
 			/*def trans_rec_reconcile_partial_reconcile(self):
 			  return self.env['account.move.line.reconcile.writeoff'].trans_rec_reconcile_partial()
@@ -86,7 +87,7 @@ func init() {
 		})
 	h.AccountMoveLineReconcile().Methods().TransRecReconcileFull().DeclareMethod(
 		`TransRecReconcileFull`,
-		func(rs h.AccountMoveLineReconcileSet) {
+		func(rs m.AccountMoveLineReconcileSet) {
 			//@api.multi
 			/*def trans_rec_reconcile_full(self):
 			  move_lines = self.env['account.move.line'].browse(self._context.get('active_ids', []))
@@ -125,7 +126,7 @@ func init() {
 	})
 	h.AccountMoveLineReconcileWriteoff().Methods().TransRecAddendum().DeclareMethod(
 		`TransRecAddendum`,
-		func(rs h.AccountMoveLineReconcileWriteoffSet) {
+		func(rs m.AccountMoveLineReconcileWriteoffSet) {
 			//@api.multi
 			/*def trans_rec_addendum(self):
 			  view = self.env.ref('account.account_move_line_reconcile_writeoff')
@@ -144,7 +145,7 @@ func init() {
 		})
 	h.AccountMoveLineReconcileWriteoff().Methods().TransRecReconcilePartial().DeclareMethod(
 		`TransRecReconcilePartial`,
-		func(rs h.AccountMoveLineReconcileWriteoffSet) {
+		func(rs m.AccountMoveLineReconcileWriteoffSet) {
 			//@api.multi
 			/*def trans_rec_reconcile_partial(self):
 			  context = self._context or {}
@@ -155,7 +156,7 @@ func init() {
 		})
 	h.AccountMoveLineReconcileWriteoff().Methods().TransRecReconcile().DeclareMethod(
 		`TransRecReconcile`,
-		func(rs h.AccountMoveLineReconcileWriteoffSet) {
+		func(rs m.AccountMoveLineReconcileWriteoffSet) {
 			//@api.multi
 			/*def trans_rec_reconcile(self):
 			  context = dict(self._context or {})

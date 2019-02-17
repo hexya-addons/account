@@ -6,6 +6,8 @@ package account
 import (
 	"encoding/json"
 	"fmt"
+	"math"
+
 	"github.com/hexya-addons/account/accounttypes"
 	"github.com/hexya-addons/decimalPrecision"
 	"github.com/hexya-addons/web/webdata"
@@ -15,14 +17,12 @@ import (
 	"github.com/hexya-erp/hexya/src/models/security"
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
-	"github.com/hexya-erp/hexya/src/tools/logging"
 	"github.com/hexya-erp/hexya/src/tools/nbutils"
 	"github.com/hexya-erp/hexya/src/tools/strutils"
 	"github.com/hexya-erp/hexya/src/views"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
-	"google.golang.org/appengine/log"
-	"math"
 )
 
 var ReferenceType = types.Selection{
@@ -294,7 +294,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().ComputeAmount().DeclareMethod(
 		`ComputeAmount`,
-		func(rs h.AccountInvoiceSet) *h.AccountInvoiceData {
+		func(rs m.AccountInvoiceSet) m.AccountInvoiceData {
 			data := h.AccountInvoice().NewData()
 			valueUntaxed := 0.0
 			for _, line := range rs.InvoiceLines().Records() {
@@ -325,7 +325,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().DefaultJournal().DeclareMethod(
 		`DefaultJournal`,
-		func(rs h.AccountInvoiceSet) h.AccountJournalSet {
+		func(rs m.AccountInvoiceSet) m.AccountJournalSet {
 			if rs.Env().Context().HasKey("default_journal_id") {
 				return h.AccountJournal().Browse(rs.Env(),
 					[]int64{rs.Env().Context().GetInteger("default_journal_id")})
@@ -345,7 +345,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().ComputeResidual().DeclareMethod(
 		`ComputeResidual`,
-		func(rs h.AccountInvoiceSet) *h.AccountInvoiceData {
+		func(rs m.AccountInvoiceSet) m.AccountInvoiceData {
 			residual := 0.0
 			residualCompanySigned := 0.0
 			sign := 1.0
@@ -382,7 +382,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().GetOutstandingInfoJSON().DeclareMethod(
 		`GetOutstandingInfoJSON`,
-		func(rs h.AccountInvoiceSet) *h.AccountInvoiceData {
+		func(rs m.AccountInvoiceSet) m.AccountInvoiceData {
 			data := h.AccountInvoice().NewData()
 			data.SetOutstandingCreditsDebitsWidget("false")
 			if rs.State() != "open" {
@@ -444,7 +444,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().GetPaymentInfoJSON().DeclareMethod(
 		`GetPaymentInfoJSON`,
-		func(rs h.AccountInvoiceSet) *h.AccountInvoiceData {
+		func(rs m.AccountInvoiceSet) m.AccountInvoiceData {
 			data := h.AccountInvoice().NewData()
 			data.SetPaymentsWidget("false")
 			if rs.PaymentMoveLines().IsEmpty() {
@@ -455,7 +455,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				`outstanding`: false,
 				`content`:     []map[string]interface{}{}}
 			for _, payment := range rs.PaymentMoveLines().Records() {
-				var paymentCurrency h.CurrencySet
+				var paymentCurrency m.CurrencySet
 				var amount float64
 				var amountCurrency float64
 				if strutils.IsIn(rs.Type(), "out_invoice", "in_refund") {
@@ -520,8 +520,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().ComputePayments().DeclareMethod(
 		`ComputePayments`,
-		func(rs h.AccountInvoiceSet) *h.AccountInvoiceData {
-			var paymentLines h.AccountMoveLineSet
+		func(rs m.AccountInvoiceSet) m.AccountInvoiceData {
+			var paymentLines m.AccountMoveLineSet
 			for _, line := range rs.Move().Lines().Records() {
 				for _, rp := range line.MatchedCredits().Records() {
 					if rp.CreditMove().IsNotEmpty() {
@@ -540,7 +540,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		})
 
 	h.AccountInvoice().Methods().Create().Extend("",
-		func(rs h.AccountInvoiceSet, data *h.AccountInvoiceData) h.AccountInvoiceSet {
+		func(rs m.AccountInvoiceSet, data m.AccountInvoiceData) m.AccountInvoiceSet {
 			//@api.model
 			/*def create(self, vals):
 			  onchanges = {
@@ -569,19 +569,19 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		})
 
 	h.AccountInvoice().Methods().Write().Extend("",
-		func(rs h.AccountInvoiceSet, vals *h.AccountInvoiceData) bool {
-			preNotReconciled := rs.Filtered(func(rs h.AccountInvoiceSet) bool { return !rs.Reconciled() })
+		func(rs m.AccountInvoiceSet, vals m.AccountInvoiceData) bool {
+			preNotReconciled := rs.Filtered(func(rs m.AccountInvoiceSet) bool { return !rs.Reconciled() })
 			preReconciled := rs.Subtract(preNotReconciled)
 			res := rs.Super().Write(vals)
-			reconciled := rs.Filtered(func(rs h.AccountInvoiceSet) bool { return rs.Reconciled() })
+			reconciled := rs.Filtered(func(rs m.AccountInvoiceSet) bool { return rs.Reconciled() })
 			notReconciled := rs.Subtract(reconciled)
-			reconciled.Intersect(preReconciled).Filtered(func(rs h.AccountInvoiceSet) bool { return rs.State() == "open" }).ActionInvoicePaid()
-			notReconciled.Intersect(preNotReconciled).Filtered(func(rs h.AccountInvoiceSet) bool { return rs.State() == "paid" }).ActionInvoiceReOpen()
+			reconciled.Intersect(preReconciled).Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() == "open" }).ActionInvoicePaid()
+			notReconciled.Intersect(preNotReconciled).Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() == "paid" }).ActionInvoiceReOpen()
 			return res
 		})
 
 	h.AccountInvoice().Methods().FieldsViewGet().Extend("",
-		func(rs h.AccountInvoiceSet, params webdata.FieldsViewGetParams) *webdata.FieldsViewData {
+		func(rs m.AccountInvoiceSet, params webdata.FieldsViewGetParams) *webdata.FieldsViewData {
 			if !(rs.Env().Context().GetString("active_model") == "res.partner" && rs.Env().Context().Get("acive_ids") != nil) {
 				return rs.Super().FieldsViewGet(params)
 			}
@@ -603,7 +603,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 	h.AccountInvoice().Methods().InvoicePrint().DeclareMethod(
 		`Print the invoice and mark it as sent, so that we can see more
 			      easily the next step of the workflow`,
-		func(rs h.AccountInvoiceSet) *actions.Action {
+		func(rs m.AccountInvoiceSet) *actions.Action {
 			rs.EnsureOne()
 			rs.SetSent(true)
 			// return self.env['report'].get_action(self, 'account.report_invoice') //tovalid
@@ -615,7 +615,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 	h.AccountInvoice().Methods().ActionInvoiceSent().DeclareMethod(
 		`Open a window to compose an email, with the edi invoice template
 			      message loaded by default`,
-		func(rs h.AccountInvoiceSet) *actions.Action {
+		func(rs m.AccountInvoiceSet) *actions.Action {
 			rs.EnsureOne()
 			template := views.MakeViewRef("account.email_template_edi_invoice")
 			composeForm := views.MakeViewRef("mail.email_compose_message_wizard_form")
@@ -643,7 +643,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().ComputeTaxes().DeclareMethod(
 		`Function used in other module to compute the taxes on a fresh invoice created (onchanges did not applied)`,
-		func(rs h.AccountInvoiceSet) bool {
+		func(rs m.AccountInvoiceSet) bool {
 			accountInvoiceTaxes := h.AccountInvoiceTax().NewSet(rs.Env())
 			for _, invoice := range rs.Records() {
 				// Delete non-manual tax lines
@@ -659,7 +659,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		})
 
 	h.AccountInvoice().Methods().Unlink().Extend("",
-		func(rs h.AccountInvoiceSet) int64 {
+		func(rs m.AccountInvoiceSet) int64 {
 			for _, invoice := range rs.Records() {
 				if strutils.IsIn(invoice.State(), "draft", "cancel") {
 					panic(rs.T(`You cannot delete an invoice which is not draft or cancelled. You should refund it instead.`))
@@ -672,9 +672,9 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().OnchangeInvoiceLines().DeclareMethod(
 		`OnchangeInvoiceLines`,
-		func(rs h.AccountInvoiceSet) *h.AccountInvoiceData {
+		func(rs m.AccountInvoiceSet) m.AccountInvoiceData {
 			taxesGrouped := rs.GetTaxesValues()
-			taxLines := rs.TaxLines().Filtered(func(rs h.AccountInvoiceTaxSet) bool { return rs.Manual() })
+			taxLines := rs.TaxLines().Filtered(func(rs m.AccountInvoiceTaxSet) bool { return rs.Manual() })
 			for _, tax := range taxesGrouped {
 				taxLines.Union(h.AccountInvoiceTax().Create(rs.Env(), tax))
 			}
@@ -685,7 +685,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().OnchangePartner().DeclareMethod(
 		`OnchangePartner`,
-		func(rs h.AccountInvoiceSet) *h.AccountInvoiceData {
+		func(rs m.AccountInvoiceSet) m.AccountInvoiceData {
 			p := rs.Partner()
 			if rs.Company().IsNotEmpty() {
 				p = rs.Partner().WithContext("force_company", rs.Company())
@@ -751,14 +751,14 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().GetDeliveryPartner().DeclareMethod(
 		`GetDeliveryPartner`,
-		func(rs h.AccountInvoiceSet) h.PartnerSet {
+		func(rs m.AccountInvoiceSet) m.PartnerSet {
 			rs.EnsureOne()
 			return rs.Partner().AddressGet([]string{"delivery"})["delivery"]
 		})
 
 	h.AccountInvoice().Methods().OnchangeJournal().DeclareMethod(
 		`OnchangeJournal`,
-		func(rs h.AccountInvoiceSet) *h.AccountInvoiceData {
+		func(rs m.AccountInvoiceSet) m.AccountInvoiceData {
 			data := h.AccountInvoice().NewData()
 			if rs.Journal().IsNotEmpty() {
 				data.SetCurrency(h.Currency().Coalesce(rs.Journal().Currency(), rs.Journal().Company().Currency()))
@@ -768,7 +768,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().OnchangePaymentTermDateInvoice().DeclareMethod(
 		`OnchangePaymentTermDateInvoice`,
-		func(rs h.AccountInvoiceSet) *h.AccountInvoiceData {
+		func(rs m.AccountInvoiceSet) m.AccountInvoiceData {
 			data := h.AccountInvoice().NewData()
 			dateInvoice := rs.DateInvoice()
 			if dateInvoice.IsZero() {
@@ -796,8 +796,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().ActionInvoiceDraft().DeclareMethod(
 		`ActionInvoiceDraft`,
-		func(rs h.AccountInvoiceSet) bool {
-			if rs.Filtered(func(rs h.AccountInvoiceSet) bool { return rs.State() != "cancel" }).IsNotEmpty() {
+		func(rs m.AccountInvoiceSet) bool {
+			if rs.Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() != "cancel" }).IsNotEmpty() {
 				panic(rs.T(`Invoice must be cancelled in order to reset it to draft.`))
 			}
 			// go from canceled state to draft state
@@ -821,8 +821,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().ActionInvoiceProforma2().DeclareMethod(
 		`ActionInvoiceProforma2`,
-		func(rs h.AccountInvoiceSet) bool {
-			if rs.Filtered(func(rs h.AccountInvoiceSet) bool { return rs.State() != "draft" }).IsNotEmpty() {
+		func(rs m.AccountInvoiceSet) bool {
+			if rs.Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() != "draft" }).IsNotEmpty() {
 				panic(rs.T(`Invoice must be a draft in order to set it to Pro-forma.`))
 			}
 			return rs.Write(h.AccountInvoice().NewData().SetState("proforma2"))
@@ -830,10 +830,10 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().ActionInvoiceOpen().DeclareMethod(
 		`ActionInvoiceOpen`,
-		func(rs h.AccountInvoiceSet) bool {
+		func(rs m.AccountInvoiceSet) bool {
 			// lots of duplicate calls to action_invoice_open, so we remove those already open
-			toOpenInvoices := rs.Filtered(func(rs h.AccountInvoiceSet) bool { return rs.State() != "open" })
-			if toOpenInvoices.Filtered(func(rs h.AccountInvoiceSet) bool { return strutils.IsIn(rs.State(), "proforma2", "draft") }).IsNotEmpty() {
+			toOpenInvoices := rs.Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() != "open" })
+			if toOpenInvoices.Filtered(func(rs m.AccountInvoiceSet) bool { return strutils.IsIn(rs.State(), "proforma2", "draft") }).IsNotEmpty() {
 				panic(rs.T(`Invoice must be in draft or Pro-forma state in order to validate it.`))
 			}
 			toOpenInvoices.ActionDateAssign()
@@ -843,13 +843,13 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().ActionInvoicePaid().DeclareMethod(
 		`ActionInvoicePaid`,
-		func(rs h.AccountInvoiceSet) bool {
+		func(rs m.AccountInvoiceSet) bool {
 			// lots of duplicate calls to action_invoice_paid, so we remove those already paid
-			toPayInvoices := rs.Filtered(func(rs h.AccountInvoiceSet) bool { return rs.State() != "paid" })
-			if toPayInvoices.Filtered(func(rs h.AccountInvoiceSet) bool { return rs.State() != "open" }).IsNotEmpty() {
+			toPayInvoices := rs.Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() != "paid" })
+			if toPayInvoices.Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() != "open" }).IsNotEmpty() {
 				panic(rs.T(`Invoice must be validated in order to set it to register payment.`))
 			}
-			if toPayInvoices.Filtered(func(rs h.AccountInvoiceSet) bool { return !rs.Reconciled() }).IsNotEmpty() {
+			if toPayInvoices.Filtered(func(rs m.AccountInvoiceSet) bool { return !rs.Reconciled() }).IsNotEmpty() {
 				panic(rs.T(`You cannot pay an invoice which is partially paid. You need to reconcile payment entries first.`))
 			}
 			return toPayInvoices.Write(h.AccountInvoice().NewData().SetState("paid"))
@@ -857,8 +857,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().ActionInvoiceReOpen().DeclareMethod(
 		`ActionInvoiceReOpen`,
-		func(rs h.AccountInvoiceSet) bool {
-			if rs.Filtered(func(rs h.AccountInvoiceSet) bool { return rs.State() != "paid" }).IsNotEmpty() {
+		func(rs m.AccountInvoiceSet) bool {
+			if rs.Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() != "paid" }).IsNotEmpty() {
 				panic(rs.T(`Invoice must be paid in order to set it to register payment.`))
 			}
 			return rs.Write(h.AccountInvoice().NewData().SetState("open"))
@@ -866,8 +866,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().ActionInvoiceCancel().DeclareMethod(
 		`ActionInvoiceCancel`,
-		func(rs h.AccountInvoiceSet) bool {
-			if rs.Filtered(func(rs h.AccountInvoiceSet) bool { return strutils.IsIn(rs.State(), "proforma2", "draft", "open") }).IsNotEmpty() {
+		func(rs m.AccountInvoiceSet) bool {
+			if rs.Filtered(func(rs m.AccountInvoiceSet) bool { return strutils.IsIn(rs.State(), "proforma2", "draft", "open") }).IsNotEmpty() {
 				panic(rs.T(`Invoice must be in draft, Pro-forma or open state in order to be cancelled.`))
 			}
 			return rs.ActionCancel()
@@ -875,7 +875,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().GetFormviewId().Extend(
 		"Update form view id of action to open the invoice",
-		func(rs h.AccountInvoiceSet) string {
+		func(rs m.AccountInvoiceSet) string {
 			if strutils.IsIn(rs.Type(), "in_invoice", "in_refund") {
 				return views.MakeViewRef("account.invoice_supplier_form").ID()
 			} else {
@@ -888,7 +888,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
         The line parameter is an account.invoice.line, and the
         tax parameter is the output of account.tax.compute_all().
         `,
-		func(rs h.AccountInvoiceSet, line h.AccountInvoiceLineSet, tax accounttypes.AppliedTaxData) *h.AccountInvoiceTaxData {
+		func(rs m.AccountInvoiceSet, line m.AccountInvoiceLineSet, tax accounttypes.AppliedTaxData) m.AccountInvoiceTaxData {
 			vals := h.AccountInvoiceTax().NewData().
 				SetInvoice(rs).
 				SetName(tax.Name).
@@ -916,15 +916,14 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().GetTaxesValues().DeclareMethod(
 		`GetTaxesValues`,
-		func(rs h.AccountInvoiceSet) map[string]*h.AccountInvoiceTaxData {
-			taxGrouped := make(map[string]*h.AccountInvoiceTaxData)
+		func(rs m.AccountInvoiceSet) map[string]m.AccountInvoiceTaxData {
+			taxGrouped := make(map[string]m.AccountInvoiceTaxData)
 			for _, line := range rs.InvoiceLines().Records() {
 				priceUnit := line.PriceUnit() * (1 - line.Discount()/100)
 				_, _, _, taxes := line.InvoiceLineTaxes().ComputeAll(priceUnit, rs.Currency(), line.Quantity(), line.Product(), rs.Partner())
 				for _, t := range taxes {
-					tax := h.AccountTax().BrowseOne(rs.Env(), t.ID)
-					val := rs.PrepareTaxLineVals(line, tax)
-					key := tax.GetGroupingKey(val)
+					val := rs.PrepareTaxLineVals(line, t)
+					key := h.AccountTax().BrowseOne(rs.Env(), t.ID).GetGroupingKey(val)
 					if data, ok := taxGrouped[key]; !ok {
 						taxGrouped[key] = val
 					} else {
@@ -938,11 +937,11 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().RegisterPayment().DeclareMethod(
 		`RegisterPayment Reconcile payable/receivable lines from the invoice with payment_line`,
-		func(rs h.AccountInvoiceSet, paymentLine h.AccountMoveLineSet, writeOffAccount h.AccountAccountSet,
-			writeOffJournal h.AccountJournalSet) bool {
+		func(rs m.AccountInvoiceSet, paymentLine m.AccountMoveLineSet, writeOffAccount m.AccountAccountSet,
+			writeOffJournal m.AccountJournalSet) m.AccountMoveLineSet {
 			lineToReconcile := h.AccountMoveLine().NewSet(rs.Env())
 			for _, inv := range rs.Records() {
-				lineToReconcile = lineToReconcile.Union(inv.Move().Lines().Filtered(func(rs h.AccountMoveLineSet) bool {
+				lineToReconcile = lineToReconcile.Union(inv.Move().Lines().Filtered(func(rs m.AccountMoveLineSet) bool {
 					return !rs.Reconciled() && strutils.IsIn(rs.Account().InternalType(), "payable", "receivable")
 				}))
 			}
@@ -951,7 +950,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().AssignOutstandingCredit().DeclareMethod(
 		`AssignOutstandingCredit`,
-		func(rs h.AccountInvoiceSet, creditAML h.AccountMoveLineSet) bool {
+		func(rs m.AccountInvoiceSet, creditAML m.AccountMoveLineSet) m.AccountMoveLineSet {
 			rs.EnsureOne()
 			if creditAML.Currency().IsEmpty() && !rs.Currency().Equals(rs.Company().Currency()) {
 				creditAML.WithContext("allow_amount_currency", true).Write(
@@ -966,7 +965,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().ActionDateAssign().DeclareMethod(
 		`ActionDateAssign`,
-		func(rs h.AccountInvoiceSet) bool {
+		func(rs m.AccountInvoiceSet) bool {
 			for _, inv := range rs.Records() {
 				//Here the onchange will automatically write to the database
 				inv.OnchangePaymentTermDateInvoice()
@@ -977,13 +976,13 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 	h.AccountInvoice().Methods().FinalizeInvoiceMoveLines().DeclareMethod(
 		`FinalizeInvoiceMoveLines is a hook method to be overridden in additional modules to verify and
 		possibly alter the move lines to be created by an invoice, for special cases.`,
-		func(rs h.AccountInvoiceSet, moveLines h.AccountMoveLineSet) h.AccountMoveLineSet {
+		func(rs m.AccountInvoiceSet, moveLines []m.AccountMoveLineData) []m.AccountMoveLineData {
 			return moveLines
 		})
 
 	h.AccountInvoice().Methods().GetCurrencyRateDate().DeclareMethod(
 		`GetCurrencyRateDate`,
-		func(rs h.AccountInvoiceSet) dates.Date {
+		func(rs m.AccountInvoiceSet) dates.Date {
 			if !rs.Date().IsZero() {
 				return rs.Date()
 			}
@@ -992,7 +991,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().ComputeInvoiceTotals().DeclareMethod(
 		`ComputeInvoiceTotals`,
-		func(rs h.AccountInvoiceSet, companyCurrency h.CurrencySet, invoiceMoveLines []*h.AccountInvoiceLineData) (float64, float64, *h.AccountInvoiceLineData) {
+		func(rs m.AccountInvoiceSet, companyCurrency m.CurrencySet, invoiceMoveLines []m.AccountInvoiceLineData) (float64, float64, []m.AccountInvoiceLineData) {
 			//@api.multi
 			/*def compute_invoice_totals(self, company_currency, invoice_move_lines):
 						for line in invoice_move_lines:
@@ -1029,11 +1028,12 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			//		}
 			//	}
 			//}
+			return 0, 0, nil
 		})
 
 	h.AccountInvoice().Methods().InvoiceLineMoveLineGet().DeclareMethod(
 		`InvoiceLineMoveLineGet`,
-		func(rs h.AccountInvoiceSet) []*h.AccountInvoiceLineData {
+		func(rs m.AccountInvoiceSet) []m.AccountInvoiceLineData {
 			//@api.model
 			/*def invoice_line_move_line_get(self):
 			  res = []
@@ -1069,7 +1069,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			  return res
 
 			*/
-			var res []*h.AccountInvoiceLineData
+			var res []m.AccountInvoiceLineData
 			//for _, line := range rs.InvoiceLines().Records() {
 			//	data := h.AccountTax().NewData()
 			//	if line.Quantity() == 0.0 {
@@ -1083,7 +1083,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().TaxLineMoveLineGet().DeclareMethod(
 		`TaxLineMoveLineGet`,
-		func(rs h.AccountInvoiceSet) []*h.AccountInvoiceLineData {
+		func(rs m.AccountInvoiceSet) []m.AccountInvoiceLineData {
 			//@api.model
 			/*def tax_line_move_line_get(self):
 			  res = []
@@ -1113,8 +1113,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			  return res
 
 			*/
-			data := h.AccountInvoiceLine().NewData()
-			return data
+			return []m.AccountInvoiceLineData{}
 		})
 
 	h.AccountInvoice().Methods().InvLineCharacteristicHashcode().DeclareMethod(
@@ -1122,7 +1121,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			  will be grouped together if the journal has the 'group line' option. Of course a module
 			  can add fields to invoice lines that would need to be tested too before merging lines
 			  or not.`,
-		func(rs h.AccountInvoiceSet, invoiceLine *h.AccountMoveLineData) string {
+		func(rs m.AccountInvoiceSet, invoiceLine m.AccountMoveLineData) string {
 			return fmt.Sprintf(`%d-%v-%d-%d-%d-%s-%v`,
 				invoiceLine.Account().ID(),
 				invoiceLine.Taxes().Ids(),
@@ -1135,10 +1134,10 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().GroupLines().DeclareMethod(
 		`GroupLines Merge account move lines (and hence analytic lines) if invoice line hashcodes are equals`,
-		func(rs h.AccountInvoiceSet, iml []*h.AccountInvoiceLineData, lines []*h.AccountMoveLineData) []*h.AccountMoveLineData {
-			var datas []*h.AccountMoveLineData
+		func(rs m.AccountInvoiceSet, iml []m.AccountInvoiceLineData, lines []m.AccountMoveLineData) []m.AccountMoveLineData {
+			var datas []m.AccountMoveLineData
 			if rs.Journal().GroupInvoiceLines() {
-				line2 := make(map[string]*h.AccountMoveLineData)
+				line2 := make(map[string]m.AccountMoveLineData)
 				for _, line := range lines {
 					tmp := rs.InvLineCharacteristicHashcode(line)
 					if data, ok := line2[tmp]; ok {
@@ -1166,10 +1165,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().ActionMoveCreate().DeclareMethod(
 		`ActionMoveCreate creates invoice related analytics and financial move lines`,
-		func(rs h.AccountInvoiceSet) bool {
-			var total float64         //
-			var totalCurrency float64 // tovalid remove those when ComputeInvoiceTotals is validated
-			accountMove := h.AccountMove().NewSet(rs.Env())
+		func(rs m.AccountInvoiceSet) bool {
 			for _, inv := range rs.Records() {
 				if inv.Journal().EntrySequence().IsEmpty() {
 					panic(rs.T(`Please define sequence on the journal related to this invoice.`))
@@ -1189,11 +1185,14 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				iml := append(inv.InvoiceLineMoveLineGet(), inv.TaxLineMoveLineGet()...)
 				diffCurrency := !inv.Currency().Equals(companyCurrency)
 				// create one move line for the total and possibly adjust the other lines amount
-				total, totalCurrency, iml = inv.WithNewContext(ctx).ComputeInvoiceTotals(companyCurrency, iml)
+				total, totalCurrency, newIml := inv.WithNewContext(ctx).ComputeInvoiceTotals(companyCurrency, iml)
+				iml = newIml
 				name := "/"
 				if inv.Name() != "" {
 					name = inv.Name()
 				}
+				// FIXME
+				fmt.Println(diffCurrency, total, totalCurrency, name)
 				if inv.PaymentTerm().IsNotEmpty() {
 					/*
 						totlines = inv.with_context(ctx).payment_term_id.with_context(currency_id=company_currency.id).compute(total, inv.date_invoice)[0]
@@ -1236,7 +1235,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 					*/
 				}
 				part := rs.Partner().FindAccountingPartner(inv.Partner())
-				var line []*h.AccountMoveLineData
+				var line []m.AccountMoveLineData
 				for _, l := range iml {
 					line = append(line, rs.LineGetConvert(l, part))
 				}
@@ -1246,20 +1245,20 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				if val := inv.Date(); !val.IsZero() {
 					date = val
 				}
-				data := h.AccountInvoice().NewData()
-				/*
-					= {  //tovalid fields missing
-						'ref': inv.reference,
-						'line_ids': line,
-						'journal_id': journal.id,
-						'date': date,
-						'narration': inv.comment,
-					}
-				*/
+				lines := h.AccountMoveLine().NewSet(rs.Env())
+				for _, l := range line {
+					lines = lines.Union(h.AccountMoveLine().Create(rs.Env(), l))
+				}
+				data := h.AccountMove().NewData().
+					SetRef(inv.Reference()).
+					SetLines(lines).
+					SetJournal(journal).
+					SetDate(date).
+					SetNarration(inv.Comment())
 				ctx = ctx.WithKey("company_id", inv.Company().ID()).WithKey("invoice", inv)
 				ctxNolang := ctx.Copy()
 				//ctx_nolang.pop('lang', None) //tovalid pop NYI
-				move := accountMove.WithNewContext(ctxNolang).Create(data)
+				move := h.AccountMove().NewSet(rs.Env()).WithNewContext(ctxNolang).Create(data)
 				// Pass invoice in context in method post: used if you want to get the same
 				// account move reference when creating the same invoice after a cancelled one:
 				move.Post()
@@ -1275,7 +1274,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().InvoiceValidate().DeclareMethod(
 		`InvoiceValidate`,
-		func(rs h.AccountInvoiceSet) bool {
+		func(rs m.AccountInvoiceSet) bool {
 			for _, invoice := range rs.Records() {
 				// refuse to validate a vendor bill/refund if there already exists one with the same reference for the same partner,
 				// because it's probably a double encoding of the same bill/refund
@@ -1288,7 +1287,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().LineGetConvert().DeclareMethod(
 		`LineGetConvert`,
-		func(rs h.AccountInvoiceSet, line *h.AccountInvoiceLineData, partner h.PartnerSet) *h.AccountMoveLineData {
+		func(rs m.AccountInvoiceSet, line m.AccountInvoiceLineData, partner m.PartnerSet) m.AccountMoveLineData {
 			//@api.model
 			data := h.AccountMoveLine().NewData()
 			//data.SetDateMaturity(line.DateMaturity()) //tovalid line.DateMaturity missing
@@ -1316,12 +1315,12 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			  }
 
 			*/
-			return new(h.AccountMoveLineData)
+			return h.AccountMoveLine().NewData()
 		})
 
 	h.AccountInvoice().Methods().ActionCancel().DeclareMethod(
 		`ActionCancel`,
-		func(rs h.AccountInvoiceSet) bool {
+		func(rs m.AccountInvoiceSet) bool {
 			moves := h.AccountMove().NewSet(rs.Env())
 			for _, inv := range rs.Records() {
 				if inv.PaymentMoveLines().IsNotEmpty() {
@@ -1346,13 +1345,15 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		})
 
 	h.AccountInvoice().Methods().NameGet().Extend("",
-		func(rs h.AccountInvoiceSet) string {
+		func(rs m.AccountInvoiceSet) string {
 			types := map[string]string{
 				"out_invoice": rs.T(`Invoice`),
 				"in_invoice":  rs.T(`Vendor Bill`),
 				"out_refund":  rs.T(`Refund`),
 				"in_refund":   rs.T(`Vendor Refund`),
 			}
+			// FIXME
+			fmt.Println(types)
 			// tovalid return value tuple?
 			/*
 				  result = []
@@ -1364,7 +1365,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		})
 
 	h.AccountInvoice().Methods().SearchByName().Extend("",
-		func(rs h.AccountInvoiceSet, name string, op operator.Operator, additionalCond q.AccountInvoiceCondition, limit int) h.AccountInvoiceSet {
+		func(rs m.AccountInvoiceSet, name string, op operator.Operator, additionalCond q.AccountInvoiceCondition, limit int) m.AccountInvoiceSet {
 			//@api.model
 			/*def name_search(self, name, args=None, operator='ilike', limit=100):
 			  args = args or []
@@ -1381,52 +1382,28 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().GetRefundCommonFields().DeclareMethod(
 		`GetRefundCommonFields`,
-		func(rs h.AccountInvoiceSet) []models.FieldNamer {
+		func(rs m.AccountInvoiceSet) []models.FieldNamer {
 			return models.ConvertToFieldNameSlice([]string{"Partner", "PaymentTerm", "Account", "Currency", "Journal"})
 		})
 
 	h.AccountInvoice().Methods().GetRefundPrepareFields().DeclareMethod(
 		`GetRefundPrepareFields`,
-		func(rs h.AccountInvoiceSet) []models.FieldNamer {
+		func(rs m.AccountInvoiceSet) []models.FieldNamer {
 			return models.ConvertToFieldNameSlice([]string{"Name", "Reference", "Comment", "DateDue"})
 		})
 
 	h.AccountInvoice().Methods().GetRefundModifyReadFields().DeclareMethod(
 		`GetRefundModifyReadFields`,
-		func(rs h.AccountInvoiceSet) []models.FieldNamer {
+		func(rs m.AccountInvoiceSet) []models.FieldNamer {
 			readFields := models.ConvertToFieldNameSlice([]string{"Type", "Number", "InvoiceLines", "TaxLines", "Date"})
 			return append(rs.GetRefundCommonFields(), readFields...)
 		})
 
 	h.AccountInvoice().Methods().GetRefundCopyFields().DeclareMethod(
 		`GetRefundCopyFields`,
-		func(rs h.AccountInvoiceSet) []models.FieldNamer {
+		func(rs m.AccountInvoiceSet) []models.FieldNamer {
 			copyFields := models.ConvertToFieldNameSlice([]string{"Company", "User", "FiscalPosition"})
 			return append(rs.GetRefundCommonFields(), copyFields...)
-		})
-
-	h.AccountInvoice().Methods().RefundCleanupLines().DeclareMethod(
-		`Convert records to dict of values suitable for one2many line creation
-
-            :param recordset lines: records to convert
-            :return: list of command tuple for one2many line creation [(0, 0, dict of valueis), ...]`,
-		func(rs h.AccountInvoiceSet, lines h.AccountInvoiceLineSet) h.AccountInvoiceLineSet {
-			for _, line := range lines.Records() {
-				/*
-					values = {}
-					for name, field in line._fields.iteritems(): tovalid this line????
-					if name in MAGIC_COLUMNS:
-					continue
-					elif field.type == 'many2one':
-					values[name] = line[name].id
-					elif field.type not in ['many2many', 'one2many']:
-					values[name] = line[name]
-					elif name == 'invoice_line_tax_ids':
-					values[name] = [(6, 0, line[name].ids)]
-					result.append((0, 0, values))
-				*/
-			}
-			return h.AccountInvoiceLine().NewSet(rs.Env())
 		})
 
 	h.AccountInvoice().Methods().PrepareRefund().DeclareMethod(
@@ -1441,8 +1418,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 						      :param string description: description of the refund from the wizard
 						      :param integer journal_id: account.journal from the wizard
 						      :return: dict of value to create() the refund`,
-		func(rs h.AccountInvoiceSet, invoice h.AccountInvoiceSet, dateInvoice, date dates.Date,
-			description string, journal h.AccountJournalSet) *h.AccountInvoiceData {
+		func(rs m.AccountInvoiceSet, invoice m.AccountInvoiceSet, dateInvoice, date dates.Date,
+			description string, journal m.AccountJournalSet) m.AccountInvoiceData {
 
 			values := h.AccountInvoice().NewData()
 			for _, field := range rs.GetRefundCopyFields() {
@@ -1452,11 +1429,13 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 					      else:
 					          values[field] = invoice[field] or False
 				*/
+				// FIXME
+				fmt.Println(field)
 			}
-			values.SetInvoiceLines(rs.RefundCleanupLines(invoice.InvoiceLines()))
+			values.SetInvoiceLines(invoice.InvoiceLines())
 			taxLines := invoice.TaxLines()
-			values.SetTaxLines(rs.RefundCleanupLines(taxLines))
-			var journ h.AccountJournalSet
+			values.SetTaxLines(taxLines)
+			var journ m.AccountJournalSet
 			switch {
 			case journal.IsNotEmpty():
 				journ = journal
@@ -1488,9 +1467,9 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().Refund().DeclareMethod(
 		`Refund`,
-		func(rs h.AccountInvoiceSet, dateInvoice, date dates.Date,
-			description string, journal h.AccountJournalSet) h.AccountInvoiceSet {
-			var CreatedInvoices h.AccountInvoiceSet
+		func(rs m.AccountInvoiceSet, dateInvoice, date dates.Date,
+			description string, journal m.AccountJournalSet) m.AccountInvoiceSet {
+			var CreatedInvoices m.AccountInvoiceSet
 			invoiceType := map[string]string{
 				"out_invoice": rs.T("customer invoices refund"),
 				"in_invoice":  rs.T("vendor bill refund"),
@@ -1500,7 +1479,10 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				// create the new invoice
 				values := rs.PrepareRefund(invoice, dateInvoice, date, description, journal)
 				refundInvoice := rs.Create(values)
+
 				message := fmt.Sprintf(baseMessage, invoiceType[invoice.Type()], invoice.ID(), invoice.Number())
+				// FIXME
+				fmt.Println(message)
 				// refund_invoice.MessagePost(message) //tovalid MessagePost func missing?
 				CreatedInvoices = CreatedInvoices.Union(refundInvoice)
 			}
@@ -1514,21 +1496,21 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			      :param pay_amount: amount of the payment to register, defaults to the residual of the invoice
 			      :param date: payment date, defaults to fields.Date.context_today(self)
 			      :param writeoff_acc: account in which to create a writeoff if pay_amount < self.residual, so that the invoice is fully paid`,
-		func(rs h.AccountInvoiceSet, payJournal h.AccountJournalSet, payAmount float64,
-			date dates.Date, writeoffAcc h.AccountAccountSet) bool {
+		func(rs m.AccountInvoiceSet, payJournal m.AccountJournalSet, payAmount float64,
+			date dates.Date, writeoffAcc m.AccountAccountSet) bool {
 			//@api.multi
 			if rs.Len() != 1 {
 				panic(rs.T("Can only pay one invoice at a time"))
 			}
 			paymentType := "outbound"
-			var paymentMethod h.AccountPaymentMethodSet
-			var journalPaymentMethods h.AccountPaymentMethodSet
+			var paymentMethod m.AccountPaymentMethodSet
+			var journalPaymentMethods m.AccountPaymentMethodSet
 			if strutils.IsIn(rs.Type(), "out_invoice", "in_refund") {
 				paymentType = "inbound"
-				paymentMethod = h.RecordModel().NewSet(rs.Env()).GetRecord(`account_account_payment_method_manual_in`) //tovalid ??? recordModel not found??? wtf
+				paymentMethod = h.AccountPaymentMethod().NewSet(rs.Env()).GetRecord(`account_account_payment_method_manual_in`) //tovalid ??? recordModel not found??? wtf
 				journalPaymentMethods = payJournal.InboundPaymentMethods()
 			} else {
-				paymentMethod = h.RecordModel().NewSet(rs.Env()).GetRecord(`account_account_payment_method_manual_out`) //tovalid ??? recordModel not found??? wtf
+				paymentMethod = h.AccountPaymentMethod().NewSet(rs.Env()).GetRecord(`account_account_payment_method_manual_out`) //tovalid ??? recordModel not found??? wtf
 				journalPaymentMethods = payJournal.OutboundPaymentMethods()
 			}
 			if paymentMethod.Intersect(journalPaymentMethods).Len() == 0 {
@@ -1571,7 +1553,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().GetTaxAmountByGroup().DeclareMethod(
 		`GetTaxAmountByGroup`,
-		func(rs h.AccountInvoiceSet) []accounttypes.TaxGroup {
+		func(rs m.AccountInvoiceSet) []accounttypes.TaxGroup {
 			//@api.multi
 			/*def _get_tax_amount_by_group(self):  //tovalid dont understand
 			  self.ensure_one()
@@ -1691,7 +1673,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoiceLine().Methods().GetAnalyticLine().DeclareMethod(
 		`GetAnalyticLine`,
-		func(rs h.AccountInvoiceLineSet) *h.AccountAnalyticLineData {
+		func(rs m.AccountInvoiceLineSet) m.AccountAnalyticLineData {
 			return h.AccountAnalyticLine().NewData().
 				SetName(rs.Name()).
 				SetDate(rs.Invoice().DateInvoice()).
@@ -1706,8 +1688,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoiceLine().Methods().ComputePrice().DeclareMethod(
 		`ComputePrice`,
-		func(rs h.AccountInvoiceLineSet) *h.AccountInvoiceLineData {
-			var currency h.CurrencySet
+		func(rs m.AccountInvoiceLineSet) m.AccountInvoiceLineData {
+			var currency m.CurrencySet
 			if rs.Invoice().IsNotEmpty() {
 				currency = rs.Invoice().Currency()
 			}
@@ -1734,7 +1716,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		})
 
 	h.AccountInvoiceLine().Methods().FieldsViewGet().Extend("",
-		func(rs h.AccountInvoiceLineSet, args webdata.FieldsViewGetParams) *webdata.FieldsViewData {
+		func(rs m.AccountInvoiceLineSet, args webdata.FieldsViewGetParams) *webdata.FieldsViewData {
 			res := rs.Super().FieldsViewGet(args)
 			typ := rs.Env().Context().GetString("type")
 			if typ == "" {
@@ -1753,12 +1735,13 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				res['arch'] = etree.tostring(doc)
 			*/
 
+			return res
 		})
 
 	h.AccountInvoiceLine().Methods().GetInvoiceLineAccount().DeclareMethod(
 		`GetInvoiceLineAccount`,
-		func(rs h.AccountInvoiceLineSet, typ string, product h.ProductProductSet, fPos h.AccountFiscalPositionSet,
-			company h.CompanySet) h.AccountAccountSet {
+		func(rs m.AccountInvoiceLineSet, typ string, product m.ProductProductSet, fPos m.AccountFiscalPositionSet,
+			company m.CompanySet) m.AccountAccountSet {
 			accountsInc, accountsExp := product.ProductTmpl().GetProductAccounts(fPos)
 			if strutils.IsIn(typ, "out_income", "out_refund") {
 				return accountsInc
@@ -1768,8 +1751,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoiceLine().Methods().DefineTaxes().DeclareMethod(
 		`DefineTaxes is used in Onchange to set taxes and price.`,
-		func(rs h.AccountInvoiceLineSet) {
-			var taxes h.AccountTaxSet
+		func(rs m.AccountInvoiceLineSet) {
+			var taxes m.AccountTaxSet
 			if strutils.IsIn(rs.Invoice().Type(), "out_invoice", "out_refund") {
 				taxes = h.AccountTax().Coalesce(rs.Product().Taxes(), rs.Account().Taxes())
 			} else {
@@ -1778,7 +1761,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 			// Keep only taxes of the company
 			company := h.Company().Coalesce(rs.Company(), h.User().NewSet(rs.Env()).CurrentUser().Company())
-			taxes = taxes.Filtered(func(rs h.AccountTaxSet) bool { return rs.Company().Equals(company) })
+			taxes = taxes.Filtered(func(rs m.AccountTaxSet) bool { return rs.Company().Equals(company) })
 
 			data := h.AccountInvoiceLine().NewData()
 			fpTaxes := rs.Invoice().FiscalPosition().MapTax(taxes, rs.Product(), rs.Invoice().Partner())
@@ -1797,7 +1780,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoiceLine().Methods().OnchangeProduct().DeclareMethod(
 		`OnchangeProduct`,
-		func(rs h.AccountInvoiceLineSet) *h.AccountInvoiceLineData {
+		func(rs m.AccountInvoiceLineSet) m.AccountInvoiceLineData {
 			if rs.Invoice().IsEmpty() {
 				return h.AccountInvoiceLine().NewData()
 			}
@@ -1860,7 +1843,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoiceLine().Methods().OnchangeAccount().DeclareMethod(
 		`OnchangeAccount`,
-		func(rs h.AccountInvoiceLineSet) *h.AccountInvoiceLineData {
+		func(rs m.AccountInvoiceLineSet) m.AccountInvoiceLineData {
 			data := h.AccountInvoiceLine().NewData()
 			if rs.Account().IsEmpty() {
 				return data
@@ -1876,7 +1859,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoiceLine().Methods().OnchangeUom().DeclareMethod(
 		`OnchangeUom`,
-		func(rs h.AccountInvoiceLineSet) *h.AccountInvoiceLineData {
+		func(rs m.AccountInvoiceLineSet) m.AccountInvoiceLineData {
 			data := h.AccountInvoiceLine().NewData()
 			if rs.Uom().IsEmpty() {
 				data.SetPriceUnit(0.0)
@@ -1902,13 +1885,13 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			      easily be auto-filled as well.
 			      :param invoice : account.invoice corresponding record
 			      :rtype line : account.invoice.line record`,
-		func(rs h.AccountInvoiceLineSet, invoice h.AccountInvoiceSet) h.AccountInvoiceLineSet {
+		func(rs m.AccountInvoiceLineSet, invoice m.AccountInvoiceSet) m.AccountInvoiceLineSet {
 			return h.AccountInvoiceLine().NewSet(rs.Env())
 		})
 
 	h.AccountInvoiceLine().Methods().Unlink().Extend("",
-		func(rs h.AccountInvoiceLineSet) int64 {
-			if rs.Filtered(func(rs h.AccountInvoiceLineSet) bool {
+		func(rs m.AccountInvoiceLineSet) int64 {
+			if rs.Filtered(func(rs m.AccountInvoiceLineSet) bool {
 				return rs.Invoice().IsNotEmpty() && rs.Invoice().State() != "draft"
 			}).IsNotEmpty() {
 				panic(rs.T(`You can only delete an invoice line if the invoice is in draft state.`))
@@ -1957,35 +1940,22 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoiceTax().Methods().ComputeBaseAmount().DeclareMethod(
 		`ComputeBaseAmount`,
-		func(rs h.AccountInvoiceTaxSet) *h.AccountInvoiceTaxData {
-			var invoices h.AccountInvoiceSet
-			taxGrouped := make(map[int64]map[string]*h.AccountInvoiceTaxData)
-			for _, r := range rs.Records() {
-				invoices = invoices.Union(r.Invoice())
+		func(rs m.AccountInvoiceTaxSet) m.AccountInvoiceTaxData {
+			taxData := h.AccountInvoiceTax().NewData()
+			taxData.SetBase(0.0)
+			if rs.Tax().IsEmpty() {
+				return taxData
 			}
-			for _, invoice := range invoices.Records() {
-				taxGrouped[invoice.ID()] = invoice.GetTaxesValues()
+			key := rs.Tax().GetGroupingKey(h.AccountInvoiceTax().NewData().
+				SetTax(rs.Tax()).
+				SetAccount(rs.Account()).
+				SetAccountAnalytic(rs.AccountAnalytic()))
+			if AITdata, ok := rs.Invoice().GetTaxesValues()[key]; rs.Invoice().IsNotEmpty() && ok {
+				taxData.SetBase(AITdata.Base())
+			} else {
+				log.Warn(`Tax Base Amount not computable probably due to a change in an underlying tax (%s).`, "tax", rs.Tax().Name())
 			}
-
-			for _, tax := range rs.Records() {
-				taxData := tax.Model().NewData()
-				taxData.SetBase(0.0)
-				if tax.Tax().IsEmpty() {
-					tax.Write(taxData)
-					continue
-				}
-				key := tax.Tax().GetGroupingKey(h.AccountInvoiceTax().NewData().
-					SetTax(tax.Tax()).
-					SetAccount(tax.Account()).
-					SetAccountAnalytic(tax.AccountAnalytic()))
-				if AITdata, ok := taxGrouped[tax.Invoice().ID()][key]; tax.Invoice().IsNotEmpty() && ok {
-					taxData.SetBase(AITdata.Base())
-				} else {
-					log.Warningf(nil, rs.T(`Tax Base Amount not computable probably due to a change in an underlying tax (%s).`, tax.Tax().Name())) //tovalid good way to do log?
-				}
-				tax.Write(taxData)
-			}
-			return new(h.AccountInvoiceTaxData)
+			return taxData
 		})
 
 	h.AccountPaymentTerm().DeclareModel()
@@ -2027,13 +1997,13 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountPaymentTerm().Methods().CheckLines().DeclareMethod(
 		`CheckLines`,
-		func(rs h.AccountPaymentTermSet) {
+		func(rs m.AccountPaymentTermSet) {
 			paymentTermLines := rs.Lines().SortedDefault()
 			PTLlen := paymentTermLines.Len()
 			if PTLlen > 0 && paymentTermLines.Records()[PTLlen-1].Value() != "balance" {
 				panic(rs.T(`A Payment Term should have its last line of type Balance.`))
 			}
-			PTLlen = rs.Lines().Filtered(func(rs h.AccountPaymentTermLineSet) bool { return rs.Value() == "balance" }).Len()
+			PTLlen = rs.Lines().Filtered(func(rs m.AccountPaymentTermLineSet) bool { return rs.Value() == "balance" }).Len()
 			if PTLlen > 1 {
 				panic(rs.T(`A Payment Term should have only one line of type Balance.`))
 			}
@@ -2041,7 +2011,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountPaymentTerm().Methods().Compute().DeclareMethod(
 		`Compute`,
-		func(rs h.AccountPaymentTermSet, value float64, dateRef dates.Date) []accounttypes.PaymentDueDates {
+		func(rs m.AccountPaymentTermSet, value float64, dateRef dates.Date) []accounttypes.PaymentDueDates {
 			var result []accounttypes.PaymentDueDates
 			if dateRef.IsZero() {
 				dateRef = dates.Today()
@@ -2051,7 +2021,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			if value < 0 {
 				sign = -1.0
 			}
-			var currency h.CurrencySet
+			var currency m.CurrencySet
 			if val := rs.Env().Context().GetInteger("currency_id"); val > 0 {
 				currency = h.Currency().BrowseOne(rs.Env(), val)
 			} else {
@@ -2098,7 +2068,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		})
 
 	h.AccountPaymentTerm().Methods().Unlink().Extend("",
-		func(rs h.AccountPaymentTermSet) int64 {
+		func(rs m.AccountPaymentTermSet) int64 {
 			//@api.multi
 			/*def unlink(self):
 			property_recs = self.env['ir.property'].search([('value_reference', 'in', ['account.payment.term,%s'%payment_term.id for payment_term in self])])
@@ -2154,7 +2124,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountPaymentTermLine().Methods().CheckPercent().DeclareMethod(
 		`CheckPercent`,
-		func(rs h.AccountPaymentTermLineSet) {
+		func(rs m.AccountPaymentTermLineSet) {
 			if rs.Value() == "percent" && (rs.ValueAmount() < 0.0 || rs.ValueAmount() > 100) {
 				panic(rs.T(`Percentages for Payment Terms Line must be between 0 and 100.`))
 			}
@@ -2162,7 +2132,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountPaymentTermLine().Methods().OnchangeOption().DeclareMethod(
 		`OnchangeOption`,
-		func(rs h.AccountPaymentTermLineSet) *h.AccountPaymentTermLineData {
+		func(rs m.AccountPaymentTermLineSet) m.AccountPaymentTermLineData {
 			if strutils.IsIn(rs.Option(), "last_day_current_month", "last_day_following_month") {
 				return h.AccountPaymentTermLine().NewData().SetDays(0)
 			}

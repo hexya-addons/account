@@ -6,6 +6,7 @@ package account
 import (
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 )
 
 func init() {
@@ -18,7 +19,7 @@ func init() {
 	})
 	h.AccountCommonJournalReport().Methods().PrePrintReport().DeclareMethod(
 		`PrePrintReport`,
-		func(rs h.AccountCommonJournalReportSet, args struct {
+		func(rs m.AccountCommonJournalReportSet, args struct {
 			Data interface{}
 		}) {
 			//@api.multi

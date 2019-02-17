@@ -7,6 +7,7 @@ import (
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
 )
 
@@ -39,7 +40,7 @@ func init() {
 
 	h.TaxAdjustmentsWizard().Methods().CreateMovePrivate().DeclareMethod(
 		`CreateMovePrivate`,
-		func(rs h.TaxAdjustmentsWizardSet) {
+		func(rs m.TaxAdjustmentsWizardSet) {
 			//@api.multi
 			/*def _create_move(self):
 			  debit_vals = {
@@ -71,7 +72,7 @@ func init() {
 
 	h.TaxAdjustmentsWizard().Methods().CreateMove().DeclareMethod(
 		`CreateMove`,
-		func(rs h.TaxAdjustmentsWizardSet) {
+		func(rs m.TaxAdjustmentsWizardSet) {
 			//@api.multi
 			/*def create_move(self):
 			  #create the adjustment move

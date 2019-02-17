@@ -7,6 +7,7 @@ import (
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 )
 
 func init() {
@@ -23,7 +24,7 @@ func init() {
 	})
 	h.AccountCommonAccountReport().Methods().PrePrintReport().DeclareMethod(
 		`PrePrintReport`,
-		func(rs h.AccountCommonAccountReportSet, args struct {
+		func(rs m.AccountCommonAccountReportSet, args struct {
 			Data interface{}
 		}) {
 			//@api.multi

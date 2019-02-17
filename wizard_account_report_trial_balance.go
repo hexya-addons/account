@@ -3,7 +3,10 @@
 
 package account
 
-import "github.com/hexya-erp/pool/h"
+import (
+	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
+)
 
 func init() {
 
@@ -12,7 +15,7 @@ func init() {
 
 	h.AccountBalanceReport().Methods().PrintReport().DeclareMethod(
 		`PrintReport`,
-		func(rs h.AccountCommonAccountReportSet, args struct {
+		func(rs m.AccountCommonAccountReportSet, args struct {
 			Data interface{}
 		}) {
 			/*def _print_report(self, data):

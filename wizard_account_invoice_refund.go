@@ -7,6 +7,7 @@ import (
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 )
 
 func init() {
@@ -14,7 +15,7 @@ func init() {
 	h.AccountInvoiceRefund().DeclareTransientModel()
 	h.AccountInvoiceRefund().Methods().GetReason().DeclareMethod(
 		`GetReason`,
-		func(rs h.AccountInvoiceRefundSet) {
+		func(rs m.AccountInvoiceRefundSet) {
 			//@api.model
 			/*def _get_reason(self):
 			    context = dict(self._context or {})
@@ -39,7 +40,7 @@ func init() {
 	})
 	h.AccountInvoiceRefund().Methods().GetRefundOnly().DeclareMethod(
 		`GetRefundOnly`,
-		func(rs h.AccountInvoiceRefundSet) {
+		func(rs m.AccountInvoiceRefundSet) {
 			//@api.one
 			/*def _get_refund_only(self):
 			  invoice_id = self.env['account.invoice'].browse(self._context.get('active_id',False))
@@ -53,7 +54,7 @@ func init() {
 		})
 	h.AccountInvoiceRefund().Methods().ComputeRefund().DeclareMethod(
 		`ComputeRefund`,
-		func(rs h.AccountInvoiceRefundSet, args struct {
+		func(rs m.AccountInvoiceRefundSet, args struct {
 			Mode interface{}
 		}) {
 			//@api.multi
@@ -140,7 +141,7 @@ func init() {
 		})
 	h.AccountInvoiceRefund().Methods().InvoiceRefund().DeclareMethod(
 		`InvoiceRefund`,
-		func(rs h.AccountInvoiceRefundSet) {
+		func(rs m.AccountInvoiceRefundSet) {
 			//@api.multi
 			/*def invoice_refund(self):
 			  data_refund = self.read(['filter_refund'])[0]['filter_refund']

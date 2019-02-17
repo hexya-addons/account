@@ -3,14 +3,17 @@
 
 package account
 
-import "github.com/hexya-erp/pool/h"
+import (
+	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
+)
 
 func init() {
 
 	h.AccountInvoiceConfirm().DeclareTransientModel()
 	h.AccountInvoiceConfirm().Methods().InvoiceConfirm().DeclareMethod(
 		`InvoiceConfirm`,
-		func(rs h.AccountInvoiceConfirmSet) {
+		func(rs m.AccountInvoiceConfirmSet) {
 			//@api.multi
 			/*def invoice_confirm(self):
 			  context = dict(self._context or {})
@@ -29,7 +32,7 @@ func init() {
 	h.AccountInvoiceCancel().DeclareTransientModel()
 	h.AccountInvoiceCancel().Methods().InvoiceCancel().DeclareMethod(
 		`InvoiceCancel`,
-		func(rs h.AccountInvoiceCancelSet) {
+		func(rs m.AccountInvoiceCancelSet) {
 			//@api.multi
 			/*def invoice_cancel(self):
 			  context = dict(self._context or {})

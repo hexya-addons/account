@@ -5,6 +5,10 @@ package account
 
 import (
 	"fmt"
+	"math"
+	"strconv"
+	"strings"
+
 	"github.com/hexya-addons/account/accounttypes"
 	"github.com/hexya-addons/decimalPrecision"
 	"github.com/hexya-addons/web/webdata"
@@ -15,11 +19,9 @@ import (
 	"github.com/hexya-erp/hexya/src/tools/nbutils"
 	"github.com/hexya-erp/hexya/src/tools/strutils"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
 	"github.com/jmoiron/sqlx"
-	"math"
-	"strconv"
-	"strings"
 )
 
 func init() {
@@ -113,7 +115,7 @@ will be created in 'Posted' status.'`},
 	})
 
 	h.AccountMove().Methods().NameGet().Extend("",
-		func(rs h.AccountMoveSet) string {
+		func(rs m.AccountMoveSet) string {
 			//@api.depends('name','state')
 			/*def name_get(self):
 			  result = []
@@ -131,7 +133,7 @@ will be created in 'Posted' status.'`},
 
 	h.AccountMove().Methods().AmountCompute().DeclareMethod(
 		`AmountCompute`,
-		func(rs h.AccountMoveSet) *h.AccountMoveData {
+		func(rs m.AccountMoveSet) m.AccountMoveData {
 			data := h.AccountMove().NewData()
 			total := 0.0
 			for _, line := range rs.Lines().Records() {
@@ -144,7 +146,7 @@ will be created in 'Posted' status.'`},
 	h.AccountMove().Methods().ComputeMatchedPercentage().DeclareMethod(
 		`Compute the percentage to apply for cash basis method. This value is relevant only for moves that
 			  involve journal items on receivable or payable accounts.`,
-		func(rs h.AccountMoveSet) *h.AccountMoveData {
+		func(rs m.AccountMoveSet) m.AccountMoveData {
 			data := h.AccountMove().NewData()
 			var totalAmount float64
 			var totalReconciled float64
@@ -167,7 +169,7 @@ will be created in 'Posted' status.'`},
 
 	h.AccountMove().Methods().ComputeCurrency().DeclareMethod(
 		`ComputeCurrency`,
-		func(rs h.AccountMoveSet) *h.AccountMoveData {
+		func(rs m.AccountMoveSet) m.AccountMoveData {
 			return h.AccountMove().NewData().SetCurrency(
 				h.Currency().Coalesce(
 					rs.Company().Currency(),
@@ -176,7 +178,7 @@ will be created in 'Posted' status.'`},
 
 	h.AccountMove().Methods().ComputePartner().DeclareMethod(
 		`ComputePartner`,
-		func(rs h.AccountMoveSet) *h.AccountMoveData {
+		func(rs m.AccountMoveSet) m.AccountMoveData {
 			data := h.AccountMove().NewData()
 			partner := h.Partner().NewSet(rs.Env())
 			for _, line := range rs.Lines().Records() {
@@ -189,7 +191,7 @@ will be created in 'Posted' status.'`},
 		})
 
 	h.AccountMove().Methods().FieldsViewGet().Extend("",
-		func(rs h.AccountMoveSet, args webdata.FieldsViewGetParams) *webdata.FieldsViewData {
+		func(rs m.AccountMoveSet, args webdata.FieldsViewGetParams) *webdata.FieldsViewData {
 			res := rs.Super().FieldsViewGet(args)
 			if rs.Env().Context().GetBool("vat_domain") {
 				res.Fields["line_ids"].Views["tree"].(*webdata.FieldsViewData).Fields["tax_line_id"].Domain = "[('tag_ids', 'in', [self.env.ref(self._context.get('vat_domain')).id])]"
@@ -199,7 +201,7 @@ will be created in 'Posted' status.'`},
 		})
 
 	h.AccountMove().Methods().Create().Extend("",
-		func(rs h.AccountMoveSet, data *h.AccountMoveData) h.AccountMoveSet {
+		func(rs m.AccountMoveSet, data m.AccountMoveData) m.AccountMoveSet {
 			move := rs.Super().
 				WithContext("check_move_validity", false).
 				WithContext("partner_id", data.Partner().ID()).
@@ -209,7 +211,7 @@ will be created in 'Posted' status.'`},
 		})
 
 	h.AccountMove().Methods().Write().Extend("",
-		func(rs h.AccountMoveSet, data *h.AccountMoveData) bool {
+		func(rs m.AccountMoveSet, data m.AccountMoveData) bool {
 			if data.Lines().IsEmpty() {
 				return rs.Super().Write(data)
 			}
@@ -220,8 +222,8 @@ will be created in 'Posted' status.'`},
 
 	h.AccountMove().Methods().Post().DeclareMethod(
 		`Post`,
-		func(rs h.AccountMoveSet) bool {
-			invoice := rs.Env().Context().Get("invoice").(h.AccountInvoiceSet)
+		func(rs m.AccountMoveSet) bool {
+			invoice := rs.Env().Context().Get("invoice").(m.AccountInvoiceSet)
 			rs.PostValidate()
 			for _, move := range rs.Records() {
 				move.Lines().CreateAnalyticLines()
@@ -256,7 +258,7 @@ will be created in 'Posted' status.'`},
 
 	h.AccountMove().Methods().ButtonCancel().DeclareMethod(
 		`ButtonCancel`,
-		func(rs h.AccountMoveSet) bool {
+		func(rs m.AccountMoveSet) bool {
 			for _, move := range rs.Records() {
 				if !move.Journal().UpdatePosted() {
 					panic(rs.T(`You cannot modify a posted entry of this journal.\nFirst you should set the journal to allow cancelling entries.`))
@@ -265,14 +267,14 @@ will be created in 'Posted' status.'`},
 			if len(rs.Ids()) > 0 {
 				rs.CheckLockDate()
 				h.AccountMove().Search(rs.Env(), q.AccountMove().ID().In(rs.Ids())).Write(h.AccountMove().NewData().SetState("draft"))
-				rs.InvalidateCache()
+				rs.Collection().InvalidateCache()
 			}
 			rs.CheckLockDate()
 			return true
 		})
 
 	h.AccountMove().Methods().Unlink().Extend("",
-		func(rs h.AccountMoveSet) int64 {
+		func(rs m.AccountMoveSet) int64 {
 			for _, move := range rs.Records() {
 				// check the lock date + check if some entries are reconciled
 				move.Lines().UpdateCheck()
@@ -283,7 +285,7 @@ will be created in 'Posted' status.'`},
 
 	h.AccountMove().Methods().PostValidate().DeclareMethod(
 		`PostValidate`,
-		func(rs h.AccountMoveSet) bool {
+		func(rs m.AccountMoveSet) bool {
 			for _, move := range rs.Records() {
 				for _, x := range move.Lines().Records() {
 					if !x.Company().Equals(move.Company()) {
@@ -297,7 +299,7 @@ will be created in 'Posted' status.'`},
 
 	h.AccountMove().Methods().CheckLockDate().DeclareMethod(
 		`CheckLockDate`,
-		func(rs h.AccountMoveSet) bool {
+		func(rs m.AccountMoveSet) bool {
 			for _, move := range rs.Records() {
 				lockDate := move.Company().FiscalyearLockDate()
 				if val := move.Company().PeriodLockDate(); val.Greater(lockDate) {
@@ -320,7 +322,7 @@ will be created in 'Posted' status.'`},
 
 	h.AccountMove().Methods().AssertBalanced().DeclareMethod(
 		`AssertBalanced`,
-		func(rs h.AccountMoveSet) bool {
+		func(rs m.AccountMoveSet) bool {
 			if len(rs.Ids()) == 0 {
 				return true
 			}
@@ -344,7 +346,7 @@ will be created in 'Posted' status.'`},
 
 	h.AccountMove().Methods().ReverseMove().DeclareMethod(
 		`ReverseMove`,
-		func(rs h.AccountMoveSet, date dates.Date, journal h.AccountJournalSet) h.AccountMoveSet {
+		func(rs m.AccountMoveSet, date dates.Date, journal m.AccountJournalSet) m.AccountMoveSet {
 			rs.EnsureOne()
 			reversedMove := rs.Copy(h.AccountMove().NewData().
 				SetDate(date).
@@ -361,7 +363,7 @@ will be created in 'Posted' status.'`},
 
 	h.AccountMove().Methods().ReverseMoves().DeclareMethod(
 		`ReverseMoves`,
-		func(rs h.AccountMoveSet, date dates.Date, journal h.AccountJournalSet) h.AccountMoveSet {
+		func(rs m.AccountMoveSet, date dates.Date, journal m.AccountJournalSet) m.AccountMoveSet {
 			if date.IsZero() {
 				date = dates.Today()
 			}
@@ -379,7 +381,7 @@ will be created in 'Posted' status.'`},
 
 	h.AccountMove().Methods().OpenReconcileView().DeclareMethod(
 		`OpenReconcileView`,
-		func(rs h.AccountMoveSet) *actions.Action {
+		func(rs m.AccountMoveSet) *actions.Action {
 
 			return rs.Lines().OpenReconcileView()
 		})
@@ -581,7 +583,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 		`Init change index on partner_id to a multi-column index on (partner_id, ref), the new index will behave in the
 			      same way when we search on partner_id, with the addition of being optimal when having a query that will
 			      search on partner_id and ref at the same time (which is the case when we open the bank reconciliation widget)`,
-		func(rs h.AccountMoveLineSet) {
+		func(rs m.AccountMoveLineSet) {
 			cr := rs.Env().Cr()
 			cr.Execute(`DROP INDEX IF EXISTS account_move_line_partner_id_index`)
 			var out []interface{}
@@ -595,7 +597,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 		`ComputeAmountResidual Computes the residual amount of a move line from a reconciliable account in the company currency and the line's currency.
 			      This amount will be 0 for fully reconciled lines or lines from a non-reconciliable account, the original line amount
 			      for unreconciled lines, and something in-between for partially reconciled lines.`,
-		func(rs h.AccountMoveLineSet) *h.AccountMoveLineData {
+		func(rs m.AccountMoveLineSet) m.AccountMoveLineData {
 			data := h.AccountMoveLine().NewData()
 			if !rs.Account().Reconcile() {
 				data.SetReconciled(false).
@@ -668,13 +670,13 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountMoveLine().Methods().ComputeBalance().DeclareMethod(
 		`ComputeBalance`,
-		func(rs h.AccountMoveLineSet) *h.AccountMoveLineData {
+		func(rs m.AccountMoveLineSet) m.AccountMoveLineData {
 			return h.AccountMoveLine().NewData().SetBalance(rs.Debit() - rs.Credit())
 		})
 
 	h.AccountMoveLine().Methods().ComputeCashBasis().DeclareMethod(
 		`ComputeCashBasis`,
-		func(rs h.AccountMoveLineSet) *h.AccountMoveLineData {
+		func(rs m.AccountMoveLineSet) m.AccountMoveLineData {
 			data := h.AccountMoveLine().NewData()
 			if strutils.IsIn(rs.Journal().Type(), "sale", "purchase") {
 				data.SetDebitCashBasis(rs.Debit() * rs.Move().MatchedPercentage())
@@ -689,7 +691,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountMoveLine().Methods().ComputeCounterpart().DeclareMethod(
 		`ComputeCounterpart`,
-		func(rs h.AccountMoveLineSet) *h.AccountMoveLineData {
+		func(rs m.AccountMoveLineSet) m.AccountMoveLineData {
 			var counterpart []string
 			for _, line := range rs.Move().Lines().Records() {
 				if line.Account().Code() != rs.Account().Code() {
@@ -704,7 +706,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountMoveLine().Methods().CheckCurrencyAccountAmount().DeclareMethod(
 		`CheckCurrency`,
-		func(rs h.AccountMoveLineSet) {
+		func(rs m.AccountMoveLineSet) {
 			if rs.Account().Currency().IsNotEmpty() && (rs.Currency().IsEmpty() || !rs.Currency().Equals(rs.Account().Currency())) {
 				panic(rs.T(`The selected account of your Journal Entry forces to provide a secondary currency. You should remove the secondary currency on the account.`))
 			}
@@ -719,7 +721,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 	h.AccountMoveLine().Methods().GetDataForManualReconciliationWidget().DeclareMethod(
 		`GetDataForManualReconciliationWidget Returns the data required for the invoices & payments matching of partners/accounts.
 			      If an argument is None, fetch all related reconciliations. Use [] to fetch nothing.`,
-		func(rs h.AccountMoveLineSet, partners h.PartnerSet, accounts h.AccountAccountSet) *accounttypes.DataForReconciliationWidget {
+		func(rs m.AccountMoveLineSet, partners m.PartnerSet, accounts m.AccountAccountSet) *accounttypes.DataForReconciliationWidget {
 			var out accounttypes.DataForReconciliationWidget
 			out.Customers = rs.GetDataForManualReconciliation("partner", partners.Ids(), "receivable")
 			out.Suppliers = rs.GetDataForManualReconciliation("partner", partners.Ids(), "payable")
@@ -736,7 +738,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			          of the id, use [] to prevent from fetching any data at all.
 			      :param account_type: if a partner is both customer and vendor, you can use 'payable' to reconcile
 			          the vendor-related journal entries and 'receivable' for the customer-related entries.`,
-		func(rs h.AccountMoveLineSet, resType string, resIds []int64, accountType string) []map[string]interface{} {
+		func(rs m.AccountMoveLineSet, resType string, resIds []int64, accountType string) []map[string]interface{} {
 			// error handling
 			if resIds != nil && len(resIds) == 0 {
 				// Note : this short-circuiting is better for performances, but also required
@@ -903,7 +905,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountMoveLine().Methods().GetReconciliationProposition().DeclareMethod(
 		`Returns two lines whose amount are opposite`,
-		func(rs h.AccountMoveLineSet, account h.AccountAccountSet, partner h.PartnerSet) []map[string]interface{} {
+		func(rs m.AccountMoveLineSet, account m.AccountAccountSet, partner m.PartnerSet) []map[string]interface{} {
 			// Get pairs
 			params := map[string]interface{}{
 				"accountId": account.ID(),
@@ -974,7 +976,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 			      :param excluded_ids: list of ids of move lines that should not be fetched
 			      :param str: search string`,
-		func(rs h.AccountMoveLineSet, excludedIds []int64, str string) q.AccountMoveLineCondition {
+		func(rs m.AccountMoveLineSet, excludedIds []int64, str string) q.AccountMoveLineCondition {
 			epsilon := 0.0001
 			var domain q.AccountMoveLineCondition
 
@@ -1036,7 +1038,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountMoveLine().Methods().DomainMoveLinesForManualReconciliation().DeclareMethod(
 		`DomainMoveLinesForManualReconciliation Create domain criteria that are relevant to manual reconciliation.`,
-		func(rs h.AccountMoveLineSet, account h.AccountAccountSet, partner h.PartnerSet, excludedIds []int64, str string) q.AccountMoveLineCondition {
+		func(rs m.AccountMoveLineSet, account m.AccountAccountSet, partner m.PartnerSet, excludedIds []int64, str string) q.AccountMoveLineCondition {
 			domain := q.AccountMoveLine().Reconciled().Equals(false).
 				And().Account().Equals(account)
 			if partner.IsNotEmpty() {
@@ -1049,8 +1051,8 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 	h.AccountMoveLine().Methods().GetMoveLinesForManualReconciliation().DeclareMethod(
 		`GetMoveLinesForManualReconciliation Returns unreconciled move lines for an account or a partner+account,
 				formatted for the manual reconciliation widget`,
-		func(rs h.AccountMoveLineSet, account h.AccountAccountSet, partner h.PartnerSet, excludedIds []int64,
-			str string, offset, limit int, targetCurrency h.CurrencySet) []map[string]interface{} {
+		func(rs m.AccountMoveLineSet, account m.AccountAccountSet, partner m.PartnerSet, excludedIds []int64,
+			str string, offset, limit int, targetCurrency m.CurrencySet) []map[string]interface{} {
 			domain := rs.DomainMoveLinesForManualReconciliation(account, partner, excludedIds, str)
 			lines := rs.Search(domain).Offset(offset).Limit(limit).OrderBy("date_maturity asc", "id asc")
 			if targetCurrency.IsEmpty() {
@@ -1064,7 +1066,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 					Returns move lines formatted for the manual/bank reconciliation widget
 			      :param target_currency: currency (browse_record or ID) you want the move line debit/credit converted into
 			      :param target_date: date to use for the monetary conversion`,
-		func(rs h.AccountMoveLineSet, targetCurrency h.CurrencySet, targetDate dates.Date) []map[string]interface{} {
+		func(rs m.AccountMoveLineSet, targetCurrency m.CurrencySet, targetDate dates.Date) []map[string]interface{} {
 			var out []map[string]interface{}
 
 			for _, line := range rs.Records() {
@@ -1193,11 +1195,11 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			          - 'id': id of the affected res.partner or account.account
 			          - 'mv_line_ids': ids of exisiting account.move.line to reconcile
 			          - 'new_mv_line_dicts': list of dicts containing values suitable for account_move_line.create()`,
-		func(rs h.AccountMoveLineSet, data []struct {
-			Type             string                   `json:"type"`
-			ID               int64                    `json:"id"`
-			MoveLineIds      []int64                  `json:"mv_line_ids"`
-			NewMoveLinesData []*h.AccountMoveLineData `json:"new_mv_line_dicts"`
+		func(rs m.AccountMoveLineSet, data []struct {
+			Type             string                  `json:"type"`
+			ID               int64                   `json:"id"`
+			MoveLineIds      []int64                 `json:"mv_line_ids"`
+			NewMoveLinesData []m.AccountMoveLineData `json:"new_mv_line_dicts"`
 		}) {
 			for _, datum := range data {
 				if len(datum.MoveLineIds) > 0 || len(datum.NewMoveLinesData) > 1 {
@@ -1216,7 +1218,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 		`ProcessReconciliation Create new move lines from new_mv_line_dicts (if not empty) then call reconcile_partial on self and new move lines
 
 			      :param new_mv_line_dicts: list of dicts containing values suitable fot account_move_line.create()`,
-		func(rs h.AccountMoveLineSet, newMoveLinesData []*h.AccountMoveLineData) {
+		func(rs m.AccountMoveLineSet, newMoveLinesData []m.AccountMoveLineData) {
 			if rsLen := rs.Len(); rsLen < 1 || rsLen+len(newMoveLinesData) < 2 {
 				panic(rs.T(`A reconciliation must involve at least 2 move lines.`))
 			}
@@ -1241,7 +1243,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountMoveLine().Methods().GetPairToReconcile().DeclareMethod(
 		`GetPairToReconcile`,
-		func(rs h.AccountMoveLineSet) (h.AccountMoveLineSet, h.AccountMoveLineSet) {
+		func(rs m.AccountMoveLineSet) (m.AccountMoveLineSet, m.AccountMoveLineSet) {
 			// field is either 'amount_residual' or 'amount_residual_currency' (if the reconciled account has a secondary currency set)
 			field := "AmountResidual"
 			if rs.Account().Currency().IsNotEmpty() {
@@ -1269,7 +1271,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 				field = "AmountResidualCurrency"
 			}
 			// target the pair of move in self that are the oldest
-			sortedMoves := rs.Sorted(func(rs1, rs2 h.AccountMoveLineSet) bool {
+			sortedMoves := rs.Sorted(func(rs1, rs2 m.AccountMoveLineSet) bool {
 				value1 := rs1.DateMaturity()
 				if value1.IsZero() {
 					value1 = rs1.Date()
@@ -1280,8 +1282,8 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 				}
 				return value1.Greater(value2)
 			})
-			debit := h.AccountMoveLineSet{}
-			credit := h.AccountMoveLineSet{}
+			debit := h.AccountMoveLine().NewSet(rs.Env())
+			credit := h.AccountMoveLine().NewSet(rs.Env())
 			for _, aml := range sortedMoves.Records() {
 				if credit.IsNotEmpty() && debit.IsNotEmpty() {
 					break
@@ -1301,7 +1303,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 		`AutoReconcileLines This function iterates recursively on the recordset given as parameter as long as it
 			      can find a debit and a credit to reconcile together. It returns the recordset of the
 			      account move lines that were not reconciled during the process.`,
-		func(rs h.AccountMoveLineSet) h.AccountMoveLineSet {
+		func(rs m.AccountMoveLineSet) m.AccountMoveLineSet {
 			if rs.IsEmpty() {
 				return rs
 			}
@@ -1389,11 +1391,11 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountMoveLine().Methods().Reconcile().DeclareMethod(
 		`Reconcile`,
-		func(rs h.AccountMoveLineSet, writeoffAccount h.AccountAccountSet, writeoffJournal h.AccountJournalSet) h.AccountMoveLineSet {
+		func(rs m.AccountMoveLineSet, writeoffAccount m.AccountAccountSet, writeoffJournal m.AccountJournalSet) m.AccountMoveLineSet {
 			// Empty self can happen if the user tries to reconcile entries which are already reconciled.
 			// The calling method might have filtered out reconciled lines.
 			if rs.IsEmpty() {
-				return h.AccountMoveLineSet{}
+				return h.AccountMoveLine().NewSet(rs.Env())
 			}
 
 			// Perform all checks on lines
@@ -1423,7 +1425,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 			// if writeoff_acc_id specified, then create write-off move with value the remaining amount from move in self
 			if !(writeoffAccount.IsNotEmpty() && writeoffJournal.IsNotEmpty() && remainingMoves.IsNotEmpty()) {
-				return h.AccountMoveLineSet{}
+				return h.AccountMoveLine().NewSet(rs.Env())
 			}
 			shareSameCurrency := !(currencies.Len() > 1)
 			vals := h.AccountMoveLine().NewData().
@@ -1444,7 +1446,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 			      :param vals: dict containing values suitable fot account_move_line.create(). The data in vals will
 			          be processed to create bot writeoff acount.move.line and their enclosing account.move.`,
-		func(rs h.AccountMoveLineSet, data *h.AccountMoveLineData) h.AccountMoveLineSet {
+		func(rs m.AccountMoveLineSet, data m.AccountMoveLineData) m.AccountMoveLineSet {
 			// Check and complete vals
 			if !data.HasAccount() || !data.HasJournal() {
 				panic(rs.T(`It is mandatory to specify an account and a journal to create a write-off.`))
@@ -1521,12 +1523,12 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			writeoffMove.Post()
 
 			// Return the writeoff move.line which is to be reconciled
-			return writeoffMove.Lines().Filtered(func(r h.AccountMoveLineSet) bool { return r.Account() == rs.Account() })
+			return writeoffMove.Lines().Filtered(func(r m.AccountMoveLineSet) bool { return r.Account() == rs.Account() })
 		})
 
 	h.AccountMoveLine().Methods().PrepareWriteoffFirstLine().DeclareMethod(
 		`PrepareWriteoffFirstLine`,
-		func(rs h.AccountMoveLineSet, data *h.AccountMoveLineData) *h.AccountMoveLineData {
+		func(rs m.AccountMoveLineSet, data m.AccountMoveLineData) m.AccountMoveLineData {
 			line := data.Copy()
 			line.SetAccount(rs.Account())
 			if line.HasAnalyticAccount() {
@@ -1537,7 +1539,8 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			}
 
 			amount := line.Credit() - line.Debit()
-			_, _, amountTax, _ := line.Taxes().ComputeAll(amount, h.CurrencySet{}, 1.0, h.ProductProductSet{}, h.PartnerSet{})
+			_, _, amountTax, _ := line.Taxes().ComputeAll(amount, h.Currency().NewSet(rs.Env()), 1.0,
+				h.ProductProduct().NewSet(rs.Env()), h.Partner().NewSet(rs.Env()))
 			line.SetCredit(0.0)
 			if amountTax > 0 {
 				line.SetCredit(amountTax)
@@ -1552,7 +1555,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountMoveLine().Methods().PrepareWriteoffSecondLine().DeclareMethod(
 		`PrepareWriteoffSecondLine`,
-		func(rs h.AccountMoveLineSet, data *h.AccountMoveLineData) *h.AccountMoveLineData {
+		func(rs m.AccountMoveLineSet, data m.AccountMoveLineData) m.AccountMoveLineData {
 			line := data.Copy()
 			credit, debit := line.Credit(), line.Debit()
 			line.SetDebit(credit)
@@ -1569,15 +1572,15 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			      potentially an exchange rate entry that will balance the remaining amount_residual_currency (possibly several aml).
 
 			      This ensure that all aml in the full reconciliation are reconciled (amount_residual = amount_residual_currency = 0). `,
-		func(rs h.AccountMoveLineSet) {
+		func(rs m.AccountMoveLineSet) {
 			var totalDebit float64
 			var totalCredit float64
 			var totalAmountCurrency float64
-			var currency h.CurrencySet
-			var aml h.AccountMoveLineSet
-			var amlToBalanceCurrency h.AccountMoveLineSet
-			var partialRec h.AccountPartialReconcileSet
-			var partialRecSet h.AccountPartialReconcileSet
+			var currency m.CurrencySet
+			var aml m.AccountMoveLineSet
+			var amlToBalanceCurrency m.AccountMoveLineSet
+			var partialRec m.AccountPartialReconcileSet
+			var partialRecSet m.AccountPartialReconcileSet
 			var maxDate dates.Date
 
 			amlToBalanceCurrency = h.AccountMoveLine().NewSet(rs.Env())
@@ -1602,8 +1605,8 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			}
 
 			if currency.IsNotEmpty() && amlToBalanceCurrency.IsNotEmpty() {
-				var otherAml h.AccountMoveLineSet
-				var otherPartialRec h.AccountPartialReconcileSet
+				var otherAml m.AccountMoveLineSet
+				var otherPartialRec m.AccountPartialReconcileSet
 
 				aml = amlToBalanceCurrency.Records()[0]
 				// eventually create journal entries to book the difference due to foreign currency's exchange rate that fluctuates
@@ -1623,9 +1626,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			if nbutils.Compare(totalDebit, totalCredit, rs.Company().Currency().Rounding()) == 0 &&
 				(currency.IsEmpty() || nbutils.IsZero(totalAmountCurrency, currency.Rounding())) {
 				// in that case, mark the reference on the partial reconciliations and the entries
-				var data *h.AccountFullReconcileData
-
-				data = h.AccountFullReconcile().NewData().
+				data := h.AccountFullReconcile().NewData().
 					SetPartialReconciles(partialRecSet).
 					SetReconciledLines(rs).
 					SetExchangeMove(aml.Move()).
@@ -1636,8 +1637,8 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountMoveLine().Methods().RemoveMoveReconcile().DeclareMethod(
 		`RemoveMoveReconcile Undo a reconciliation`,
-		func(rs h.AccountMoveLineSet) int64 {
-			var recMoves h.AccountPartialReconcileSet
+		func(rs m.AccountMoveLineSet) int64 {
+			var recMoves m.AccountPartialReconcileSet
 
 			if rs.IsEmpty() {
 				return 0
@@ -1661,12 +1662,12 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 				adjustment of the line amount (in case of a tax included in price).
 			:context's key 'check_move_validity': check data consistency after move line creation. Eg. set to false to disable verification that the move
 				debit-credit == 0 while creating the move lines composing the move.`,
-		func(rs h.AccountMoveLineSet, data *h.AccountMoveLineData) h.AccountMoveLineSet {
-			var taxLinesData []*h.AccountMoveLineData
-			var newLine h.AccountMoveLineSet
-			var account h.AccountAccountSet
-			var journal h.AccountJournalSet
-			var move h.AccountMoveSet
+		func(rs m.AccountMoveLineSet, data m.AccountMoveLineData) m.AccountMoveLineSet {
+			var taxLinesData []m.AccountMoveLineData
+			var newLine m.AccountMoveLineSet
+			var account m.AccountAccountSet
+			var journal m.AccountJournalSet
+			var move m.AccountMoveSet
 			var ctx *types.Context
 			var amount float64
 			var ok bool
@@ -1771,11 +1772,11 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 						continue
 					}
 
-					var tax h.AccountTaxSet
+					var tax m.AccountTaxSet
 					var accountID int64
-					var account h.AccountAccountSet
-					var temp *h.AccountMoveLineData
-					var bank h.AccountBankStatementSet
+					var account m.AccountAccountSet
+					var temp m.AccountMoveLineData
+					var bank m.AccountBankStatementSet
 
 					tax = h.AccountTax().BrowseOne(rs.Env(), taxData.ID)
 					if amount > 0 {
@@ -1835,8 +1836,8 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 		})
 
 	h.AccountMoveLine().Methods().Unlink().Extend("",
-		func(rs h.AccountMoveLineSet) int64 {
-			var moves h.AccountMoveSet
+		func(rs m.AccountMoveLineSet) int64 {
+			var moves m.AccountMoveSet
 			var result int64
 
 			rs.UpdateCheck()
@@ -1852,7 +1853,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 		})
 
 	h.AccountMoveLine().Methods().Write().Extend("",
-		func(rs h.AccountMoveLineSet, data *h.AccountMoveLineData) bool {
+		func(rs m.AccountMoveLineSet, data m.AccountMoveLineData) bool {
 			if data.Account().Deprecated() {
 				panic(rs.T(`You cannot use deprecated account.`))
 			}
@@ -1876,7 +1877,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 				if data.HasStatement() && rec.Payment().IsNotEmpty() {
 					// In case of an internal transfer, there are 2 liquidity move lines to match with a bank statement
 					all := true
-					for _, line := range rec.Payment().MoveLines().Filtered(func(r h.AccountMoveLineSet) bool { return !r.Equals(rec) && r.Account().InternalType() == "liquidity" }).Records() {
+					for _, line := range rec.Payment().MoveLines().Filtered(func(r m.AccountMoveLineSet) bool { return !r.Equals(rec) && r.Account().InternalType() == "liquidity" }).Records() {
 						if line.Statement().IsEmpty() {
 							all = false
 						}
@@ -1900,7 +1901,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountMoveLine().Methods().UpdateCheck().DeclareMethod(
 		`UpdateCheck Raise Warning to cause rollback if the move is posted, some entries are reconciled or the move is older than the lock date`,
-		func(rs h.AccountMoveLineSet) bool {
+		func(rs m.AccountMoveLineSet) bool {
 			moves := h.AccountMove().NewSet(rs.Env())
 			for _, line := range rs.Records() {
 				errMsg := rs.T(`Move name (id): %s (%d)`, line.Move().Name(), line.Move().ID())
@@ -1919,7 +1920,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 		})
 
 	h.AccountMoveLine().Methods().NameGet().Extend("",
-		func(rs h.AccountMoveLineSet) string {
+		func(rs m.AccountMoveLineSet) string {
 			/*def name_get(self):
 			for line in self:
 				if line.ref:
@@ -1933,9 +1934,9 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountMoveLine().Methods().ComputeAmountFields().DeclareMethod(
 		`ComputeAmountFields Helper function to compute value for fields debit/credit/amount_currency based on an amount and the currencies given in parameter`,
-		func(rs h.AccountMoveLineSet, amount float64, srcCurrency, companyCurrency, invoiceCurrency h.CurrencySet) (float64, float64, float64, h.CurrencySet) {
+		func(rs m.AccountMoveLineSet, amount float64, srcCurrency, companyCurrency, invoiceCurrency m.CurrencySet) (float64, float64, float64, m.CurrencySet) {
 			var amountCurrency float64
-			var currency h.CurrencySet
+			var currency m.CurrencySet
 			var debit float64
 			var credit float64
 
@@ -1959,7 +1960,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 	h.AccountMoveLine().Methods().CreateAnalyticLines().DeclareMethod(
 		`CreateAnalyticLines Create analytic items upon validation of an account.move.line having an analytic account. This
 			      method first remove any existing analytic item related to the line before creating any new one.`,
-		func(rs h.AccountMoveLineSet) {
+		func(rs m.AccountMoveLineSet) {
 			for _, line := range rs.Records() {
 				line.AnalyticLines().Unlink()
 			}
@@ -1974,9 +1975,9 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 	h.AccountMoveLine().Methods().PrepareAnalyticLine().DeclareMethod(
 		`PrepareAnalyticLin Prepare the values used to create() an account.analytic.line upon validation of an account.move.line having
 			      an analytic account. This method is intended to be extended in other modules.e`,
-		func(rs h.AccountMoveLineSet) *h.AccountAnalyticLineData {
+		func(rs m.AccountMoveLineSet) m.AccountAnalyticLineData {
 			var amount float64
-			var data *h.AccountAnalyticLineData
+			var data m.AccountAnalyticLineData
 			var date dates.Date
 
 			amount = rs.Credit() - rs.Debit()
@@ -2005,28 +2006,26 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountMoveLine().Methods().QueryGet().DeclareMethod(
 		`QueryGet`,
-		func(rs h.AccountMoveLineSet, condition q.AccountMoveLineCondition) (string, []interface{}) {
-			var context *types.Context
-			var dateField string
-
-			context = rs.Env().Context()
-			dateField = "date"
+		func(rs m.AccountMoveLineSet, condition q.AccountMoveLineCondition) (string, []interface{}) {
+			context := rs.Env().Context()
+			dateField := q.AccountMoveLine().Date()
 			if context.GetBool("aged_balance") {
-				dateField = "date_maturity"
+				dateField = q.AccountMoveLine().DateMaturity()
 			}
 			if val := context.GetDate("date_to"); !val.IsZero() {
-				condition = condition.AndCond(q.AccountMoveLine().Field(dateField).LowerOrEqual(val))
+				condition = condition.AndCond(dateField.LowerOrEqual(val))
 			}
 			if val := context.GetDate("date_from"); !val.IsZero() {
 				switch {
 				case !context.GetBool("strict_range"):
-					condition = condition.AndCond(q.AccountMoveLine().
-						AccountFilteredOn(q.AccountAccount().UserTypeFilteredOn(q.AccountAccountType().IncludeInitialBalance().Equals(true))).
-						Or().Field(dateField).GreaterOrEqual(val)) //tovalid cannot use q.AccountMoveLine.Field: type is wrong
+					condition = condition.AndCond(dateField.GreaterOrEqual(val).Or().
+						AccountFilteredOn(
+							q.AccountAccount().UserTypeFilteredOn(
+								q.AccountAccountType().IncludeInitialBalance().Equals(true))))
 				case context.GetBool("initial_bal"):
-					condition = condition.AndCond(q.AccountMoveLine().Field(dateField).Lower(val))
+					condition = condition.AndCond(dateField.Lower(val))
 				default:
-					condition = condition.AndCond(q.AccountMoveLine().Field(dateField).GreaterOrEqual(val))
+					condition = condition.AndCond(dateField.GreaterOrEqual(val))
 				}
 			}
 			if val := context.GetIntegerSlice("journal_ids"); len(val) > 0 {
@@ -2057,14 +2056,15 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 				condition = condition.AndCond(q.AccountMoveLine().AnalyticAccountFilteredOn(q.AccountAnalyticAccount().ID().In(val)))
 			}
 			if !condition.IsEmpty() {
-				return rs.SqlFromCondition(condition.Condition)
+				// FIXME
+				//return rs.SqlFromCondition(condition.Condition)
 			}
 			return "", []interface{}{}
 		})
 
 	h.AccountMoveLine().Methods().OpenReconcileView().DeclareMethod(
 		`OpenReconcileView`,
-		func(rs h.AccountMoveLineSet) *actions.Action {
+		func(rs m.AccountMoveLineSet) *actions.Action {
 			/*def open_reconcile_view(self):
 			[action] = self.env.ref('account.action_account_moves_all_a').read() //tovalid
 			ids = []
@@ -2112,10 +2112,10 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 		`CreateExchangeRateEntry Automatically create a journal entry to book the exchange rate difference.
 			      That new journal entry is made in the company 'currency_exchange_journal_id' and one of its journal
 			      items is matched with the other lines to balance the full reconciliation.`,
-		func(rs h.AccountPartialReconcileSet, amlToFix h.AccountMoveLineSet, amountDiff float64, diffInCurrency float64,
-			currency h.CurrencySet, moveDate dates.Date) (h.AccountMoveLineSet, h.AccountPartialReconcileSet) {
-			var lineToReconcile h.AccountMoveLineSet
-			var partialRec h.AccountPartialReconcileSet
+		func(rs m.AccountPartialReconcileSet, amlToFix m.AccountMoveLineSet, amountDiff float64, diffInCurrency float64,
+			currency m.CurrencySet, moveDate dates.Date) (m.AccountMoveLineSet, m.AccountPartialReconcileSet) {
+			var lineToReconcile m.AccountMoveLineSet
+			var partialRec m.AccountPartialReconcileSet
 
 			for _, rec := range rs.Records() {
 				if rec.Company().CurrencyExchangeJournal().IsEmpty() {
@@ -2128,11 +2128,11 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 					panic(rs.T(`You should configure the 'Loss Exchange Rate Account' in the accounting settings, to manage automatically the booking of accounting entries related to differences between exchange rates.`))
 				}
 
-				var move h.AccountMoveSet
-				var amlData *h.AccountMoveLineData
-				var moveData *h.AccountMoveData
-				var partialRecData *h.AccountPartialReconcileData
-				var lineToReconcileData *h.AccountMoveLineData
+				var move m.AccountMoveSet
+				var amlData m.AccountMoveLineData
+				var moveData m.AccountMoveData
+				var partialRecData m.AccountPartialReconcileData
+				var lineToReconcileData m.AccountMoveLineData
 
 				moveData = h.AccountMove().NewData().SetJournal(rec.Company().CurrencyExchangeJournal())
 				// The move date should be the maximum date between payment and invoice (in case
@@ -2200,25 +2200,25 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountPartialReconcile().Methods().FixMultipleExchangeRatesDiff().DeclareMethod(
 		`FixMultipleExchangeRatesDiff`,
-		func(rs h.AccountPartialReconcileSet, amlsToFix h.AccountMoveLineSet, amountDiff float64, diffInCurrency float64,
-			currency h.CurrencySet, move h.AccountMoveSet) (h.AccountMoveLineSet, h.AccountPartialReconcileSet) {
+		func(rs m.AccountPartialReconcileSet, amlsToFix m.AccountMoveLineSet, amountDiff float64, diffInCurrency float64,
+			currency m.CurrencySet, move m.AccountMoveSet) (m.AccountMoveLineSet, m.AccountPartialReconcileSet) {
 
 			rs.EnsureOne()
 
-			var moveLines h.AccountMoveLineSet
-			var accountPayableLine h.AccountMoveLineSet
-			var partialRec h.AccountPartialReconcileSet
-			var partialReconciles h.AccountPartialReconcileSet
-			var accountPayableLineData *h.AccountMoveLineData
-			var moveLineData *h.AccountMoveLineData
-			var partialRecData *h.AccountPartialReconcileData
+			var moveLines m.AccountMoveLineSet
+			var accountPayableLine m.AccountMoveLineSet
+			var partialRec m.AccountPartialReconcileSet
+			var partialReconciles m.AccountPartialReconcileSet
+			var accountPayableLineData m.AccountMoveLineData
+			var moveLineData m.AccountMoveLineData
+			var partialRecData m.AccountPartialReconcileData
 
 			moveLines = h.AccountMoveLine().NewSet(rs.Env()).WithContext("check_move_validity", false)
 			partialReconciles = rs.WithContext("skip_full_reconcile_check", true)
 			amountDiff = rs.Company().Currency().Round(amountDiff)
 
 			for _, aml := range amlsToFix.Records() {
-				accountPayableLineData = moveLines.Model().NewData().
+				accountPayableLineData = h.AccountMoveLine().NewData().
 					SetName(rs.T(`Currency exchange rate difference`)).
 					SetDebit(0.0).
 					SetCredit(0.0).
@@ -2227,7 +2227,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 					SetCurrency(currency).
 					SetAmountCurrency(-aml.AmountResidualCurrency()).
 					SetPartner(rs.DebitMove().Partner())
-				moveLineData = moveLines.Model().NewData().
+				moveLineData = h.AccountMoveLine().NewData().
 					SetName(rs.T(`Currency exchange rate difference`)).
 					SetDebit(0.0).
 					SetCredit(0.0).
@@ -2270,7 +2270,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountPartialReconcile().Methods().ComputePartialLines().DeclareMethod(
 		`ComputePartialLines`,
-		func(rs h.AccountPartialReconcileSet) {
+		func(rs m.AccountPartialReconcileSet) {
 			if rs.Env().Context().GetBool("skip_full_reconcile_check") {
 				// when running the manual reconciliation wizard, don't check the partials separately for full
 				// reconciliation or exchange rate because it is handled manually after the whole processing
@@ -2282,17 +2282,17 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			var totalAmountCurrency float64
 			var digitsRoundingPrecision float64
 			var maxDate dates.Date
-			var currency h.CurrencySet
-			var exchangeMove h.AccountMoveSet
-			var amlSet h.AccountMoveLineSet
-			var amlToBalance h.AccountMoveLineSet
-			var exchangePartialRec h.AccountPartialReconcileSet
-			var partialRec h.AccountPartialReconcileSet
-			var partialRecSet h.AccountPartialReconcileSet
+			var currency m.CurrencySet
+			var exchangeMove m.AccountMoveSet
+			var amlSet m.AccountMoveLineSet
+			var amlToBalance m.AccountMoveLineSet
+			var exchangePartialRec m.AccountPartialReconcileSet
+			var partialRec m.AccountPartialReconcileSet
+			var partialRecSet m.AccountPartialReconcileSet
 
 			// check if the reconciliation is full
 			// first, gather all journal items involved in the reconciliation just created
-			partialRecSet = rs.Sorted(func(rs1, rs2 h.AccountPartialReconcileSet) bool {
+			partialRecSet = rs.Sorted(func(rs1, rs2 m.AccountPartialReconcileSet) bool {
 				return rs1.ID() < rs2.ID()
 			})
 			amlSet = h.AccountMoveLine().NewSet(rs.Env())
@@ -2356,7 +2356,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountPartialReconcile().Methods().Create().Extend(
 		"",
-		func(rs h.AccountPartialReconcileSet, data *h.AccountPartialReconcileData) h.AccountPartialReconcileSet {
+		func(rs m.AccountPartialReconcileSet, data m.AccountPartialReconcileData) m.AccountPartialReconcileSet {
 			res := rs.Super().Create(data)
 			res.ComputePartialLines()
 			return res
@@ -2364,10 +2364,10 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountPartialReconcile().Methods().Unlink().Extend(
 		"When removing a partial reconciliation, also unlink its full reconciliation if it exists",
-		func(rs h.AccountPartialReconcileSet) int64 {
+		func(rs m.AccountPartialReconcileSet) int64 {
 			var res int64
-			var toUnlink h.AccountPartialReconcileSet
-			var fullToUnlink h.AccountFullReconcileSet
+			var toUnlink m.AccountPartialReconcileSet
+			var fullToUnlink m.AccountFullReconcileSet
 
 			fullToUnlink = h.AccountFullReconcile().NewSet(rs.Env())
 			toUnlink = rs.Copy(nil)
@@ -2424,14 +2424,14 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 				We need also to reconcile together the origin currency difference line and its reversal in order to completly
 				cancel the currency difference entry on the partner account (otherwise it will still appear on the aged balance
 				for example).`,
-		func(rs h.AccountFullReconcileSet) int64 {
+		func(rs m.AccountFullReconcileSet) int64 {
 			for _, rec := range rs.Records() {
 				if rec.ExchangeMove().IsEmpty() {
 					continue
 				}
 				// reverse the exchange rate entry
 				// reconciliation of the exchange move and its reversal is handled in reverse_moves
-				rec.ExchangeMove().ReverseMoves(dates.Date{}, h.AccountJournalSet{})
+				rec.ExchangeMove().ReverseMoves(dates.Date{}, h.AccountJournal().NewSet(rs.Env()))
 				rec.SetExchangeMove(h.AccountMove().NewSet(rs.Env()))
 			}
 			return rs.Super().Unlink()
@@ -2439,7 +2439,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountFullReconcile().Methods().PrepareExchangeDiffMove().DeclareMethod(
 		`PrepareExchangeDiffMove`,
-		func(rs h.AccountFullReconcileSet, moveDate dates.Date, company h.CompanySet) *h.AccountMoveData {
+		func(rs m.AccountFullReconcileSet, moveDate dates.Date, company m.CompanySet) m.AccountMoveData {
 			if company.CurrencyExchangeJournal().IsEmpty() {
 				panic(rs.T(`You should configure the 'Exchange Rate Journal' in the accounting settings, to manage automatically the booking of accounting entries related to differences between exchange rates.`))
 			}
