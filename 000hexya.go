@@ -10,15 +10,20 @@ import (
 	"github.com/hexya-addons/web/controllers"
 	"github.com/hexya-erp/hexya/src/models/security"
 	"github.com/hexya-erp/hexya/src/server"
+	"github.com/hexya-erp/hexya/src/tools/logging"
 )
 
 const MODULE_NAME string = "account"
+
+var log logging.Logger
 
 func init() {
 	server.RegisterModule(&server.Module{
 		Name:     MODULE_NAME,
 		PostInit: func() {},
 	})
+
+	log = logging.GetLogger("account")
 
 	GroupAccountInvoice = security.Registry.NewGroup("account_group_account_invoice", "Billing", base.GroupUser)
 	GroupAccountUser = security.Registry.NewGroup("account_group_account_user", "Accountant", GroupAccountInvoice)

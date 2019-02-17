@@ -7,6 +7,7 @@ import (
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 )
 
 func init() {
@@ -14,7 +15,7 @@ func init() {
 	h.AccountFinancialReport().DeclareModel()
 	h.AccountFinancialReport().Methods().GetLevel().DeclareMethod(
 		`GetLevel`,
-		func(rs h.AccountFinancialReportSet) *h.AccountFinancialReportData {
+		func(rs m.AccountFinancialReportSet) m.AccountFinancialReportData {
 			//@api.depends('parent_id','parent_id.level')
 			/*def _get_level(self):
 			  '''Returns a dictionary with key=the ID of a record and value = the level of this
@@ -26,11 +27,12 @@ func init() {
 			      report.level = level
 
 			*/
-			return &h.AccountFinancialReportData{}
+			return h.AccountFinancialReport().NewData()
 		})
+
 	h.AccountFinancialReport().Methods().GetChildrenByOrder().DeclareMethod(
 		`GetChildrenByOrder`,
-		func(rs h.AccountFinancialReportSet) {
+		func(rs m.AccountFinancialReportSet) {
 			/*def _get_children_by_order(self):
 			    '''returns a recordset of all the children computed recursively, and sorted by sequence. Ready for the printing'''
 			    res = self

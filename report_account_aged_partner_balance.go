@@ -3,14 +3,17 @@
 
 package account
 
-import "github.com/hexya-erp/pool/h"
+import (
+	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
+)
 
 func init() {
 
 	h.ReportAccountReportAgedpartnerbalance().DeclareTransientModel()
 	h.ReportAccountReportAgedpartnerbalance().Methods().GetPartnerMoveLines().DeclareMethod(
 		`GetPartnerMoveLines`,
-		func(rs h.ReportAccountReportAgedpartnerbalanceSet, args struct {
+		func(rs m.ReportAccountReportAgedpartnerbalanceSet, args struct {
 			AccountType  interface{}
 			DateFrom     interface{}
 			TargetMove   interface{}
@@ -203,7 +206,7 @@ func init() {
 		})
 	h.ReportAccountReportAgedpartnerbalance().Methods().RenderHtml().DeclareMethod(
 		`RenderHtml`,
-		func(rs h.ReportAccountReportAgedpartnerbalanceSet, args struct {
+		func(rs m.ReportAccountReportAgedpartnerbalanceSet, args struct {
 			Docids interface{}
 			Data   interface{}
 		}) {

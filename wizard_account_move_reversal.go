@@ -6,6 +6,7 @@ package account
 import (
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 )
 
 func init() {
@@ -17,7 +18,7 @@ func init() {
 	})
 	h.AccountMoveReversal().Methods().ReverseMoves().DeclareMethod(
 		`ReverseMoves`,
-		func(rs h.AccountMoveReversalSet) {
+		func(rs m.AccountMoveReversalSet) {
 			//@api.multi
 			/*def reverse_moves(self):
 			  ac_move_ids = self._context.get('active_ids', False)

@@ -3,14 +3,17 @@
 
 package account
 
-import "github.com/hexya-erp/pool/h"
+import (
+	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
+)
 
 func init() {
 
 	h.ReportAccountReportFinancial().DeclareTransientModel()
 	h.ReportAccountReportFinancial().Methods().ComputeAccountBalance().DeclareMethod(
 		`ComputeAccountBalance`,
-		func(rs h.ReportAccountReportFinancialSet, args struct {
+		func(rs m.ReportAccountReportFinancialSet, args struct {
 			Accounts interface{}
 		}) {
 			/*def _compute_account_balance(self, accounts):
@@ -47,7 +50,7 @@ func init() {
 		})
 	h.ReportAccountReportFinancial().Methods().ComputeReportBalance().DeclareMethod(
 		`ComputeReportBalance`,
-		func(rs h.ReportAccountReportFinancialSet, args struct {
+		func(rs m.ReportAccountReportFinancialSet, args struct {
 			Reports interface{}
 		}) {
 			/*def _compute_report_balance(self, reports):
@@ -94,7 +97,7 @@ func init() {
 		})
 	h.ReportAccountReportFinancial().Methods().GetAccountLines().DeclareMethod(
 		`GetAccountLines`,
-		func(rs h.ReportAccountReportFinancialSet, args struct {
+		func(rs m.ReportAccountReportFinancialSet, args struct {
 			Data interface{}
 		}) {
 			/*def get_account_lines(self, data):
@@ -166,7 +169,7 @@ func init() {
 		})
 	h.ReportAccountReportFinancial().Methods().RenderHtml().DeclareMethod(
 		`RenderHtml`,
-		func(rs h.ReportAccountReportFinancialSet, args struct {
+		func(rs m.ReportAccountReportFinancialSet, args struct {
 			Docids interface{}
 			Data   interface{}
 		}) {

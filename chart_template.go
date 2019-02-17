@@ -4,12 +4,17 @@
 package account
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/hexya-addons/web/webdata"
 	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/hexya/src/tools/nbutils"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
 )
 
@@ -19,130 +24,173 @@ func init() {
 	h.AccountAccountTemplate().SetDefaultOrder("code")
 
 	h.AccountAccountTemplate().AddFields(map[string]models.FieldDefinition{
-		"Name": models.CharField{Required: true, Index: true},
-		"Currency": models.Many2OneField{String: "Account Currency", RelationModel: h.Currency(),
-			Help: "Forces all moves for this account to have this secondary currency."},
-		"Code": models.CharField{String: "Code", Size: 64, Required: true, Index: true},
-		"UserType": models.Many2OneField{String: "Type", RelationModel: h.AccountAccountType(), Required: true,
+		"Name": models.CharField{
+			Required: true,
+			Index:    true},
+		"Currency": models.Many2OneField{
+			String:        "Account Currency",
+			RelationModel: h.Currency(),
+			Help:          "Forces all moves for this account to have this secondary currency."},
+		"Code": models.CharField{
+			String:   "Code",
+			Size:     64,
+			Required: true,
+			Index:    true},
+		"UserType": models.Many2OneField{
+			String:        "Type",
+			RelationModel: h.AccountAccountType(),
+			Required:      true,
 			Help: `These types are defined according to your country.
 The type contains more information about the account and its specificities.`},
-		"Reconcile": models.BooleanField{String: "Allow Invoices & payments Matching",
+		"Reconcile": models.BooleanField{
+			String:  "Allow Invoices & payments Matching",
 			Default: models.DefaultValue(false),
 			Help:    "Check this option if you want the user to reconcile entries in this account."},
 		"Note": models.TextField{},
-		"Taxes": models.Many2ManyField{String: "Default Taxes", RelationModel: h.AccountTaxTemplate(),
-			JSON: "tax_ids"},
-		"Nocreate": models.BooleanField{String: "Optional Create", Default: models.DefaultValue(false),
-			Help: "If checked, the new chart of accounts will not contain this by default."},
-		"ChartTemplate": models.Many2OneField{RelationModel: h.AccountChartTemplate(),
+		"Taxes": models.Many2ManyField{
+			String:        "Default Taxes",
+			RelationModel: h.AccountTaxTemplate(),
+			JSON:          "tax_ids"},
+		"Nocreate": models.BooleanField{
+			String:  "Optional Create",
+			Default: models.DefaultValue(false),
+			Help:    "If checked, the new chart of accounts will not contain this by default."},
+		"ChartTemplate": models.Many2OneField{
+			RelationModel: h.AccountChartTemplate(),
 			Help: `This optional field allow you to link an account template to a specific chart template that may
 differ from the one its root parent belongs to. This allow you
 to define chart templates that extend another and complete it with
 few new accounts (You don't need to define the whole structure that
 is common to both several times).`},
-		"Tags": models.Many2ManyField{String: "Account tag", RelationModel: h.AccountAccountTag(), JSON: "tag_ids",
-			Help: "Optional tags you may want to assign for custom reporting"},
+		"Tags": models.Many2ManyField{
+			String:        "Account tag",
+			RelationModel: h.AccountAccountTag(),
+			JSON:          "tag_ids",
+			Help:          "Optional tags you may want to assign for custom reporting"},
 	})
 
 	//h.AccountChartTemplate().Fields().DisplayName().SetDepends([]string{"Name", "Code"})
 
 	h.AccountAccountTemplate().Methods().NameGet().Extend("",
-		func(rs h.AccountAccountTemplateSet) string {
-			//@api.depends('name','code')
-			/*def name_get(self):
-			  res = []
-			  for record in self:
-			      name = record.name
-			      if record.code:
-			          name = record.code + ' ' + name
-			      res.append((record.id, name))
-			  return res
-
-
-			*/
-			return rs.Super().NameGet()
+		func(rs m.AccountAccountTemplateSet) string {
+			name := rs.Name()
+			if rs.Code() != "" {
+				name = rs.Code() + " " + name
+			}
+			return name
 		})
 
 	h.AccountChartTemplate().DeclareModel()
 
 	h.AccountChartTemplate().AddFields(map[string]models.FieldDefinition{
-		"Name":    models.CharField{Required: true},
-		"Company": models.Many2OneField{RelationModel: h.Company()},
-		"Parent": models.Many2OneField{String: "Parent Chart Template",
+		"Name": models.CharField{
+			Required: true},
+		"Company": models.Many2OneField{
+			RelationModel: h.Company()},
+		"Parent": models.Many2OneField{
+			String:        "Parent Chart Template",
 			RelationModel: h.AccountChartTemplate()},
-		"CodeDigits": models.IntegerField{String: "# of Digits", Required: true,
-			Default: models.DefaultValue(6), Help: "No. of Digits to use for account code"},
-		"Visible": models.BooleanField{String: "Can be Visible?",
+		"CodeDigits": models.IntegerField{
+			String:   "# of Digits",
+			Required: true,
+			Default:  models.DefaultValue(6),
+			Help:     "No. of Digits to use for account code"},
+		"Visible": models.BooleanField{
+			String:  "Can be Visible?",
 			Default: models.DefaultValue(true),
 			Help: `Set this to False if you don't want this template to be used actively in the wizard that
 generate Chart of Accounts from templates, this is useful when you want to generate
 accounts of this template only when loading its child template.`},
-		"Currency": models.Many2OneField{RelationModel: h.Currency(), Required: true},
-		"UseAngloSaxon": models.BooleanField{String: "Use Anglo-Saxon accounting",
+		"Currency": models.Many2OneField{
+			RelationModel: h.Currency(),
+			Required:      true},
+		"UseAngloSaxon": models.BooleanField{
+			String:  "Use Anglo-Saxon accounting",
 			Default: models.DefaultValue(false)},
-		"CompleteTaxSet": models.BooleanField{String: "Complete Set of Taxes",
+		"CompleteTaxSet": models.BooleanField{
+			String:  "Complete Set of Taxes",
 			Default: models.DefaultValue(true),
 			Help: `This boolean helps you to choose if you want to propose to the user to encode the sale and
 purchase rates or choose from list  of taxes. This last choice assumes that the set of tax
 defined on this template is complete`},
-		"Accounts": models.One2ManyField{String: "Associated Account Templates",
-			RelationModel: h.AccountAccountTemplate(), ReverseFK: "ChartTemplate", JSON: "account_ids"},
-		"TaxTemplates": models.One2ManyField{String: "Tax Template List",
-			RelationModel: h.AccountTaxTemplate(), ReverseFK: "ChartTemplate", JSON: "tax_template_ids",
-			Help: "List of all the taxes that have to be installed by the wizard"},
-		"BankAccountCodePrefix": models.CharField{String: "Prefix of the bank accounts"},
-		"CashAccountCodePrefix": models.CharField{String: "Prefix of the main cash accounts"},
-		"TransferAccount": models.Many2OneField{RelationModel: h.AccountAccountTemplate(),
-			Required: true, Filter: q.AccountAccountTemplate().Reconcile().Equals(true).
-					And().UserTypeFilteredOn(
+		"Accounts": models.One2ManyField{
+			String:        "Associated Account Templates",
+			RelationModel: h.AccountAccountTemplate(),
+			ReverseFK:     "ChartTemplate",
+			JSON:          "account_ids"},
+		"TaxTemplates": models.One2ManyField{
+			String:        "Tax Template List",
+			RelationModel: h.AccountTaxTemplate(),
+			ReverseFK:     "ChartTemplate",
+			JSON:          "tax_template_ids",
+			Help:          "List of all the taxes that have to be installed by the wizard"},
+		"BankAccountCodePrefix": models.CharField{
+			String: "Prefix of the bank accounts"},
+		"CashAccountCodePrefix": models.CharField{
+			String: "Prefix of the main cash accounts"},
+		"TransferAccount": models.Many2OneField{
+			RelationModel: h.AccountAccountTemplate(),
+			Required:      true,
+			Filter: q.AccountAccountTemplate().Reconcile().Equals(true).
+				And().UserTypeFilteredOn(
 				q.AccountAccountType().HexyaExternalID().Equals("account_data_account_type_current_assets")),
 			Help: "Intermediary account used when moving money from a liquidity account to another"},
-		"IncomeCurrencyExchangeAccount": models.Many2OneField{String: "Gain Exchange Rate Account",
+		"IncomeCurrencyExchangeAccount": models.Many2OneField{
+			String:        "Gain Exchange Rate Account",
 			RelationModel: h.AccountAccountTemplate()},
-		"ExpenseCurrencyExchangeAccount": models.Many2OneField{String: "Loss Exchange Rate Account",
+		"ExpenseCurrencyExchangeAccount": models.Many2OneField{
+			String:        "Loss Exchange Rate Account",
 			RelationModel: h.AccountAccountTemplate()},
-		"PropertyAccountReceivable": models.Many2OneField{String: "Receivable Account",
+		"PropertyAccountReceivable": models.Many2OneField{
+			String:        "Receivable Account",
 			RelationModel: h.AccountAccountTemplate()},
-		"PropertyAccountPayable": models.Many2OneField{String: "Payable Account",
+		"PropertyAccountPayable": models.Many2OneField{
+			String:        "Payable Account",
 			RelationModel: h.AccountAccountTemplate()},
-		"PropertyAccountExpenseCateg": models.Many2OneField{String: "Category of Expense Account",
+		"PropertyAccountExpenseCateg": models.Many2OneField{
+			String:        "Category of Expense Account",
 			RelationModel: h.AccountAccountTemplate()},
-		"PropertyAccountIncomeCateg": models.Many2OneField{String: "Category of Income Account",
+		"PropertyAccountIncomeCateg": models.Many2OneField{
+			String:        "Category of Income Account",
 			RelationModel: h.AccountAccountTemplate()},
-		"PropertyAccountExpense": models.Many2OneField{String: "Expense Account on Product Template",
+		"PropertyAccountExpense": models.Many2OneField{
+			String:        "Expense Account on Product Template",
 			RelationModel: h.AccountAccountTemplate()},
-		"PropertyAccountIncome": models.Many2OneField{String: "Income Account on Product Template",
+		"PropertyAccountIncome": models.Many2OneField{
+			String:        "Income Account on Product Template",
 			RelationModel: h.AccountAccountTemplate()},
-		"PropertyStockAccountInputCateg": models.Many2OneField{String: "Input Account for Stock Valuation",
+		"PropertyStockAccountInputCateg": models.Many2OneField{
+			String:        "Input Account for Stock Valuation",
 			RelationModel: h.AccountAccountTemplate()},
-		"PropertyStockAccountOutputCateg": models.Many2OneField{String: "Output Account for Stock Valuation",
+		"PropertyStockAccountOutputCateg": models.Many2OneField{
+			String:        "Output Account for Stock Valuation",
 			RelationModel: h.AccountAccountTemplate()},
-		"PropertyStockValuationAccount": models.Many2OneField{String: "Account Template for Stock Valuation",
+		"PropertyStockValuationAccount": models.Many2OneField{
+			String:        "Account Template for Stock Valuation",
 			RelationModel: h.AccountAccountTemplate()},
 	})
 
 	h.AccountChartTemplate().Methods().TryLoadingForCurrentCompany().DeclareMethod(
 		`TryLoadingForCurrentCompany`,
-		func(rs h.AccountChartTemplateSet) *actions.Action {
-			//@api.one
-			/*def try_loading_for_current_company(self):
-			  self.ensure_one()
-			  company = self.env.user.company_id
-			  # If we don't have any chart of account on this company, install this chart of account
-			  if not company.chart_template_id:
-			      wizard = self.env['wizard.multi.charts.accounts'].create({
-			          'company_id': self.env.user.company_id.id,
-			          'chart_template_id': self.id,
-			          'code_digits': self.code_digits,
-			          'transfer_account_id': self.transfer_account_id.id,
-			          'currency_id': self.currency_id.id,
-			          'bank_account_code_prefix': self.bank_account_code_prefix,
-			          'cash_account_code_prefix': self.cash_account_code_prefix,
-			      })
-			      wizard.onchange_chart_template_id()
-			      wizard.execute()
+		func(rs m.AccountChartTemplateSet) *actions.Action {
+			var company m.CompanySet
+			var wizard m.WizardMultiChartsAccountsSet
 
-			*/
+			rs.EnsureOne()
+			company = h.User().NewSet(rs.Env()).CurrentUser().Company()
+			// If we don't have any chart of account on this company, install this chart of account
+			if company.ChartTemplate().IsEmpty() {
+				wizard = h.WizardMultiChartsAccounts().Create(rs.Env(), h.WizardMultiChartsAccounts().NewData().
+					SetCompany(company).
+					SetChartTemplate(rs).
+					SetCodeDigits(rs.CodeDigits()).
+					SetTransferAccount(rs.TransferAccount()).
+					SetCurrency(rs.Currency()).
+					SetBankAccountCodePrefix(rs.BankAccountCodePrefix()).
+					SetCashAccountCodePrefix(rs.CashAccountCodePrefix()))
+				wizard.OnchangeChartTemplate()
+				wizard.Execute()
+			}
 			return &actions.Action{
 				Type: actions.ActionCloseWindow,
 			}
@@ -150,108 +198,122 @@ defined on this template is complete`},
 
 	h.AccountChartTemplate().Methods().OpenSelectTemplateWizard().DeclareMethod(
 		`OpenSelectTemplateWizard`,
-		func(rs h.AccountChartTemplateSet) bool {
-			//@api.multi
-			/*def open_select_template_wizard(self):
-			  # Add action to open wizard to select between several templates
-			  if not self.company_id.chart_template_id:
-			      todo = self.env['ir.actions.todo']
-			      action_rec = self.env['ir.model.data'].xmlid_to_object('account.action_wizard_multi_chart')
-			      if action_rec:
-			          todo.create({'action_id': action_rec.id, 'name': _('Choose Accounting Template'), 'type': 'automatic'})
-			  return True
-
-			*/
-			return true
+		func(rs m.AccountChartTemplateSet) *actions.Action {
+			actionRec := &actions.Action{
+				Type: actions.ActionCloseWindow,
+			}
+			if rs.Company().ChartTemplate().IsNotEmpty() {
+				actionRec = actions.Registry.GetById("account_action_wizard_multi_chart")
+			}
+			return actionRec
 		})
 
 	h.AccountChartTemplate().Methods().GenerateJournals().DeclareMethod(
-		`GenerateJournals`,
-		func(rs h.AccountChartTemplateSet, accTemplateRef map[int64]int64, company h.CompanySet,
-			journalsData []*h.AccountJournalData) bool {
-			//@api.model
-			/*def generate_journals(self, acc_template_ref, company, journals_dict=None):
-			  """
-			  This method is used for creating journals.
+		`GenerateJournals This method is used for creating journals.
 
 			  :param chart_temp_id: Chart Template Id.
 			  :param acc_template_ref: Account templates reference.
 			  :param company_id: company_id selected from wizard.multi.charts.accounts.
-			  :returns: True
-			  """
-			  JournalObj = self.env['account.journal']
-			  for vals_journal in self._prepare_all_journals(acc_template_ref, company, journals_dict=journals_dict):
-			      journal = JournalObj.create(vals_journal)
-			      if vals_journal['type'] == 'general' and vals_journal['code'] == _('EXCH'):
-			          company.write({'currency_exchange_journal_id': journal.id})
-			  return True
+			  :returns: True`,
+		func(rs m.AccountChartTemplateSet, accTemplateRef map[int64]int64, company m.CompanySet,
+			journalsData []m.AccountJournalData) bool {
 
-			*/
+			var journal m.AccountJournalSet
+			for _, valsJournal := range rs.PrepareAllJournals(accTemplateRef, company, journalsData) {
+				journal = h.AccountJournal().Create(rs.Env(), valsJournal)
+				if valsJournal.Type() == "general" && valsJournal.Code() == rs.T(`EXCH`) {
+					company.SetCurrencyExchangeJournal(journal)
+				}
+			}
 			return true
 		})
 
 	h.AccountChartTemplate().Methods().PrepareAllJournals().DeclareMethod(
 		`PrepareAllJournals`,
-		func(rs h.AccountChartTemplateSet, accTemplateRef map[int64]int64, company h.CompanySet,
-			journalsData []*h.AccountJournalData) []*h.AccountJournalData {
-			//@api.multi
-			/*def _prepare_all_journals(self, acc_template_ref, company, journals_dict=None):
-			 */
-			/*def _get_default_account(journal_vals, type='debit'):
-			      # Get the default accounts
-			      default_account = False
-			      if journal['type'] == 'sale':
-			          default_account = acc_template_ref.get(self.property_account_income_categ_id.id)
-			      elif journal['type'] == 'purchase':
-			          default_account = acc_template_ref.get(self.property_account_expense_categ_id.id)
-			      elif journal['type'] == 'general' and journal['code'] == _('EXCH'):
-			          if type=='credit':
-			              default_account = acc_template_ref.get(self.income_currency_exchange_account_id.id)
-			          else:
-			              default_account = acc_template_ref.get(self.expense_currency_exchange_account_id.id)
-			      return default_account
+		func(rs m.AccountChartTemplateSet, accTemplateRef map[int64]int64, company m.CompanySet,
+			journalsData []m.AccountJournalData) []m.AccountJournalData {
 
-			  journals = [{'name': _('Customer Invoices'), 'type': 'sale', 'code': _('INV'), 'favorite': True, 'sequence': 5},
-			              {'name': _('Vendor Bills'), 'type': 'purchase', 'code': _('BILL'), 'favorite': True, 'sequence': 6},
-			              {'name': _('Miscellaneous Operations'), 'type': 'general', 'code': _('MISC'), 'favorite': False, 'sequence': 7},
-			              {'name': _('Exchange Difference'), 'type': 'general', 'code': _('EXCH'), 'favorite': False, 'sequence': 9},]
-			  if journals_dict != None:
-			      journals.extend(journals_dict)
+			getDefaultAccount := func(data m.AccountJournalData, typ string) m.AccountAccountSet {
+				var id int64
+				// Get the default accounts
+				switch {
+				case data.Type() == "sale":
+					id = accTemplateRef[rs.PropertyAccountIncomeCateg().ID()]
+				case data.Type() == "purchase":
+					id = accTemplateRef[rs.PropertyAccountExpenseCateg().ID()]
+				case data.Type() == "general" && data.Code() == rs.T(`EXCH`):
+					if typ == "credit" {
+						id = accTemplateRef[rs.IncomeCurrencyExchangeAccount().ID()]
+					} else {
+						id = accTemplateRef[rs.ExpenseCurrencyExchangeAccount().ID()]
+					}
+				}
+				return h.AccountAccount().BrowseOne(rs.Env(), id)
+			}
 
-			  self.ensure_one()
-			  journal_data = []
-			  for journal in journals:
-			      vals = {
-			          'type': journal['type'],
-			          'name': journal['name'],
-			          'code': journal['code'],
-			          'company_id': company.id,
-			          'default_credit_account_id': _get_default_account(journal, 'credit'),
-			          'default_debit_account_id': _get_default_account(journal, 'debit'),
-			          'show_on_dashboard': journal['favorite'],
-			          'sequence': journal['sequence']
-			      }
-			      journal_data.append(vals)
-			  return journal_data
+			var journals []m.AccountJournalData
+			var journalsOut []m.AccountJournalData
+			var journalOut m.AccountJournalData
 
-			*/
-			return []*h.AccountJournalData{}
+			rs.EnsureOne()
+			journals = []m.AccountJournalData{
+				h.AccountJournal().NewData().
+					SetName(rs.T("Customer Invoices")).
+					SetType("sale").
+					SetCode(rs.T("INV")).
+					SetShowOnDashboard(true).
+					SetSequence(5),
+				h.AccountJournal().NewData().
+					SetName(rs.T("Vendor Bills")).
+					SetType("purchase").
+					SetCode(rs.T("BILL")).
+					SetShowOnDashboard(true).
+					SetSequence(6),
+				h.AccountJournal().NewData().
+					SetName(rs.T("Miscellaneous Operations")).
+					SetType("general").
+					SetCode(rs.T("MISC")).
+					SetShowOnDashboard(false).
+					SetSequence(7),
+				h.AccountJournal().NewData().
+					SetName(rs.T("Exchange Difference")).
+					SetType("general").
+					SetCode(rs.T("EXCH")).
+					SetShowOnDashboard(false).
+					SetSequence(9),
+			}
+			journals = append(journals, journalsData...)
+
+			for _, journal := range journals {
+				journalOut = h.AccountJournal().NewData().
+					SetType(journal.Type()).
+					SetName(journal.Name()).
+					SetCode(journal.Code()).
+					SetCompany(company).
+					SetShowOnDashboard(journal.ShowOnDashboard()).
+					SetSequence(journal.Sequence()).
+					SetDefaultCreditAccount(getDefaultAccount(journal, "credit")).
+					SetDefaultDebitAccount(getDefaultAccount(journal, "debit"))
+
+				journalsOut = append(journalsOut, journalOut)
+			}
+			return journalsOut
 		})
 
 	h.AccountChartTemplate().Methods().GenerateProperties().DeclareMethod(
-		`GenerateProperties`,
-		func(rs h.AccountChartTemplateSet, accTemplateRef map[int64]int64, company h.CompanySet) bool {
-			//@api.multi
-			/*def generate_properties(self, acc_template_ref, company):
-			  """
+		`GenerateProperties
 			  This method used for creating properties.
 
 			  :param self: chart templates for which we need to create properties
 			  :param acc_template_ref: Mapping between ids of account templates and real accounts created from them
 			  :param company_id: company_id selected from wizard.multi.charts.accounts.
-			  :returns: True
-			  """
-			  self.ensure_one()
+			  :returns: True`,
+		func(rs m.AccountChartTemplateSet, accTemplateRef map[int64]int64, company m.CompanySet) bool {
+
+			// tovalid missing self.env['ir.property']
+			// tovalid missing self.env['ir.model.fields']
+
+			/*def generate_properties(self, acc_template_ref, company):
 			  PropertyObj = self.env['ir.property']
 			  todo_list = [
 			      ('property_account_receivable_id', 'res.partner', 'account.account'),
@@ -296,12 +358,8 @@ defined on this template is complete`},
 		})
 
 	h.AccountChartTemplate().Methods().InstallTemplate().DeclareMethod(
-		`InstallTemplate`,
-		func(rs h.AccountChartTemplateSet, company h.CompanySet, codeDigits int64, transferAccount h.AccountAccountSet,
-			objWizard h.WizardMultiChartsAccountsSet, accRef, taxesRef map[int64]int64) (map[int64]int64, map[int64]int64) {
-			//@api.multi
-			/*def _install_template(self, company, code_digits=None, transfer_account_id=None, obj_wizard=None, acc_ref=None, taxes_ref=None):
-			  """ Recursively load the template objects and create the real objects from them.
+		`InstallTemplate
+				  Recursively load the template objects and create the real objects from them.
 
 			      :param company: company the wizard is running for
 			      :param code_digits: number of digits the accounts code should have in the COA
@@ -313,33 +371,33 @@ defined on this template is complete`},
 			          * the mapping between the account template ids and the ids of the real accounts that have been generated
 			            from them, as first item,
 			          * a similar dictionary for mapping the tax templates and taxes, as second item,
-			      :rtype: tuple(dict, dict, dict)
-			  """
-			  self.ensure_one()
-			  if acc_ref is None:
-			      acc_ref = {}
-			  if taxes_ref is None:
-			      taxes_ref = {}
-			  if self.parent_id:
-			      tmp1, tmp2 = self.parent_id._install_template(company, code_digits=code_digits, transfer_account_id=transfer_account_id, acc_ref=acc_ref, taxes_ref=taxes_ref)
-			      acc_ref.update(tmp1)
-			      taxes_ref.update(tmp2)
-			  tmp1, tmp2 = self._load_template(company, code_digits=code_digits, transfer_account_id=transfer_account_id, account_ref=acc_ref, taxes_ref=taxes_ref)
-			  acc_ref.update(tmp1)
-			  taxes_ref.update(tmp2)
-			  return acc_ref, taxes_ref
+			      :rtype: tuple(dict, dict, dict)`,
+		func(rs m.AccountChartTemplateSet, company m.CompanySet, codeDigits int64, transferAccount m.AccountAccountTemplateSet,
+			objWizard m.WizardMultiChartsAccountsSet, accRef, taxesRef map[int64]int64) (map[int64]int64, map[int64]int64) {
 
-			*/
+			rs.EnsureOne()
+
+			if rs.Parent().IsNotEmpty() {
+				tmp1, tmp2 := rs.Parent().InstallTemplate(company, codeDigits, transferAccount, h.WizardMultiChartsAccounts().NewSet(rs.Env()), accRef, taxesRef)
+				for key, val := range tmp1 {
+					accRef[key] = val
+				}
+				for key, val := range tmp2 {
+					taxesRef[key] = val
+				}
+			}
+			tmp1, tmp2 := rs.LoadTemplate(company, codeDigits, transferAccount, accRef, taxesRef)
+			for key, val := range tmp1 {
+				accRef[key] = val
+			}
+			for key, val := range tmp2 {
+				taxesRef[key] = val
+			}
 			return accRef, taxesRef
 		})
 
 	h.AccountChartTemplate().Methods().LoadTemplate().DeclareMethod(
-		`LoadTemplate`,
-		func(rs h.AccountChartTemplateSet, company h.CompanySet, codeDigits int64, transferAccount h.AccountAccountSet,
-			accountRef, taxesRef map[int64]int64) (map[int64]int64, map[int64]int64) {
-			//@api.multi
-			/*def _load_template(self, company, code_digits=None, transfer_account_id=None, account_ref=None, taxes_ref=None):
-			  """ Generate all the objects from the templates
+		`LoadTemplate Generate all the objects from the templates
 
 			      :param company: company the wizard is running for
 			      :param code_digits: number of digits the accounts code should have in the COA
@@ -350,255 +408,318 @@ defined on this template is complete`},
 			          * the mapping between the account template ids and the ids of the real accounts that have been generated
 			            from them, as first item,
 			          * a similar dictionary for mapping the tax templates and taxes, as second item,
-			      :rtype: tuple(dict, dict, dict)
-			  """
-			  self.ensure_one()
-			  if account_ref is None:
-			      account_ref = {}
-			  if taxes_ref is None:
-			      taxes_ref = {}
-			  if not code_digits:
-			      code_digits = self.code_digits
-			  if not transfer_account_id:
-			      transfer_account_id = self.transfer_account_id
-			  AccountTaxObj = self.env['account.tax']
+			      :rtype: tuple(dict, dict, dict)`,
+		func(rs m.AccountChartTemplateSet, company m.CompanySet, codeDigits int64, transferAccount m.AccountAccountTemplateSet,
+			accountRef, taxesRef map[int64]int64) (map[int64]int64, map[int64]int64) {
 
-			  # Generate taxes from templates.
-			  generated_tax_res = self.tax_template_ids._generate_tax(company)
-			  taxes_ref.update(generated_tax_res['tax_template_to_tax'])
+			var data m.AccountTaxData
+			var taxTemplateToTax map[int64]int64
+			var accountTemplateRef map[int64]int64
+			var AccountDict map[int64]struct {
+				AccountID       int64
+				RefundAccountID int64
+			}
 
-			  # Generating Accounts from templates.
-			  account_template_ref = self.generate_account(taxes_ref, account_ref, code_digits, company)
-			  account_ref.update(account_template_ref)
+			rs.EnsureOne()
+			if codeDigits == 0 {
+				codeDigits = rs.CodeDigits()
+			}
+			if transferAccount.IsEmpty() {
+				transferAccount = rs.TransferAccount()
+			}
 
-			  # writing account values after creation of accounts
-			  company.transfer_account_id = account_template_ref[transfer_account_id.id]
-			  for key, value in generated_tax_res['account_dict'].items():
-			      if value['refund_account_id'] or value['account_id']:
-			          AccountTaxObj.browse(key).write({
-			              'refund_account_id': account_ref.get(value['refund_account_id'], False),
-			              'account_id': account_ref.get(value['account_id'], False),
-			          })
+			// Generate taxes from templates.
+			taxTemplateToTax, AccountDict = rs.TaxTemplates().GenerateTax(company)
+			for key, val := range taxTemplateToTax {
+				taxesRef[key] = val
+			}
 
-			  # Create Journals - Only done for root chart template
-			  if not self.parent_id:
-			      self.generate_journals(account_ref, company)
+			// Generating Accounts from templates.
+			accountTemplateRef = rs.GenerateAccount(taxesRef, accountRef, int(codeDigits), company)
+			for key, val := range accountTemplateRef {
+				accountRef[key] = val
+			}
 
-			  # generate properties function
-			  self.generate_properties(account_ref, company)
+			// writing account values after creation of accounts
+			company.SetTransferAccount(h.AccountAccount().BrowseOne(rs.Env(), accountTemplateRef[transferAccount.ID()]))
+			for id, values := range AccountDict {
+				data = h.AccountTax().NewData()
+				if values.RefundAccountID != 0 {
+					data.SetRefundAccount(h.AccountAccount().BrowseOne(rs.Env(), values.RefundAccountID))
+				}
+				if values.AccountID != 0 {
+					data.SetAccount(h.AccountAccount().BrowseOne(rs.Env(), values.AccountID))
+				}
+				h.AccountTax().BrowseOne(rs.Env(), id).Write(data)
+			}
 
-			  # Generate Fiscal Position , Fiscal Position Accounts and Fiscal Position Taxes from templates
-			  self.generate_fiscal_position(taxes_ref, account_ref, company)
+			// Create Journals - Only done for root chart template
+			if rs.Parent().IsEmpty() {
+				rs.GenerateJournals(accountRef, company, nil)
+			}
 
-			  # Generate account operation template templates
-			  self.generate_account_reconcile_model(taxes_ref, account_ref, company)
+			// generate properties function
+			rs.GenerateProperties(accountRef, company)
 
-			  return account_ref, taxes_ref
+			// Generate Fiscal Position , Fiscal Position Accounts and Fiscal Position Taxes from templates
+			rs.GenerateFiscalPosition(taxesRef, accountRef, company)
 
-			*/
+			// Generate account operation template templates
+			rs.GenerateAccountReconcileModel(taxesRef, accountRef, company)
+
 			return accountRef, taxesRef
 		})
 
 	h.AccountChartTemplate().Methods().GetAccountVals().DeclareMethod(
-		`GetAccountVals`,
-		func(rs h.AccountChartTemplateSet, company h.CompanySet, accountTemplate h.AccountAccountSet,
-			codeAcc string, taxTemplateRef map[int64]int64) *h.AccountAccountData {
-			/*def _get_account_vals(self, company, account_template, code_acc, tax_template_ref):
-			  """ This method generates a dictionary of all the values for the account that will be created.
-			  """
-			  self.ensure_one()
-			  tax_ids = []
-			  for tax in account_template.tax_ids:
-			      tax_ids.append(tax_template_ref[tax.id])
-			  val = {
-			          'name': account_template.name,
-			          'currency_id': account_template.currency_id and account_template.currency_id.id or False,
-			          'code': code_acc,
-			          'user_type_id': account_template.user_type_id and account_template.user_type_id.id or False,
-			          'reconcile': account_template.reconcile,
-			          'note': account_template.note,
-			          'tax_ids': [(6, 0, tax_ids)],
-			          'company_id': company.id,
-			          'tag_ids': [(6, 0, [t.id for t in account_template.tag_ids])],
-			      }
-			  return val
+		`GetAccountVals This method generates a dictionary of all the values for the account that will be created.`,
+		func(rs m.AccountChartTemplateSet, company m.CompanySet, accountTemplate m.AccountAccountTemplateSet,
+			codeAcc string, taxTemplateRef map[int64]int64) m.AccountAccountData {
 
-			*/
-			return &h.AccountAccountData{}
+			var taxIds []int64
+			var data m.AccountAccountData
+
+			rs.EnsureOne()
+
+			for _, tax := range accountTemplate.Taxes().Records() {
+				taxIds = append(taxIds, taxTemplateRef[tax.ID()])
+			}
+
+			data = h.AccountAccount().NewData().
+				SetName(accountTemplate.Name()).
+				SetCode(accountTemplate.Code()).
+				SetReconcile(accountTemplate.Reconcile()).
+				SetNote(accountTemplate.Note()).
+				SetTags(accountTemplate.Tags()).
+				SetTaxes(h.AccountTax().Browse(rs.Env(), taxIds)).
+				SetCompany(company)
+
+			if accountTemplate.Currency().IsNotEmpty() {
+				data.SetCurrency(accountTemplate.Currency())
+			}
+			if accountTemplate.UserType().IsNotEmpty() {
+				data.SetUserType(accountTemplate.UserType())
+			}
+
+			return data
 		})
 
 	h.AccountChartTemplate().Methods().GenerateAccount().DeclareMethod(
-		`GenerateAccount`,
-		func(rs h.AccountChartTemplateSet, taxTemplateRef, accTemplateRef map[int64]int64, codeDigits int,
-			company h.CompanySet) map[int64]int64 {
-			//@api.multi
-			/*def generate_account(self, tax_template_ref, acc_template_ref, code_digits, company):
-			  """ This method for generating accounts from templates.
+		`GenerateAccount This method for generating accounts from templates.
 
 			      :param tax_template_ref: Taxes templates reference for write taxes_id in account_account.
 			      :param acc_template_ref: dictionary with the mappping between the account templates and the real accounts.
 			      :param code_digits: number of digits got from wizard.multi.charts.accounts, this is use for account code.
 			      :param company_id: company_id selected from wizard.multi.charts.accounts.
 			      :returns: return acc_template_ref for reference purpose.
-			      :rtype: dict
-			  """
-			  self.ensure_one()
-			  account_tmpl_obj = self.env['account.account.template']
-			  acc_template = account_tmpl_obj.search([('nocreate', '!=', True), ('chart_template_id', '=', self.id)], order='id')
-			  for account_template in acc_template:
-			      code_main = account_template.code and len(account_template.code) or 0
-			      code_acc = account_template.code or ''
-			      if code_main > 0 and code_main <= code_digits:
-			          code_acc = str(code_acc) + (str('0'*(code_digits-code_main)))
-			      vals = self._get_account_vals(company, account_template, code_acc, tax_template_ref)
-			      new_account = self.create_record_with_xmlid(company, account_template, 'account.account', vals)
-			      acc_template_ref[account_template.id] = new_account
-			  return acc_template_ref
+			      :rtype: dict`,
+		func(rs m.AccountChartTemplateSet, taxTemplateRef, accTemplateRef map[int64]int64, codeDigits int,
+			company m.CompanySet) map[int64]int64 {
 
-			*/
+			var accTemplate m.AccountAccountTemplateSet
+			var query q.AccountAccountTemplateCondition
+			var code string
+			var data m.AccountAccountData
+			var newAccount m.AccountAccountSet
+
+			rs.EnsureOne()
+			query = q.AccountAccountTemplate().
+				Nocreate().NotEquals(true).
+				And().ChartTemplate().Equals(rs)
+			accTemplate = h.AccountAccountTemplate().Search(rs.Env(), query).OrderBy("id")
+
+			for _, accountTemplate := range accTemplate.Records() {
+				code = accountTemplate.Code()
+				if len(code) > 0 && len(code) < codeDigits {
+					code = code + strings.Repeat("0", codeDigits-len(code))
+				}
+				data = rs.GetAccountVals(company, accountTemplate, code, taxTemplateRef)
+				newAccount = h.AccountAccount().Create(rs.Env(), data.SetHexyaExternalID(fmt.Sprintf("%d_%s", company.ID(), accTemplate.HexyaExternalID())))
+				accTemplateRef[accountTemplate.ID()] = newAccount.ID()
+			}
 			return accTemplateRef
 		})
 
 	h.AccountChartTemplate().Methods().PrepareReconcileModelVals().DeclareMethod(
-		`PrepareReconcileModelVals`,
-		func(rs h.AccountChartTemplateSet, company h.CompanySet, accountReconcileModel h.AccountReconcileModelTemplateSet,
-			taxTemplateRef, accTemplateRef map[int64]int64) *h.AccountReconcileModelData {
-			/*def _prepare_reconcile_model_vals(self, company, account_reconcile_model, acc_template_ref, tax_template_ref):
-			  """ This method generates a dictionary of all the values for the account.reconcile.model that will be created.
-			  """
-			  self.ensure_one()
-			  return {
-			          'name': account_reconcile_model.name,
-			          'sequence': account_reconcile_model.sequence,
-			          'has_second_line': account_reconcile_model.has_second_line,
-			          'company_id': company.id,
-			          'account_id': acc_template_ref[account_reconcile_model.account_id.id],
-			          'label': account_reconcile_model.label,
-			          'amount_type': account_reconcile_model.amount_type,
-			          'amount': account_reconcile_model.amount,
-			          'tax_id': account_reconcile_model.tax_id and tax_template_ref[account_reconcile_model.tax_id.id] or False,
-			          'second_account_id': account_reconcile_model.second_account_id and acc_template_ref[account_reconcile_model.second_account_id.id] or False,
-			          'second_label': account_reconcile_model.second_label,
-			          'second_amount_type': account_reconcile_model.second_amount_type,
-			          'second_amount': account_reconcile_model.second_amount,
-			          'second_tax_id': account_reconcile_model.second_tax_id and tax_template_ref[account_reconcile_model.second_tax_id.id] or False,
-			      }
+		`PrepareReconcileModelVals This method generates a dictionary of all the values for the account.reconcile.model that will be created.`,
+		func(rs m.AccountChartTemplateSet, company m.CompanySet, accountReconcileModel m.AccountReconcileModelTemplateSet,
+			taxTemplateRef, accTemplateRef map[int64]int64) m.AccountReconcileModelData {
 
-			*/
-			return &h.AccountReconcileModelData{}
+			rs.EnsureOne()
+			data := h.AccountReconcileModel().NewData().
+				SetName(accountReconcileModel.Name()).
+				SetSequence(accountReconcileModel.Sequence()).
+				SetHasSecondLine(accountReconcileModel.HasSecondLine()).
+				SetCompany(company).
+				SetAccount(h.AccountAccount().BrowseOne(rs.Env(), accTemplateRef[accountReconcileModel.Account().ID()])).
+				SetLabel(accountReconcileModel.Label()).
+				SetAmountType(accountReconcileModel.AmountType()).
+				SetAmount(accountReconcileModel.Amount()).
+				SetSecondLabel(accountReconcileModel.SecondLabel()).
+				SetSecondAmountType(accountReconcileModel.SecondAmountType()).
+				SetSecondAmount(accountReconcileModel.SecondAmount())
+
+			if val := accountReconcileModel.Tax(); val.IsNotEmpty() {
+				data.SetTax(h.AccountTax().BrowseOne(rs.Env(), taxTemplateRef[val.ID()]))
+			}
+			if val := accountReconcileModel.SecondAccount(); val.IsNotEmpty() {
+				data.SetSecondAccount(h.AccountAccount().BrowseOne(rs.Env(), accTemplateRef[val.ID()]))
+			}
+			if val := accountReconcileModel.SecondTax(); val.IsNotEmpty() {
+				data.SetSecondTax(h.AccountTax().BrowseOne(rs.Env(), taxTemplateRef[val.ID()]))
+			}
+
+			return data
 		})
 
 	h.AccountChartTemplate().Methods().GenerateAccountReconcileModel().DeclareMethod(
-		`GenerateAccountReconcileModel`,
-		func(rs h.AccountChartTemplateSet, taxTemplateRef, accTemplateRef map[int64]int64, company h.CompanySet) bool {
-			//@api.multi
-			/*def generate_account_reconcile_model(self, tax_template_ref, acc_template_ref, company):
-			  """ This method for generating accounts from templates.
+		`GenerateAccountReconcileModel This method for generating accounts from templates.
 
 			      :param tax_template_ref: Taxes templates reference for write taxes_id in account_account.
 			      :param acc_template_ref: dictionary with the mappping between the account templates and the real accounts.
 			      :param company_id: company_id selected from wizard.multi.charts.accounts.
 			      :returns: return new_account_reconcile_model for reference purpose.
-			      :rtype: dict
-			  """
-			  self.ensure_one()
-			  account_reconcile_models = self.env['account.reconcile.model.template'].search([
-			      ('account_id.chart_template_id', '=', self.id)
-			  ])
-			  for account_reconcile_model in account_reconcile_models:
-			      vals = self._prepare_reconcile_model_vals(company, account_reconcile_model, acc_template_ref, tax_template_ref)
-			      self.create_record_with_xmlid(company, account_reconcile_model, 'account.reconcile.model', vals)
-			  return True
+			      :rtype: dict`,
+		func(rs m.AccountChartTemplateSet, taxTemplateRef, accTemplateRef map[int64]int64, company m.CompanySet) bool {
 
-			*/
+			var accountReconcileModels m.AccountReconcileModelTemplateSet
+			var vals m.AccountReconcileModelData
+
+			rs.EnsureOne()
+			accountReconcileModels = h.AccountReconcileModelTemplate().Search(rs.Env(),
+				q.AccountReconcileModelTemplate().AccountFilteredOn(q.AccountAccountTemplate().ChartTemplate().Equals(rs)))
+
+			for _, ARModel := range accountReconcileModels.Records() {
+				vals = rs.PrepareReconcileModelVals(company, accountReconcileModels, accTemplateRef, taxTemplateRef)
+				h.AccountReconcileModel().Create(rs.Env(), vals.SetHexyaExternalID(fmt.Sprintf("%d_%s", company.ID(), ARModel.HexyaExternalID())))
+			}
 			return true
 		})
 
 	h.AccountChartTemplate().Methods().GenerateFiscalPosition().DeclareMethod(
-		`GenerateFiscalPosition`,
-		func(rs h.AccountChartTemplateSet, taxTemplateRef, accTemplateRef map[int64]int64, company h.CompanySet) bool {
-			//@api.multi
-			/*def generate_fiscal_position(self, tax_template_ref, acc_template_ref, company):
-			  """ This method generate Fiscal Position, Fiscal Position Accounts and Fiscal Position Taxes from templates.
+		`GenerateFiscalPosition This method generate Fiscal Position, Fiscal Position Accounts and Fiscal Position Taxes from templates.
 
 			      :param chart_temp_id: Chart Template Id.
 			      :param taxes_ids: Taxes templates reference for generating account.fiscal.position.tax.
 			      :param acc_template_ref: Account templates reference for generating account.fiscal.position.account.
 			      :param company_id: company_id selected from wizard.multi.charts.accounts.
-			      :returns: True
-			  """
-			  self.ensure_one()
-			  positions = self.env['account.fiscal.position.template'].search([('chart_template_id', '=', self.id)])
-			  for position in positions:
-			      new_fp = self.create_record_with_xmlid(company, position, 'account.fiscal.position', {'company_id': company.id, 'name': position.name, 'note': position.note})
-			      for tax in position.tax_ids:
-			          self.create_record_with_xmlid(company, tax, 'account.fiscal.position.tax', {
-			              'tax_src_id': tax_template_ref[tax.tax_src_id.id],
-			              'tax_dest_id': tax.tax_dest_id and tax_template_ref[tax.tax_dest_id.id] or False,
-			              'position_id': new_fp
-			          })
-			      for acc in position.account_ids:
-			          self.create_record_with_xmlid(company, acc, 'account.fiscal.position.account', {
-			              'account_src_id': acc_template_ref[acc.account_src_id.id],
-			              'account_dest_id': acc_template_ref[acc.account_dest_id.id],
-			              'position_id': new_fp
-			          })
-			  return True
+			      :returns: True`,
+		func(rs m.AccountChartTemplateSet, taxTemplateRef, accTemplateRef map[int64]int64, company m.CompanySet) bool {
+			var positions m.AccountFiscalPositionTemplateSet
+			var newFp m.AccountFiscalPositionSet
+			var taxData m.AccountFiscalPositionTaxData
+			var accountData m.AccountFiscalPositionAccountData
 
-
-			*/
+			rs.EnsureOne()
+			positions = h.AccountFiscalPositionTemplate().Search(rs.Env(),
+				q.AccountFiscalPositionTemplate().ChartTemplate().Equals(rs))
+			for _, position := range positions.Records() {
+				newFp = h.AccountFiscalPosition().Create(rs.Env(), h.AccountFiscalPosition().NewData().
+					SetCompany(company).
+					SetName(position.Name()).
+					SetNote(position.Note()).
+					SetHexyaExternalID(fmt.Sprintf("%d_%s", company.ID(), position.HexyaExternalID())))
+				for _, tax := range position.Taxes().Records() {
+					taxData = h.AccountFiscalPositionTax().NewData().
+						SetTaxSrc(h.AccountTax().BrowseOne(rs.Env(), taxTemplateRef[tax.TaxSrc().ID()])).
+						SetPosition(newFp)
+					if tax.TaxDest().IsNotEmpty() {
+						taxData.SetTaxDest(h.AccountTax().BrowseOne(rs.Env(), taxTemplateRef[tax.TaxDest().ID()]))
+					}
+					h.AccountFiscalPositionTax().Create(rs.Env(), taxData.SetHexyaExternalID(fmt.Sprintf("%d_%s", company.ID(), tax.HexyaExternalID())))
+				}
+				for _, acc := range position.Accounts().Records() {
+					accountData = h.AccountFiscalPositionAccount().NewData().
+						SetAccountSrc(h.AccountAccount().BrowseOne(rs.Env(), accTemplateRef[acc.AccountSrc().ID()])).
+						SetAccountDest(h.AccountAccount().BrowseOne(rs.Env(), accTemplateRef[acc.AccountDest().ID()])).
+						SetPosition(newFp)
+					h.AccountFiscalPositionAccount().Create(rs.Env(), accountData.SetHexyaExternalID(fmt.Sprintf("%d_%s", company.ID(), acc.HexyaExternalID())))
+				}
+			}
 			return true
 		})
 
 	h.AccountTaxTemplate().DeclareModel()
 
 	h.AccountTaxTemplate().AddFields(map[string]models.FieldDefinition{
-		"ChartTemplate": models.Many2OneField{RelationModel: h.AccountChartTemplate(), Required: true},
-		"Name":          models.CharField{String: "Tax Name", Required: true},
-		"TypeTaxUse": models.SelectionField{String: "Tax Scope", Selection: types.Selection{
-			"sale":     "Sales",
-			"purchase": "Purchases",
-			"none":     "None",
-		}, Required: true, Default: models.DefaultValue("sale"),
+		"ChartTemplate": models.Many2OneField{
+			RelationModel: h.AccountChartTemplate(),
+			Required:      true},
+		"Name": models.CharField{
+			String:   "Tax Name",
+			Required: true},
+		"TypeTaxUse": models.SelectionField{
+			String: "Tax Scope",
+			Selection: types.Selection{
+				"sale":     "Sales",
+				"purchase": "Purchases",
+				"none":     "None"},
+			Required: true,
+			Default:  models.DefaultValue("sale"),
 			Help: `Determines where the tax is selectable.
 Note : 'None' means a tax can't be used by itself however it can still be used in a group.`},
-		"AmountType": models.SelectionField{String: "Tax Computation",
+		"AmountType": models.SelectionField{
+			String: "Tax Computation",
 			Selection: types.Selection{
 				"group":    "Group of Taxes",
 				"fixed":    "Fixed",
 				"percent":  "Percentage of Price",
-				"division": "Percentage of Price Tax Included",
-			}, Default: models.DefaultValue("percent"), Required: true},
-		"Active": models.BooleanField{Default: models.DefaultValue(true),
-			Help: "Set active to false to hide the tax without removing it."},
-		"Company": models.Many2OneField{RelationModel: h.Company(), Required: true,
+				"division": "Percentage of Price Tax Included"},
+			Default:  models.DefaultValue("percent"),
+			Required: true},
+		"Active": models.BooleanField{
+			Default: models.DefaultValue(true),
+			Help:    "Set active to false to hide the tax without removing it."},
+		"Company": models.Many2OneField{
+			RelationModel: h.Company(),
+			Required:      true,
 			Default: func(env models.Environment) interface{} {
 				return h.User().NewSet(env).CurrentUser().Company()
 			}},
-		"ChildrenTaxes": models.Many2ManyField{RelationModel: h.AccountTaxTemplate(), JSON: "children_tax_ids",
-			M2MTheirField: "ChildTax", M2MOurField: "ParentTax"},
-		"Sequence": models.IntegerField{Required: true, Default: models.DefaultValue(1),
-			Help: "The sequence field is used to define order in which the tax lines are applied."},
-		"Amount": models.FloatField{Required: true, Digits: nbutils.Digits{Precision: 16, Scale: 4}},
-		"Account": models.Many2OneField{String: "Tax Account", RelationModel: h.AccountAccountTemplate(),
-			OnDelete: models.Restrict,
-			Help:     "Account that will be set on invoice tax lines for invoices. Leave empty to use the expense account."},
-		"RefundAccount": models.Many2OneField{String: "Tax Account on Refunds",
-			RelationModel: h.AccountAccountTemplate(), OnDelete: models.Restrict,
-			Help: "Account that will be set on invoice tax lines for refunds. Leave empty to use the expense account."},
-		"Description": models.CharField{String: "Display on Invoices"},
-		"PriceInclude": models.BooleanField{String: "Included in Price", Default: models.DefaultValue(false),
-			Help: "Check this if the price you use on the product and invoices includes this tax."},
-		"IncludeBaseAmount": models.BooleanField{String: "Affect Subsequent Taxes",
+		"ChildrenTaxes": models.Many2ManyField{
+			RelationModel: h.AccountTaxTemplate(),
+			JSON:          "children_tax_ids",
+			M2MTheirField: "ChildTax",
+			M2MOurField:   "ParentTax"},
+		"Sequence": models.IntegerField{
+			Required: true,
+			Default:  models.DefaultValue(1),
+			Help:     "The sequence field is used to define order in which the tax lines are applied."},
+		"Amount": models.FloatField{
+			Required: true,
+			Digits:   nbutils.Digits{Precision: 16, Scale: 4}},
+		"Account": models.Many2OneField{
+			String:        "Tax Account",
+			RelationModel: h.AccountAccountTemplate(),
+			OnDelete:      models.Restrict,
+			Help:          "Account that will be set on invoice tax lines for invoices. Leave empty to use the expense account."},
+		"RefundAccount": models.Many2OneField{
+			String:        "Tax Account on Refunds",
+			RelationModel: h.AccountAccountTemplate(),
+			OnDelete:      models.Restrict,
+			Help:          "Account that will be set on invoice tax lines for refunds. Leave empty to use the expense account."},
+		"Description": models.CharField{
+			String: "Display on Invoices"},
+		"PriceInclude": models.BooleanField{
+			String:  "Included in Price",
+			Default: models.DefaultValue(false),
+			Help:    "Check this if the price you use on the product and invoices includes this tax."},
+		"IncludeBaseAmount": models.BooleanField{
+			String:  "Affect Subsequent Taxes",
 			Default: models.DefaultValue(false),
 			Help:    "If set, taxes which are computed after this one will be computed based on the price tax included."},
-		"Analytic": models.BooleanField{String: "Analytic Cost",
+		"Analytic": models.BooleanField{
+			String: "Analytic Cost",
 			Help: `If set, the amount computed by this tax will be assigned to
 the same analytic account as the invoice line (if any)`},
-		"Tags": models.Many2ManyField{String: "Account tag", RelationModel: h.AccountAccountTag(),
-			JSON: "tag_ids", Help: "Optional tags you may want to assign for custom reporting"},
-		"TaxGroup":      models.Many2OneField{RelationModel: h.AccountTaxGroup()},
-		"TaxAdjustment": models.BooleanField{Default: models.DefaultValue(false)},
+		"Tags": models.Many2ManyField{
+			String:        "Account tag",
+			RelationModel: h.AccountAccountTag(),
+			JSON:          "tag_ids",
+			Help:          "Optional tags you may want to assign for custom reporting"},
+		"TaxGroup": models.Many2OneField{
+			RelationModel: h.AccountTaxGroup()},
+		"TaxAdjustment": models.BooleanField{
+			Default: models.DefaultValue(false)},
 	})
 
 	h.AccountTaxTemplate().AddSQLConstraint("name_company_uniq",
@@ -606,135 +727,154 @@ the same analytic account as the invoice line (if any)`},
 		"Tax names must be unique !")
 
 	h.AccountTaxTemplate().Methods().NameGet().Extend("",
-		func(rs h.AccountTaxTemplateSet) string {
-			//@api.depends('name','description')
-			/*
-				def name_get(self):
-					res = []
-					for record in self:
-						name = record.description and record.description or record.name
-						res.append((record.id, name))
-					return res
+		func(rs m.AccountTaxTemplateSet) string {
+			var name string
 
-			*/
-			return rs.Super().NameGet()
+			name = rs.Description()
+			if name == "" {
+				name = rs.Name()
+			}
+			return name
 		})
 
 	h.AccountTaxTemplate().Methods().GetTaxVals().DeclareMethod(
-		`GetTaxVals`,
-		func(rs h.AccountTaxTemplateSet, company h.CompanySet) *h.AccountTaxData {
-			/*def _get_tax_vals(self, company):
-			  """ This method generates a dictionary of all the values for the tax that will be created.
-			  """
-			  self.ensure_one()
-			  val = {
-			      'name': self.name,
-			      'type_tax_use': self.type_tax_use,
-			      'amount_type': self.amount_type,
-			      'active': self.active,
-			      'company_id': company.id,
-			      'sequence': self.sequence,
-			      'amount': self.amount,
-			      'description': self.description,
-			      'price_include': self.price_include,
-			      'include_base_amount': self.include_base_amount,
-			      'analytic': self.analytic,
-			      'tag_ids': [(6, 0, [t.id for t in self.tag_ids])],
-			      'tax_adjustment': self.tax_adjustment,
-			  }
-			  if self.tax_group_id:
-			      val['tax_group_id'] = self.tax_group_id.id
-			  return val
+		`GetTaxVals This method generates a dictionary of all the values for the tax that will be created.`,
+		func(rs m.AccountTaxTemplateSet, company m.CompanySet) m.AccountTaxData {
 
-			*/
-			return &h.AccountTaxData{}
+			rs.EnsureOne()
+			data := h.AccountTax().NewData().
+				SetName(rs.Name()).
+				SetTypeTaxUse(rs.TypeTaxUse()).
+				SetAmountType(rs.AmountType()).
+				SetActive(rs.Active()).
+				SetCompany(company).
+				SetSequence(int(rs.Sequence())).
+				SetAmount(rs.Amount()).
+				SetDescription(rs.Description()).
+				SetPriceInclude(rs.PriceInclude()).
+				SetIncludeBaseAmount(rs.IncludeBaseAmount()).
+				SetAnalytic(rs.Analytic()).
+				SetTags(rs.Tags()).
+				SetTaxAdjustment(rs.TaxAdjustment())
+			if rs.TaxGroup().IsNotEmpty() {
+				data.SetTaxGroup(rs.TaxGroup())
+			}
+			return data
 		})
 
 	h.AccountTaxTemplate().Methods().GenerateTax().DeclareMethod(
-		`GenerateTax`,
-		func(rs h.AccountTaxTemplateSet, company h.CompanySet) (map[int64]int64, map[int64]struct {
-			AccountID       int64
-			RefundAccountID int64
-		}) {
-			//@api.multi
-			/*def _generate_tax(self, company):
-			  """ This method generate taxes from templates.
+		`GenerateTax
+				  This method generate taxes from templates.
 
 			      :param company: the company for which the taxes should be created from templates in self
 			      :returns: {
 			          'tax_template_to_tax': mapping between tax template and the newly generated taxes corresponding,
 			          'account_dict': dictionary containing a to-do list with all the accounts to assign on new taxes
-			      }
-			  """
-			  todo_dict = {}
-			  tax_template_to_tax = {}
-			  for tax in self:
-			      # Compute children tax ids
-			      children_ids = []
-			      for child_tax in tax.children_tax_ids:
-			          if tax_template_to_tax.get(child_tax.id):
-			              children_ids.append(tax_template_to_tax[child_tax.id])
-			      vals_tax = tax._get_tax_vals(company)
-			      vals_tax['children_tax_ids'] = children_ids and [(6, 0, children_ids)] or []
-			      new_tax = self.env['account.chart.template'].create_record_with_xmlid(company, tax, 'account.tax', vals_tax)
-			      tax_template_to_tax[tax.id] = new_tax
-			      # Since the accounts have not been created yet, we have to wait before filling these fields
-			      todo_dict[new_tax] = {
-			          'account_id': tax.account_id.id,
-			          'refund_account_id': tax.refund_account_id.id,
-			      }
+			      }`,
+		func(rs m.AccountTaxTemplateSet, company m.CompanySet) (map[int64]int64, map[int64]struct {
+			AccountID       int64
+			RefundAccountID int64
+		}) {
+			var taxData m.AccountTaxData
+			var newTax m.AccountTaxSet
+			var childrenIds []int64
+			var taxTemplateToTax map[int64]int64
+			var todoDict map[int64]struct {
+				AccountID       int64
+				RefundAccountID int64
+			}
 
-			  return {
-			      'tax_template_to_tax': tax_template_to_tax,
-			      'account_dict': todo_dict
-			  }
-
-			*/
-			return make(map[int64]int64), make(map[int64]struct {
+			taxTemplateToTax = make(map[int64]int64)
+			todoDict = make(map[int64]struct {
 				AccountID       int64
 				RefundAccountID int64
 			})
+			for _, tax := range rs.Records() {
+				// Compute children tax ids
+				childrenIds = []int64{}
+				for _, childTax := range tax.ChildrenTaxes().Records() {
+					if val, ok := taxTemplateToTax[childTax.ID()]; ok && val != 0 {
+						childrenIds = append(childrenIds, val)
+					}
+				}
+				taxData = tax.GetTaxVals(company).SetChildrenTaxes(h.AccountTax().Browse(rs.Env(), childrenIds))
+				newTax = h.AccountTax().Create(rs.Env(), taxData.SetHexyaExternalID(fmt.Sprintf("%d_%s", company.ID(), tax.HexyaExternalID())))
+				taxTemplateToTax[tax.ID()] = newTax.ID()
+				// Since the accounts have not been created yet, we have to wait before filling these fields
+				todoDict[newTax.ID()] = struct {
+					AccountID       int64
+					RefundAccountID int64
+				}{tax.Account().ID(), tax.RefundAccount().ID()}
+			}
+
+			return taxTemplateToTax, todoDict
 		})
 
 	h.AccountFiscalPositionTemplate().DeclareModel()
 
 	h.AccountFiscalPositionTemplate().AddFields(map[string]models.FieldDefinition{
-		"Name":          models.CharField{String: "Fiscal Position Template", Required: true},
-		"ChartTemplate": models.Many2OneField{RelationModel: h.AccountChartTemplate(), Required: true},
-		"Accounts": models.One2ManyField{String: "Account Mapping",
-			RelationModel: h.AccountFiscalPositionAccountTemplate(), ReverseFK: "Position", JSON: "account_ids"},
-		"Taxes": models.One2ManyField{String: "Tax Mapping", RelationModel: h.AccountFiscalPositionTaxTemplate(),
-			ReverseFK: "Position", JSON: "tax_ids"},
-		"Note": models.TextField{String: "Notes"},
+		"Name": models.CharField{
+			String:   "Fiscal Position Template",
+			Required: true},
+		"ChartTemplate": models.Many2OneField{
+			RelationModel: h.AccountChartTemplate(),
+			Required:      true},
+		"Accounts": models.One2ManyField{
+			String:        "Account Mapping",
+			RelationModel: h.AccountFiscalPositionAccountTemplate(),
+			ReverseFK:     "Position",
+			JSON:          "account_ids"},
+		"Taxes": models.One2ManyField{
+			String:        "Tax Mapping",
+			RelationModel: h.AccountFiscalPositionTaxTemplate(),
+			ReverseFK:     "Position",
+			JSON:          "tax_ids"},
+		"Note": models.TextField{
+			String: "Notes"},
 	})
 
 	h.AccountFiscalPositionTaxTemplate().DeclareModel()
 
 	h.AccountFiscalPositionTaxTemplate().AddFields(map[string]models.FieldDefinition{
-		"Position": models.Many2OneField{String: "Fiscal Position", RelationModel: h.AccountFiscalPositionTemplate(),
-			Required: true, OnDelete: models.Cascade},
-		"TaxSrc":  models.Many2OneField{String: "Tax Source", RelationModel: h.AccountTaxTemplate(), Required: true},
-		"TaxDest": models.Many2OneField{String: "Replacement Tax", RelationModel: h.AccountTaxTemplate()},
+		"Position": models.Many2OneField{
+			String:        "Fiscal Position",
+			RelationModel: h.AccountFiscalPositionTemplate(),
+			Required:      true,
+			OnDelete:      models.Cascade},
+		"TaxSrc": models.Many2OneField{
+			String:        "Tax Source",
+			RelationModel: h.AccountTaxTemplate(),
+			Required:      true},
+		"TaxDest": models.Many2OneField{
+			String:        "Replacement Tax",
+			RelationModel: h.AccountTaxTemplate()},
 	})
 
 	h.AccountFiscalPositionTaxTemplate().Methods().NameGet().Extend("",
-		func(rs h.AccountFiscalPositionTaxTemplateSet) string {
+		func(rs m.AccountFiscalPositionTaxTemplateSet) string {
 			return rs.Position().NameGet()
 		})
 
 	h.AccountFiscalPositionAccountTemplate().DeclareModel()
 
 	h.AccountFiscalPositionAccountTemplate().AddFields(map[string]models.FieldDefinition{
-		"Position": models.Many2OneField{String: "Fiscal Mapping",
-			RelationModel: h.AccountFiscalPositionTemplate(), Required: true, OnDelete: models.Cascade},
-		"AccountSrc": models.Many2OneField{String: "Account Source", RelationModel: h.AccountAccountTemplate(),
-			Required: true},
-		"AccountDest": models.Many2OneField{String: "Account Destination", RelationModel: h.AccountAccountTemplate(),
-			Required: true},
+		"Position": models.Many2OneField{
+			String:        "Fiscal Mapping",
+			RelationModel: h.AccountFiscalPositionTemplate(),
+			Required:      true,
+			OnDelete:      models.Cascade},
+		"AccountSrc": models.Many2OneField{
+			String:        "Account Source",
+			RelationModel: h.AccountAccountTemplate(),
+			Required:      true},
+		"AccountDest": models.Many2OneField{
+			String:        "Account Destination",
+			RelationModel: h.AccountAccountTemplate(),
+			Required:      true},
 	})
 
 	h.AccountFiscalPositionAccountTemplate().Methods().NameGet().Extend("",
-		func(rs h.AccountFiscalPositionAccountTemplateSet) string {
+		func(rs m.AccountFiscalPositionAccountTemplateSet) string {
 			return rs.Position().NameGet()
 		})
 
@@ -742,365 +882,441 @@ the same analytic account as the invoice line (if any)`},
 	//h.WizardMultiChartsAccounts().InheritModel(ResConfig)
 
 	h.WizardMultiChartsAccounts().AddFields(map[string]models.FieldDefinition{
-		"Company": models.Many2OneField{RelationModel: h.Company(), Required: true},
-		"Currency": models.Many2OneField{RelationModel: h.Currency(),
-			Help: "Currency as per company's country.", Required: true},
-		"OnlyOneChartTemplate": models.BooleanField{String: "Only One Chart Template Available"},
-		"ChartTemplate": models.Many2OneField{String: "Chart Template",
-			RelationModel: h.AccountChartTemplate(), Required: true,
-			OnChange: h.WizardMultiChartsAccounts().Methods().OnchangeChartTemplate()},
-		"BankAccounts": models.One2ManyField{String: "Cash and Banks",
-			RelationModel: h.AccountBankAccountsWizard(), ReverseFK: "BankAccount", JSON: "bank_account_ids",
-			Required: true},
-		"BankAccountCodePrefix": models.CharField{String: "Bank Accounts Prefix"},
-		"CashAccountCodePrefix": models.CharField{String: "Cash Accounts Prefix"},
-		"CodeDigits": models.IntegerField{String: "# of Digits", Required: true,
-			Help: "No. of Digits to use for account code"},
-		"SaleTax": models.Many2OneField{String: "Default Sales Tax",
+		"Company": models.Many2OneField{
+			RelationModel: h.Company(),
+			Required:      true},
+		"Currency": models.Many2OneField{
+			RelationModel: h.Currency(),
+			Help:          "Currency as per company's country.",
+			Required:      true},
+		"OnlyOneChartTemplate": models.BooleanField{
+			String: "Only One Chart Template Available"},
+		"ChartTemplate": models.Many2OneField{
+			String:        "Chart Template",
+			RelationModel: h.AccountChartTemplate(),
+			Required:      true,
+			OnChange:      h.WizardMultiChartsAccounts().Methods().OnchangeChartTemplate()},
+		"BankAccounts": models.One2ManyField{
+			String:        "Cash and Banks",
+			RelationModel: h.AccountBankAccountsWizard(),
+			ReverseFK:     "BankAccount",
+			JSON:          "bank_account_ids",
+			Required:      true},
+		"BankAccountCodePrefix": models.CharField{
+			String: "Bank Accounts Prefix"},
+		"CashAccountCodePrefix": models.CharField{
+			String: "Cash Accounts Prefix"},
+		"CodeDigits": models.IntegerField{
+			String:   "# of Digits",
+			Required: true,
+			Help:     "No. of Digits to use for account code"},
+		"SaleTax": models.Many2OneField{
+			String:        "Default Sales Tax",
 			RelationModel: h.AccountTaxTemplate()},
-		"PurchaseTax": models.Many2OneField{String: "Default Purchase Tax",
+		"PurchaseTax": models.Many2OneField{
+			String:        "Default Purchase Tax",
 			RelationModel: h.AccountTaxTemplate()},
-		"SaleTaxRate": models.FloatField{String: "Sales Tax(%)",
+		"SaleTaxRate": models.FloatField{
+			String:   "Sales Tax(%)",
 			OnChange: h.WizardMultiChartsAccounts().Methods().OnchangeTaxRate()},
-		"UseAngloSaxon": models.BooleanField{String: "Use Anglo-Saxon Accounting",
+		"UseAngloSaxon": models.BooleanField{
+			String:  "Use Anglo-Saxon Accounting",
 			Related: "ChartTemplate.UseAngloSaxon"},
-		"TransferAccount": models.Many2OneField{RelationModel: h.AccountAccountTemplate(),
-			Required: true, Filter: q.AccountAccountTemplate().Reconcile().Equals(true).
-					And().UserTypeFilteredOn(
+		"TransferAccount": models.Many2OneField{
+			RelationModel: h.AccountAccountTemplate(),
+			Required:      true,
+			Filter: q.AccountAccountTemplate().Reconcile().Equals(true).
+				And().UserTypeFilteredOn(
 				q.AccountAccountType().HexyaExternalID().Equals("account_data_account_type_current_assets")),
 			Help: "Intermediary account used when moving money from a liquidity account to another"},
-		"PurchaseTaxRate": models.FloatField{String: "Purchase Tax(%)"},
-		"CompleteTaxSet": models.BooleanField{String: "Complete Set of Taxes",
+		"PurchaseTaxRate": models.FloatField{
+			String: "Purchase Tax(%)"},
+		"CompleteTaxSet": models.BooleanField{
+			String: "Complete Set of Taxes",
 			Help: `This boolean helps you to choose if you want to propose to the user to encode the sales and
 purchase rates or use the usual m2o fields. This last choice assumes that the
 set of tax defined for the chosen template is complete`},
 	})
 
-	h.WizardMultiChartsAccounts().Methods().GetChartParentIds().DeclareMethod(
-		`GetChartParentIds`,
-		func(rs h.WizardMultiChartsAccountsSet, chartTemplate h.AccountChartTemplateSet) h.AccountChartTemplateSet {
-			//@api.model
-			/*def _get_chart_parent_ids(self, chart_template):
-			  """ Returns the IDs of all ancestor charts, including the chart itself.
+	h.WizardMultiChartsAccounts().Methods().GetChartParents().DeclareMethod(
+		`GetChartParents
+                  Returns the IDs of all ancestor charts, including the chart itself.
 			      (inverse of child_of operator)
 
 			      :param browse_record chart_template: the account.chart.template record
-			      :return: the IDS of all ancestor charts, including the chart itself.
-			  """
-			  result = [chart_template.id]
-			  while chart_template.parent_id:
-			      chart_template = chart_template.parent_id
-			      result.append(chart_template.id)
-			  return result
+			      :return: the IDS of all ancestor charts, including the chart itself.`,
+		func(rs m.WizardMultiChartsAccountsSet, chartTemplate m.AccountChartTemplateSet) m.AccountChartTemplateSet {
+			var result m.AccountChartTemplateSet
 
-			*/
-			return h.AccountChartTemplate().NewSet(rs.Env())
+			result = chartTemplate
+			for chartTemplate.Parent().IsNotEmpty() {
+				chartTemplate = chartTemplate.Parent()
+				result = result.Union(chartTemplate)
+			}
+
+			return result
 		})
 
 	h.WizardMultiChartsAccounts().Methods().OnchangeTaxRate().DeclareMethod(
 		`OnchangeTaxRate`,
-		func(rs h.WizardMultiChartsAccountsSet) *h.WizardMultiChartsAccountsData {
-			//@api.onchange('sale_tax_rate')
-			/*def onchange_tax_rate(self):
-			  self.purchase_tax_rate = self.sale_tax_rate or False
-
-			*/
-			return h.WizardMultiChartsAccounts().NewData()
+		func(rs m.WizardMultiChartsAccountsSet) m.WizardMultiChartsAccountsData {
+			data := h.WizardMultiChartsAccounts().NewData()
+			if val := rs.SaleTaxRate(); val != 0.0 {
+				data.SetPurchaseTaxRate(val)
+			}
+			return data
 		})
 
 	h.WizardMultiChartsAccounts().Methods().OnchangeChartTemplate().DeclareMethod(
 		`OnchangeChartTemplateId`,
-		func(rs h.WizardMultiChartsAccountsSet) *h.WizardMultiChartsAccountsData {
-			//@api.onchange('chart_template_id')
-			/*def onchange_chart_template_id(self):
-			  res = {}
-			  tax_templ_obj = self.env['account.tax.template']
-			  if self.chart_template_id:
-			      currency_id = self.chart_template_id.currency_id and self.chart_template_id.currency_id.id or self.env.user.company_id.currency_id.id
-			      self.complete_tax_set = self.chart_template_id.complete_tax_set
-			      self.currency_id = currency_id
-			      if self.chart_template_id.complete_tax_set:
-			      # default tax is given by the lowest sequence. For same sequence we will take the latest created as it will be the case for tax created while installing the generic chart of account
-			          chart_ids = self._get_chart_parent_ids(self.chart_template_id)
-			          base_tax_domain = [('chart_template_id', 'parent_of', chart_ids)]
-			          sale_tax_domain = base_tax_domain + [('type_tax_use', '=', 'sale')]
-			          purchase_tax_domain = base_tax_domain + [('type_tax_use', '=', 'purchase')]
-			          sale_tax = tax_templ_obj.search(sale_tax_domain, order="sequence, id desc", limit=1)
-			          purchase_tax = tax_templ_obj.search(purchase_tax_domain, order="sequence, id desc", limit=1)
-			          self.sale_tax_id = sale_tax.id
-			          self.purchase_tax_id = purchase_tax.id
-			          res.setdefault('domain', {})
-			          res['domain']['sale_tax_id'] = repr(sale_tax_domain)
-			          res['domain']['purchase_tax_id'] = repr(purchase_tax_domain)
-			      if self.chart_template_id.transfer_account_id:
-			          self.transfer_account_id = self.chart_template_id.transfer_account_id.id
-			      if self.chart_template_id.code_digits:
-			          self.code_digits = self.chart_template_id.code_digits
-			      if self.chart_template_id.bank_account_code_prefix:
-			          self.bank_account_code_prefix = self.chart_template_id.bank_account_code_prefix
-			      if self.chart_template_id.cash_account_code_prefix:
-			          self.cash_account_code_prefix = self.chart_template_id.cash_account_code_prefix
-			  return res
+		func(rs m.WizardMultiChartsAccountsSet) m.WizardMultiChartsAccountsData {
+			var data m.WizardMultiChartsAccountsData
+			var currency m.CurrencySet
+			var charts m.AccountChartTemplateSet
+			var saleTax m.AccountTaxTemplateSet
+			var purchaseTax m.AccountTaxTemplateSet
+			var baseTaxCond q.AccountTaxTemplateCondition
+			var saleTaxCond q.AccountTaxTemplateCondition
+			var purchaseTaxCond q.AccountTaxTemplateCondition
 
-			*/
-			return h.WizardMultiChartsAccounts().NewData()
+			data = h.WizardMultiChartsAccounts().NewData()
+			if rs.ChartTemplate().IsEmpty() {
+				return data
+			}
+
+			currency = h.Currency().Coalesce(rs.ChartTemplate().Currency(), h.User().NewSet(rs.Env()).CurrentUser().Company().Currency())
+			data.SetCompleteTaxSet(rs.ChartTemplate().CompleteTaxSet()).
+				SetCurrency(currency)
+			if rs.ChartTemplate().CompleteTaxSet() {
+				//default tax is given by the lowest sequence. For same sequence we will take the latest created as it will be the case for tax created while installing the generic chart of account
+				charts = rs.GetChartParents(rs.ChartTemplate())
+				// FIXME
+				fmt.Println("chart", charts)
+				/* base_tax_domain = [('chart_template_id', 'parent_of', chart_ids)] tovalid missing "parent_of" Operator */
+				saleTaxCond = baseTaxCond.And().TypeTaxUse().Equals("sale")
+				purchaseTaxCond = baseTaxCond.And().TypeTaxUse().Equals("purchase")
+				saleTax = h.AccountTaxTemplate().Search(rs.Env(), saleTaxCond)
+				purchaseTax = h.AccountTaxTemplate().Search(rs.Env(), purchaseTaxCond)
+				data.SetSaleTax(saleTax).
+					SetPurchaseTax(purchaseTax)
+				/*    res.setdefault('domain', {})     tovalid missing domain in data (NYI)
+				      res['domain']['sale_tax_id'] = repr(sale_tax_domain)
+				      res['domain']['purchase_tax_id'] = repr(purchase_tax_domain)*/
+			}
+
+			if val := rs.ChartTemplate().TransferAccount(); val.IsNotEmpty() {
+				data.SetTransferAccount(val)
+			}
+			if val := rs.ChartTemplate().CodeDigits(); val != 0 {
+				data.SetCodeDigits(val)
+			}
+			if val := rs.ChartTemplate().BankAccountCodePrefix(); val != "" {
+				data.SetBankAccountCodePrefix(val)
+			}
+			if val := rs.ChartTemplate().CashAccountCodePrefix(); val != "" {
+				data.SetCashAccountCodePrefix(val)
+			}
+
+			return data
 		})
 
 	h.WizardMultiChartsAccounts().Methods().GetDefaultBankAccountIds().DeclareMethod(
 		`GetDefaultBankAccountIds`,
-		func(rs h.WizardMultiChartsAccountsSet) h.AccountBankAccountsWizardSet {
+		func(rs m.WizardMultiChartsAccountsSet) m.AccountBankAccountsWizardSet {
 			//@api.model
 			/*def _get_default_bank_account_ids(self):
 			  return [{'acc_name': _('Cash'), 'account_type': 'cash'}, {'acc_name': _('Bank'), 'account_type': 'bank'}]
-
+				tovalid shall we return a set (hence adding data to database) or slice of data?
 			*/
 			return h.AccountBankAccountsWizard().NewSet(rs.Env())
 		})
 
 	h.WizardMultiChartsAccounts().Methods().DefaultGet().Extend("",
-		func(rs h.WizardMultiChartsAccountsSet) models.FieldMap {
-			//@api.model
-			/*def default_get(self, fields):
-			  context = self._context or {}
-			  res = super(WizardMultiChartsAccounts, self).default_get(fields)
-			  tax_templ_obj = self.env['account.tax.template']
-			  account_chart_template = self.env['account.chart.template']
+		func(rs m.WizardMultiChartsAccountsSet) models.FieldMap {
+			var chartTemplates m.AccountChartTemplateSet
+			var chartID int64
+			var chart m.AccountChartTemplateSet
+			var chartHierarchies m.AccountChartTemplateSet
+			var baseTaxCondition q.AccountTaxTemplateCondition
+			var saleTax m.AccountTaxTemplateSet
+			var purchaseTax m.AccountTaxTemplateSet
 
-			  if 'bank_account_ids' in fields:
-			      res.update({'bank_account_ids': self._get_default_bank_account_ids()})
-			  if 'company_id' in fields:
-			      res.update({'company_id': self.env.user.company_id.id})
-			  if 'currency_id' in fields:
-			      company_id = res.get('company_id') or False
-			      if company_id:
-			          company = self.env['res.company'].browse(company_id)
-			          currency_id = company.on_change_country(company.country_id.id)['value']['currency_id']
-			          res.update({'currency_id': currency_id})
+			res := h.WizardMultiChartsAccounts().NewData(rs.Super().DefaultGet())
+			if res.HasBankAccounts() {
+				res.SetBankAccounts(rs.GetDefaultBankAccountIds())
+			}
+			if res.HasCompany() {
+				res.SetCompany(h.User().NewSet(rs.Env()).CurrentUser().Company())
+			}
+			if res.HasCurrency() {
+				if res.Company().IsNotEmpty() {
+					currency := res.Company().OnChangeCountry().Currency()
+					res.SetCurrency(currency)
+				}
+			}
 
-			  chart_templates = account_chart_template.search([('visible', '=', True)])
-			  if chart_templates:
-			      #in order to set default chart which was last created set max of ids.
-			      chart_id = max(chart_templates.ids)
-			      if context.get("default_charts"):
-			          model_data = self.env['ir.model.data'].search_read([('model', '=', 'account.chart.template'), ('module', '=', context.get("default_charts"))], ['res_id'])
-			          if model_data:
-			              chart_id = model_data[0]['res_id']
-			      chart = account_chart_template.browse(chart_id)
-			      chart_hierarchy_ids = self._get_chart_parent_ids(chart)
-			      if 'chart_template_id' in fields:
-			          res.update({'only_one_chart_template': len(chart_templates) == 1,
-			                      'chart_template_id': chart_id})
-			      if 'sale_tax_id' in fields:
-			          sale_tax = tax_templ_obj.search([('chart_template_id', 'in', chart_hierarchy_ids),
-			                                                        ('type_tax_use', '=', 'sale')], limit=1, order='sequence')
-			          res.update({'sale_tax_id': sale_tax and sale_tax.id or False})
-			      if 'purchase_tax_id' in fields:
-			          purchase_tax = tax_templ_obj.search([('chart_template_id', 'in', chart_hierarchy_ids),
-			                                                            ('type_tax_use', '=', 'purchase')], limit=1, order='sequence')
-			          res.update({'purchase_tax_id': purchase_tax and purchase_tax.id or False})
-			  res.update({
-			      'purchase_tax_rate': 15.0,
-			      'sale_tax_rate': 15.0,
-			  })
-			  return res
-
-			*/
-			return rs.Super().DefaultGet()
+			chartTemplates = h.AccountChartTemplate().Search(rs.Env(), q.AccountChartTemplate().Visible().Equals(true))
+			if chartTemplates.IsNotEmpty() {
+				// in order to set default chart which was last created set max of ids.
+				for _, id := range chartTemplates.Ids() {
+					if id > chartID {
+						chartID = id
+					}
+				}
+				/*
+					if context.get("default_charts"):
+					   model_data = self.env['ir.model.data'].search_read([('model', '=', 'account.chart.template'), ('module', '=', context.get("default_charts"))], ['res_id'])
+					   if model_data:    //tovalid  ^^^ ir.model.data hexya?
+					      chart_id = model_data[0]['res_id']
+				*/
+				chart = h.AccountChartTemplate().BrowseOne(rs.Env(), chartID)
+				chartHierarchies = rs.GetChartParents(chart)
+				res.SetOnlyOneChartTemplate(chartTemplates.Len() == 1)
+				res.SetChartTemplate(chart)
+				baseTaxCondition = q.AccountTaxTemplate().ChartTemplate().In(chartHierarchies)
+				saleTax = h.AccountTaxTemplate().Search(rs.Env(), baseTaxCondition.And().TypeTaxUse().Equals("sale")).
+					Limit(1).OrderBy("sequence")
+				if saleTax.IsNotEmpty() {
+					res.SetSaleTax(saleTax)
+				}
+				purchaseTax = h.AccountTaxTemplate().Search(rs.Env(), baseTaxCondition.And().TypeTaxUse().Equals("purchase")).
+					Limit(1).OrderBy("sequence")
+				if purchaseTax.IsNotEmpty() {
+					res.SetPurchaseTax(purchaseTax)
+				}
+			}
+			res.SetPurchaseTaxRate(15.0)
+			res.SetSaleTaxRate(15.0)
+			return res.Underlying()
 		})
 
 	h.WizardMultiChartsAccounts().Methods().FieldsViewGet().Extend("",
-		func(rs h.WizardMultiChartsAccountsSet, args webdata.FieldsViewGetParams) *webdata.FieldsViewData {
-			//@api.model
-			/*def fields_view_get(self, view_id=None, view_type='form', toolbar=False, submenu=False):
-			  context = self._context or {}
-			  res = super(WizardMultiChartsAccounts, self).fields_view_get(view_id=view_id, view_type=view_type, toolbar=toolbar, submenu=False)
-			  cmp_select = []
-			  CompanyObj = self.env['res.company']
-
-			  companies = CompanyObj.search([])
-			  #display in the widget selection of companies, only the companies that haven't been configured yet (but don't care about the demo chart of accounts)
-			  self._cr.execute("SELECT company_id FROM account_account WHERE deprecated = 'f' AND name != 'Chart For Automated Tests' AND name NOT LIKE '%(test)'")
-			  configured_cmp = [r[0] for r in self._cr.fetchall()]
-			  unconfigured_cmp = list(set(companies.ids) - set(configured_cmp))
-			  for field in res['fields']:
-			      if field == 'company_id':
-			          res['fields'][field]['domain'] = [('id', 'in', unconfigured_cmp)]
-			          res['fields'][field]['selection'] = [('', '')]
-			          if unconfigured_cmp:
-			              cmp_select = [(line.id, line.name) for line in CompanyObj.browse(unconfigured_cmp)]
-			              res['fields'][field]['selection'] = cmp_select
-			  return res
-
-			*/
-			return rs.Super().FieldsViewGet(args)
+		func(rs m.WizardMultiChartsAccountsSet, args webdata.FieldsViewGetParams) *webdata.FieldsViewData {
+			res := rs.Super().FieldsViewGet(args)
+			companies := h.Company().Search(rs.Env(), q.CompanyCondition{})
+			condition := q.AccountAccount().Deprecated().Equals(false).
+				And().Name().NotEquals("Chart For Automated Tests").
+				AndNotCond(q.AccountAccount().Name().Like("%(test)"))
+			var configuredCmp m.CompanySet
+			for _, cmp := range h.AccountAccount().Search(rs.Env(), condition).Records() {
+				configuredCmp = configuredCmp.Union(cmp.Company())
+			}
+			unconfiguredCmp := companies.Subtract(configuredCmp)
+			if _, ok := res.Fields["Company"]; ok {
+				res.Fields["Company"].Domain = q.WizardMultiChartsAccounts().ID().In(unconfiguredCmp.Ids())
+				res.Fields["Company"].Selection = types.Selection{}
+				if unconfiguredCmp.Len() > 0 {
+					selectionMap := make(types.Selection)
+					for _, line := range h.Company().Browse(rs.Env(), unconfiguredCmp.Ids()).Records() {
+						selectionMap[strconv.Itoa(int(line.ID()))] = line.Name()
+					}
+					res.Fields["Company"].Selection = selectionMap
+				}
+			}
+			return res
 		})
 
 	h.WizardMultiChartsAccounts().Methods().CreateTaxTemplatesFromRates().DeclareMethod(
-		`CreateTaxTemplatesFromRates`,
-		func(rs h.WizardMultiChartsAccountsSet, company h.CompanySet) bool {
-			//@api.one
-			/*def _create_tax_templates_from_rates(self, company_id):
-			  '''
+		`CreateTaxTemplatesFromRates
 			  This function checks if the chosen chart template is configured as containing a full set of taxes, and if
 			  it's not the case, it creates the templates for account.tax object accordingly to the provided sale/purchase rates.
 			  Then it saves the new tax templates as default taxes to use for this chart template.
 
 			  :param company_id: id of the company for which the wizard is running
-			  :return: True
-			  '''
-			  obj_tax_temp = self.env['account.tax.template']
-			  all_parents = self._get_chart_parent_ids(self.chart_template_id)
-			  # create tax templates from purchase_tax_rate and sale_tax_rate fields
-			  if not self.chart_template_id.complete_tax_set:
-			      value = self.sale_tax_rate
-			      ref_taxs = obj_tax_temp.search([('type_tax_use', '=', 'sale'), ('chart_template_id', 'in', all_parents)], order="sequence, id desc", limit=1)
-			      ref_taxs.write({'amount': value, 'name': _('Tax %.2f%%') % value, 'description': '%.2f%%' % value})
-			      value = self.purchase_tax_rate
-			      ref_taxs = obj_tax_temp.search([('type_tax_use', '=', 'purchase'), ('chart_template_id', 'in', all_parents)], order="sequence, id desc", limit=1)
-			      ref_taxs.write({'amount': value, 'name': _('Tax %.2f%%') % value, 'description': '%.2f%%' % value})
-			  return True
+			  :return: True`,
+		func(rs m.WizardMultiChartsAccountsSet, company m.CompanySet) bool {
+			var allParents m.AccountChartTemplateSet
+			var value float64
+			var cond q.AccountTaxTemplateCondition
+			var refTaxs m.AccountTaxTemplateSet
 
-			*/
+			allParents = rs.GetChartParents(rs.ChartTemplate())
+			// create tax templates from purchase_tax_rate and sale_tax_rate fields
+			if rs.ChartTemplate().CompleteTaxSet() {
+				return true
+			}
+			value = rs.SaleTaxRate()
+
+			cond = q.AccountTaxTemplate().TypeTaxUse().Equals("sale").
+				And().ChartTemplate().In(allParents)
+			refTaxs = h.AccountTaxTemplate().Search(rs.Env(), cond).OrderBy("sequence", "id desc").Limit(1)
+			refTaxs.Write(h.AccountTaxTemplate().NewData().
+				SetAmount(value).
+				SetName(rs.T(`Tax %.2f%%`, value)).
+				SetDescription(fmt.Sprintf(`%.2f%%`, value)))
+
+			cond = q.AccountTaxTemplate().TypeTaxUse().Equals("purchase").
+				And().ChartTemplate().In(allParents)
+			refTaxs = h.AccountTaxTemplate().Search(rs.Env(), cond).OrderBy("sequence", "id desc").Limit(1)
+			refTaxs.Write(h.AccountTaxTemplate().NewData().
+				SetAmount(value).
+				SetName(rs.T(`Tax %.2f%%`, value)).
+				SetDescription(fmt.Sprintf(`%.2f%%`, value)))
 			return true
 		})
 
 	h.WizardMultiChartsAccounts().Methods().Execute().DeclareMethod(
-		`Execute`,
-		func(rs h.WizardMultiChartsAccountsSet) bool {
-			//@api.multi
-			/*def execute(self):
-			  '''
-			  This function is called at the confirmation of the wizard to generate the COA from the templates. It will read
+		`Execute This function is called at the confirmation of the wizard to generate the COA from the templates. It will read
 			  all the provided information to create the accounts, the banks, the journals, the taxes, the
-			  accounting properties... accordingly for the chosen company.
-			  '''
-			  if len(self.env['account.account'].search([('company_id', '=', self.company_id.id)])) > 0:
-			      # We are in a case where we already have some accounts existing, meaning that user has probably
-			      # created its own accounts and does not need a coa, so skip installation of coa.
-			      _logger.info('Could not install chart of account since some accounts already exists for the company (%s)', (self.company_id.id,))
-			      return {}
-			  if not self.env.user._is_admin():
-			      raise AccessError(_("Only administrators can change the settings"))
-			  ir_values_obj = self.env['ir.values']
-			  company = self.company_id
-			  self.company_id.write({'currency_id': self.currency_id.id,
-			                         'accounts_code_digits': self.code_digits,
-			                         'anglo_saxon_accounting': self.use_anglo_saxon,
-			                         'bank_account_code_prefix': self.bank_account_code_prefix,
-			                         'cash_account_code_prefix': self.cash_account_code_prefix,
-			                         'chart_template_id': self.chart_template_id.id})
+			  accounting properties... accordingly for the chosen company.`,
+		func(rs m.WizardMultiChartsAccountsSet) bool {
+			if !h.User().NewSet(rs.Env()).CurrentUser().IsAdmin() {
+				panic(rs.T(`Only administrators can change the settings.`))
+			}
 
-			  #set the coa currency to active
-			  self.currency_id.write({'active': True})
+			if h.AccountAccount().Search(rs.Env(), q.AccountAccount().Company().Equals(rs.Company())).Len() > 0 {
+				// We are in a case where we already have some accounts existing, meaning that user has probably
+				// created its own accounts and does not need a coa, so skip installation of coa.
+				log.Info("Could not install chart of account since some accounts already exists for the company", "Company", rs.Company().Name())
+				return true
+			}
 
-			  # When we install the CoA of first company, set the currency to price types and pricelists
-			  if company.id == 1:
-			      for reference in ['product.list_price', 'product.standard_price', 'product.list0']:
-			          try:
-			              tmp2 = self.env.ref(reference).write({'currency_id': self.currency_id.id})
-			          except ValueError:
-			              pass
+			company := rs.Company()
+			rs.Company().Write(h.Company().NewData().
+				SetCurrency(rs.Currency()).
+				SetAccountsCodeDigits(rs.CodeDigits()).
+				SetAngloSaxonAccounting(rs.UseAngloSaxon()).
+				SetBankAccountCodePrefix(rs.BankAccountCodePrefix()).
+				SetCashAccountCodePrefix(rs.CashAccountCodePrefix()).
+				SetChartTemplate(rs.ChartTemplate()))
 
-			  # If the floats for sale/purchase rates have been filled, create templates from them
-			  self._create_tax_templates_from_rates(company.id)
+			// set the coa currency to active
+			rs.Currency().Write(h.Currency().NewData().
+				SetActive(true))
 
-			  # Install all the templates objects and generate the real objects
-			  acc_template_ref, taxes_ref = self.chart_template_id._install_template(company, code_digits=self.code_digits, transfer_account_id=self.transfer_account_id)
+			// When we install the CoA of first company, set the currency to price types and pricelists
+			if company.ID() == 1 {
+				for _, reference := range []string{"product_list_price", "product_standard_price", "product_list0"} {
+					h.ProductProduct().NewSet(rs.Env()).GetRecord(reference).
+						Write(h.ProductProduct().NewData().
+							SetCurrency(rs.Currency()))
+				}
+			}
 
-			  # write values of default taxes for product as super user
+			// If the floats for sale/purchase rates have been filled, create templates from them
+			rs.CreateTaxTemplatesFromRates(company)
+
+			// Install all the templates objects and generate the real objects
+			accTemplateRef, _ := rs.ChartTemplate().InstallTemplate(company, rs.CodeDigits(), rs.TransferAccount(), h.WizardMultiChartsAccounts().NewSet(rs.Env()), nil, nil)
+
+			// write values of default taxes for product as super user
+			/*
+			  ir_values_obj = self.env['ir.values'] tovalid missing ir.values in hexya
 			  if self.sale_tax_id and taxes_ref:
 			      ir_values_obj.sudo().set_default('product.template', "taxes_id", [taxes_ref[self.sale_tax_id.id]], for_all_users=True, company_id=company.id)
 			  if self.purchase_tax_id and taxes_ref:
 			      ir_values_obj.sudo().set_default('product.template', "supplier_taxes_id", [taxes_ref[self.purchase_tax_id.id]], for_all_users=True, company_id=company.id)
 
-			  # Create Bank journals
-			  self._create_bank_journals_from_o2m(company, acc_template_ref)
-
-			  # Create the current year earning account if it wasn't present in the CoA
-			  account_obj = self.env['account.account']
-			  unaffected_earnings_xml = self.env.ref("account.data_unaffected_earnings")
-			  if unaffected_earnings_xml and not account_obj.search([('company_id', '=', company.id), ('user_type_id', '=', unaffected_earnings_xml.id)]):
-			      account_obj.create({
-			          'code': '999999',
-			          'name': _('Undistributed Profits/Losses'),
-			          'user_type_id': unaffected_earnings_xml.id,
-			          'company_id': company.id,})
-			  return {}
-
 			*/
+
+			// Create Bank journals
+			rs.CreateBankJournalsFromO2m(company, accTemplateRef)
+
+			// Create the current year earning account if it wasn't present in the CoA
+			unaffectedEarningsXml := h.AccountAccountType().NewSet(rs.Env()).GetRecord("account_data_unaffected_earnings")
+			if unaffectedEarningsXml.IsNotEmpty() && h.AccountAccount().Search(rs.Env(),
+				q.AccountAccount().Company().Equals(company).And().UserType().Equals(unaffectedEarningsXml)).IsEmpty() {
+
+				h.AccountAccount().Create(rs.Env(), h.AccountAccount().NewData().
+					SetCode("999999").
+					SetName(rs.T(`Undistributed Profits/Losses`)).
+					SetUserType(unaffectedEarningsXml).
+					SetCompany(company))
+			}
 			return true
 		})
 
 	h.WizardMultiChartsAccounts().Methods().CreateBankJournalsFromO2m().DeclareMethod(
-		`CreateBankJournalsFromO2m`,
-		func(rs h.WizardMultiChartsAccountsSet, company h.CompanySet, accTemplateRef map[int64]int64) {
-			//@api.multi
-			/*def _create_bank_journals_from_o2m(self, company, acc_template_ref):
-			  '''
+		`CreateBankJournalsFromO2m
 			  This function creates bank journals and its accounts for each line encoded in the field bank_account_ids of the
 			  wizard (which is currently only used to create a default bank and cash journal when the CoA is installed).
 
 			  :param company: the company for which the wizard is running.
 			  :param acc_template_ref: the dictionary containing the mapping between the ids of account templates and the ids
-			      of the accounts that have been generated from them.
-			  '''
-			  self.ensure_one()
-			  # Create the journals that will trigger the account.account creation
-			  for acc in self.bank_account_ids:
-			      self.env['account.journal'].create({
-			          'name': acc.acc_name,
-			          'type': acc.account_type,
-			          'company_id': company.id,
-			          'currency_id': acc.currency_id.id,
-			          'sequence': 10
-			      })
-
-
-			*/
+			      of the accounts that have been generated from them.`,
+		func(rs m.WizardMultiChartsAccountsSet, company m.CompanySet, accTemplateRef map[int64]int64) {
+			rs.EnsureOne()
+			// Create the journals that will trigger the account.account creation
+			for _, acc := range rs.BankAccounts().Records() {
+				h.AccountJournal().Create(rs.Env(), h.AccountJournal().NewData().
+					SetName(acc.AccName()).
+					SetType(acc.AccountType()).
+					SetCompany(company).
+					SetCurrency(acc.Currency()).
+					SetSequence(10))
+			}
 		})
 
 	h.AccountBankAccountsWizard().DeclareTransientModel()
 
 	h.AccountBankAccountsWizard().AddFields(map[string]models.FieldDefinition{
-		"AccName": models.CharField{String: "Account Name", Required: true},
-		"BankAccount": models.Many2OneField{RelationModel: h.WizardMultiChartsAccounts(),
-			Required: true, OnDelete: models.Cascade},
-		"Currency": models.Many2OneField{String: "Account Currency", RelationModel: h.Currency(),
-			Help: "Forces all moves for this account to have this secondary currency."},
-		"AccountType": models.SelectionField{Selection: types.Selection{
-			"cash": "Cash",
-			"bank": "Bank",
-		}},
+		"AccName": models.CharField{
+			String:   "Account Name",
+			Required: true},
+		"BankAccount": models.Many2OneField{
+			RelationModel: h.WizardMultiChartsAccounts(),
+			Required:      true,
+			OnDelete:      models.Cascade},
+		"Currency": models.Many2OneField{
+			String:        "Account Currency",
+			RelationModel: h.Currency(),
+			Help:          "Forces all moves for this account to have this secondary currency."},
+		"AccountType": models.SelectionField{
+			Selection: types.Selection{
+				"cash": "Cash",
+				"bank": "Bank"}},
 	})
 
 	h.AccountReconcileModelTemplate().DeclareModel()
 
 	h.AccountReconcileModelTemplate().AddFields(map[string]models.FieldDefinition{
-		"Name":          models.CharField{String: "Button Label", Required: true},
-		"Sequence":      models.IntegerField{String: "Sequence", Required: true, Default: models.DefaultValue(10)},
-		"HasSecondLine": models.BooleanField{String: "Add a second line", Default: models.DefaultValue(false)},
-		"Account": models.Many2OneField{String: "Account", RelationModel: h.AccountAccountTemplate(),
-			OnDelete: models.Cascade},
-		"Label": models.CharField{String: "Journal Item Label"},
-		"AmountType": models.SelectionField{Selection: types.Selection{
-			"fixed":      "Fixed",
-			"percentage": "Percentage of balance",
-		}},
-		"Amount": models.FloatField{Required: true, Default: models.DefaultValue(100.0),
-			Help: "Fixed amount will count as a debit if it is negative, as a credit if it is positive."},
-		"Tax": models.Many2OneField{RelationModel: h.AccountTaxTemplate(),
-			OnDelete: models.Restrict, Filter: q.AccountTaxTemplate().TypeTaxUse().Equals("purchase")},
-		"SecondAccount": models.Many2OneField{RelationModel: h.AccountAccountTemplate(),
-			OnDelete: models.Cascade},
-		"SecondLabel": models.CharField{String: "Second Journal Item Label"},
-		"SecondAmountType": models.SelectionField{Selection: types.Selection{
-			"fixed":      "Fixed",
-			"percentage": "Percentage of amount",
-		}},
-		"SecondAmount": models.FloatField{Required: true, Default: models.DefaultValue(100.0),
-			Help: "Fixed amount will count as a debit if it is negative, as a credit if it is positive."},
-		"SecondTax": models.Many2OneField{String: "Second Tax", RelationModel: h.AccountTaxTemplate(),
-			OnDelete: models.Restrict, Filter: q.AccountTaxTemplate().TypeTaxUse().Equals("purchase")},
+		"Name": models.CharField{
+			String:   "Button Label",
+			Required: true},
+		"Sequence": models.IntegerField{
+			String:   "Sequence",
+			Required: true,
+			Default:  models.DefaultValue(10)},
+		"HasSecondLine": models.BooleanField{
+			String:  "Add a second line",
+			Default: models.DefaultValue(false)},
+		"Account": models.Many2OneField{
+			String:        "Account",
+			RelationModel: h.AccountAccountTemplate(),
+			OnDelete:      models.Cascade},
+		"Label": models.CharField{
+			String: "Journal Item Label"},
+		"AmountType": models.SelectionField{
+			Selection: types.Selection{
+				"fixed":      "Fixed",
+				"percentage": "Percentage of balance",
+			}},
+		"Amount": models.FloatField{
+			Required: true,
+			Default:  models.DefaultValue(100.0),
+			Help:     "Fixed amount will count as a debit if it is negative, as a credit if it is positive."},
+		"Tax": models.Many2OneField{
+			RelationModel: h.AccountTaxTemplate(),
+			OnDelete:      models.Restrict,
+			Filter:        q.AccountTaxTemplate().TypeTaxUse().Equals("purchase")},
+		"SecondAccount": models.Many2OneField{
+			RelationModel: h.AccountAccountTemplate(),
+			OnDelete:      models.Cascade},
+		"SecondLabel": models.CharField{
+			String: "Second Journal Item Label"},
+		"SecondAmountType": models.SelectionField{
+			Selection: types.Selection{
+				"fixed":      "Fixed",
+				"percentage": "Percentage of amount"}},
+		"SecondAmount": models.FloatField{
+			Required: true,
+			Default:  models.DefaultValue(100.0),
+			Help:     "Fixed amount will count as a debit if it is negative, as a credit if it is positive."},
+		"SecondTax": models.Many2OneField{
+			String:        "Second Tax",
+			RelationModel: h.AccountTaxTemplate(),
+			OnDelete:      models.Restrict,
+			Filter:        q.AccountTaxTemplate().TypeTaxUse().Equals("purchase")},
 	})
 
 }

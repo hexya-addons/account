@@ -7,6 +7,7 @@ import (
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/tools/nbutils"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 )
 
 func init() {
@@ -18,7 +19,7 @@ func init() {
 	})
 	h.CashBox().Methods().Run().DeclareMethod(
 		`Run`,
-		func(rs h.CashBoxSet) {
+		func(rs m.CashBoxSet) {
 			//@api.multi
 			/*def run(self):
 			  context = dict(self._context or {})
@@ -33,7 +34,7 @@ func init() {
 		})
 	h.CashBox().Methods().RunPrivate().DeclareMethod(
 		`RunPrivate`,
-		func(rs h.CashBoxSet, args struct {
+		func(rs m.CashBoxSet, args struct {
 			Records interface{}
 		}) {
 			//@api.multi
@@ -51,7 +52,7 @@ func init() {
 		})
 	h.CashBox().Methods().CreateBankStatementLine().DeclareMethod(
 		`CreateBankStatementLine`,
-		func(rs h.CashBoxSet, args struct {
+		func(rs m.CashBoxSet, args struct {
 			Record interface{}
 		}) {
 			//@api.one
@@ -72,7 +73,7 @@ func init() {
 	h.CashBoxIn().InheritModel(h.CashBox())
 	h.CashBoxIn().Methods().CalculateValuesForStatementLine().DeclareMethod(
 		`CalculateValuesForStatementLine`,
-		func(rs h.CashBoxInSet, args struct {
+		func(rs m.CashBoxInSet, args struct {
 			Record interface{}
 		}) {
 			//@api.multi
@@ -97,7 +98,7 @@ func init() {
 	h.CashBoxOut().InheritModel(h.CashBox())
 	h.CashBoxOut().Methods().CalculateValuesForStatementLine().DeclareMethod(
 		`CalculateValuesForStatementLine`,
-		func(rs h.CashBoxOutSet, args struct {
+		func(rs m.CashBoxOutSet, args struct {
 			Record interface{}
 		}) {
 			//@api.multi
