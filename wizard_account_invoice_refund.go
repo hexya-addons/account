@@ -14,28 +14,42 @@ func init() {
 	h.AccountInvoiceRefund().DeclareTransientModel()
 	h.AccountInvoiceRefund().Methods().GetReason().DeclareMethod(
 		`GetReason`,
-		func(rs h.AccountInvoiceRefundSet) {
-			//@api.model
-			/*def _get_reason(self):
-			    context = dict(self._context or {})
-			    active_id = context.get('active_id', False)
-			    if active_id:
-			        inv = self.env['account.invoice'].browse(active_id)
-			        return inv.name
-			    return ''
-
-			date_invoice = */
+		func(rs h.AccountInvoiceRefundSet) string {
+			context := rs.Env().Context()
+			activeID := context.GetInteger("active_id")
+			if activeID != 0 {
+				return h.AccountInvoice().BrowseOne(rs.Env(), activeID).Name()
+			}
+			return ""
 		})
 	h.AccountInvoiceRefund().AddFields(map[string]models.FieldDefinition{
-		"DateInvoice": models.DateField{String: "DateInvoice" /*[string 'Refund Date']*/ /*[ default fields.Date.context_today]*/ /*[ required True]*/},
-		"Date":        models.DateField{String: "Date" /*[string 'Accounting Date']*/},
-		"Description": models.CharField{String: "Description" /*[string 'Reason']*/, Required: true /*[ default _get_reason]*/},
-		"RefundOnly":  models.BooleanField{String: "RefundOnly" /*[string 'Technical field to hide filter_refund in case invoice is partially paid']*/ /*[ compute '_get_refund_only']*/},
-		"FilterRefund": models.SelectionField{String: "Refund Method", Selection: types.Selection{
-			"refund": "Create a draft refund",
-			"cancel": "Cancel: create refund and reconcile",
-			"modify": "Modify: create refund reconcile and create a new draft invoice",
-		}, /*[]*/ Default: models.DefaultValue("refund"), Required: true, Help: "Refund base on this type. You can not Modify and Cancel if the invoice is already reconciled"},
+		"DateInvoice": models.DateField{
+			String: "DateInvoice",
+			/*[string 'Refund Date']*/
+			/*[ default fields.Date.context_today]*/
+			/*[ required True]*/},
+		"Date": models.DateField{
+			String: "Date",
+			/*[string 'Accounting Date']*/},
+		"Description": models.CharField{
+			String: "Description",
+			/*[string 'Reason']*/
+			Required: true,
+			/*[ default _get_reason]*/},
+		"RefundOnly": models.BooleanField{
+			String: "RefundOnly",
+			/*[string 'Technical field to hide filter_refund in case invoice is partially paid']*/
+			/*[ compute '_get_refund_only']*/},
+		"FilterRefund": models.SelectionField{
+			String: "Refund Method",
+			Selection: types.Selection{
+				"refund": "Create a draft refund",
+				"cancel": "Cancel: create refund and reconcile",
+				"modify": "Modify: create refund reconcile and create a new draft invoice"},
+			/*[]*/
+			Default:  models.DefaultValue("refund"),
+			Required: true,
+			Help:     "Refund base on this type. You can not Modify and Cancel if the invoice is already reconciled"},
 	})
 	h.AccountInvoiceRefund().Methods().GetRefundOnly().DeclareMethod(
 		`GetRefundOnly`,

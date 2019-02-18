@@ -28,17 +28,22 @@ func init() {
 		})
 	h.AccountingReport().AddFields(map[string]models.FieldDefinition{
 		"EnableFilter": models.BooleanField{String: "EnableFilter" /*[string 'Enable Comparison']*/},
-		"AccountReport": models.Many2OneField{String: "Account Reports", RelationModel: h.AccountFinancialReport(), JSON: "account_report_id" /*['account.financial.report']*/, Required: true, Default: func(env models.Environment) interface{} {
-			/*_get_account_report(self):
-			    reports = []
-			    if self._context.get('active_id'):
-			        menu = self.env['ir.ui.menu'].browse(self._context.get('active_id')).name
-			        reports = self.env['account.financial.report'].search([('name', 'ilike', menu)])
-			    return reports and reports[0] or False
+		"AccountReport": models.Many2OneField{
+			String:        "Account Reports",
+			RelationModel: h.AccountFinancialReport(),
+			JSON:          "account_report_id", /*['account.financial.report']*/
+			Required:      true,
+			Default: func(env models.Environment) interface{} {
+				/*_get_account_report(self):
+				    reports = []
+				    if self._context.get('active_id'):
+				        menu = self.env['ir.ui.menu'].browse(self._context.get('active_id')).name
+				        reports = self.env['account.financial.report'].search([('name', 'ilike', menu)])
+				    return reports and reports[0] or False
 
-			enable_filter = */
-			return 0
-		}},
+				enable_filter = */
+				return 0
+			}},
 		"LabelFilter": models.CharField{String: "LabelFilter" /*[string 'Column Label']*/, Help: "This label will be displayed on report to show the balance computed for the given comparison filter."},
 		"FilterCmp": models.SelectionField{String: "Filter by", Selection: types.Selection{
 			"filter_no":   "No Filters",

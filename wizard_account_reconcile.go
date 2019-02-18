@@ -13,15 +13,26 @@ func init() {
 
 	h.AccountMoveLineReconcile().DeclareTransientModel()
 	h.AccountMoveLineReconcile().AddFields(map[string]models.FieldDefinition{
-		"TransNbr": models.IntegerField{String: "# of Transaction", ReadOnly: true},
-		"Credit": models.FloatField{String: "Credit amount", ReadOnly: true,
-			Digits: nbutils.Digits{0, 0}},
-		"Debit": models.FloatField{String: "Debit amount", ReadOnly: true,
-			Digits: nbutils.Digits{0, 0}},
-		"Writeoff": models.FloatField{String: "Write-off amount", ReadOnly: true,
-			Digits: nbutils.Digits{0, 0}},
-		"Company": models.Many2OneField{String: "Company", RelationModel: h.Company(),
-			Required: true, Default: func(env models.Environment) interface{} {
+		"TransNbr": models.IntegerField{
+			String:   "# of Transaction",
+			ReadOnly: true},
+		"Credit": models.FloatField{
+			String:   "Credit amount",
+			ReadOnly: true,
+			Digits:   nbutils.Digits{0, 0}},
+		"Debit": models.FloatField{
+			String:   "Debit amount",
+			ReadOnly: true,
+			Digits:   nbutils.Digits{0, 0}},
+		"Writeoff": models.FloatField{
+			String:   "Write-off amount",
+			ReadOnly: true,
+			Digits:   nbutils.Digits{0, 0}},
+		"Company": models.Many2OneField{
+			String:        "Company",
+			RelationModel: h.Company(),
+			Required:      true,
+			Default: func(env models.Environment) interface{} {
 				return h.User().NewSet(env).CurrentUser().Company()
 			}},
 	})

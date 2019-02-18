@@ -67,55 +67,45 @@ func init() {
 
 	h.CashBoxIn().DeclareTransientModel()
 	h.CashBoxIn().AddFields(map[string]models.FieldDefinition{
-		"Ref": models.CharField{String: "Reference')" /*['Reference']*/},
+		"Ref": models.CharField{
+			String: "Reference')"},
 	})
 	h.CashBoxIn().InheritModel(h.CashBox())
 	h.CashBoxIn().Methods().CalculateValuesForStatementLine().DeclareMethod(
 		`CalculateValuesForStatementLine`,
-		func(rs h.CashBoxInSet, args struct {
-			Record interface{}
-		}) {
-			//@api.multi
-			/*def _calculate_values_for_statement_line(self, record):
-			  if not record.journal_id.company_id.transfer_account_id:
-			      raise UserError(_("You should have defined an 'Internal Transfer Account' in your cash register's journal!"))
-			  return {
-			      'date': record.date,
-			      'statement_id': record.id,
-			      'journal_id': record.journal_id.id,
-			      'amount': self.amount or 0.0,
-			      'account_id': record.journal_id.company_id.transfer_account_id.id,
-			      'ref': '%s' % (self.ref or ''),
-			      'name': self.name,
-			  }
-
-
-			*/
+		func(rs h.CashBoxInSet, record h.AccountBankStatementSet) *h.AccountBankStatementLineData {
+			if record.Journal().Company().TransferAccount().IsEmpty() {
+				panic(rs.T(`You should have defined an 'Internal Transfer Account' in your cash register's journal!`))
+			}
+			return h.AccountBankStatementLine().NewData().
+				SetDate(record.Date()).
+				SetStatement(record).
+				SetJournal(record.Journal()).
+				SetAmount(rs.Amount()).
+				SetAccount(record.Journal().Company().TransferAccount()).
+				SetRef(rs.Ref()).
+				SetName(rs.Name())
 		})
 
 	h.CashBoxOut().DeclareTransientModel()
 	h.CashBoxOut().InheritModel(h.CashBox())
 	h.CashBoxOut().Methods().CalculateValuesForStatementLine().DeclareMethod(
 		`CalculateValuesForStatementLine`,
-		func(rs h.CashBoxOutSet, args struct {
-			Record interface{}
-		}) {
-			//@api.multi
-			/*def _calculate_values_for_statement_line(self, record):
-			  if not record.journal_id.company_id.transfer_account_id:
-			      raise UserError(_("You should have defined an 'Internal Transfer Account' in your cash register's journal!"))
-			  return {
-			      'date': record.date,
-			      'statement_id': record.id,
-			      'journal_id': record.journal_id.id,
-			      'amount': self.amount or 0.0,
-			      'account_id': record.journal_id.company_id.transfer_account_id.id,
-			      'ref': '%s' % (self.ref or ''),
-			      'name': self.name,
-			  }
-
-
-			*/
+		func(rs h.CashBoxOutSet, record h.AccountBankStatementSet) *h.AccountBankStatementLineData {
+			if record.Journal().Company().TransferAccount().IsEmpty() {
+				panic(rs.T(`You should have defined an 'Internal Transfer Account' in your cash register's journal!`))
+			}
+			data := h.AccountBankStatementLine().NewData().
+				SetDate(record.Date()).
+				SetStatement(record).
+				SetJournal(record.Journal()).
+				SetAmount(rs.Amount()).
+				SetAccount(record.Journal().Company().TransferAccount()).
+				SetName(rs.Name())
+			if rs.Amount() > 0 {
+				data.SetAmount(-rs.Amount())
+			}
+			return data
 		})
 
 }

@@ -14,8 +14,11 @@ func init() {
 	h.AccountReportPartnerLedger().InheritModel(h.AccountCommonPartnerReport())
 
 	h.AccountCommonPartnerReport().AddFields(map[string]models.FieldDefinition{
-		"AmountCurrency": models.BooleanField{String: "With Currency" /*["With Currency"]*/, Help: "It adds the currency column on report if the currency differs from the company currency."},
-		"Reconciled":     models.BooleanField{String: "Reconciled Entries')" /*['Reconciled Entries']*/},
+		"AmountCurrency": models.BooleanField{
+			String: "With Currency",
+			Help:   "It adds the currency column on report if the currency differs from the company currency."},
+		"Reconciled": models.BooleanField{
+			String: "Reconciled Entries')"},
 	})
 	h.AccountCommonPartnerReport().Methods().PrintReport().DeclareMethod(
 		`PrintReport`,

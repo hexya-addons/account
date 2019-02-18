@@ -15,58 +15,70 @@ func init() {
 	h.TaxAdjustmentsWizard().DeclareTransientModel()
 
 	h.TaxAdjustmentsWizard().AddFields(map[string]models.FieldDefinition{
-		"Reason": models.CharField{String: "Justification", Required: true},
-		"Journal": models.Many2OneField{RelationModel: h.AccountJournal(), Required: true,
+		"Reason": models.CharField{
+			String:   "Justification",
+			Required: true},
+		"Journal": models.Many2OneField{
+			RelationModel: h.AccountJournal(),
+			Required:      true,
 			Default: func(env models.Environment) interface{} {
 				return h.AccountJournal().Search(env, q.AccountJournal().Type().Equals("general")).Limit(1)
-			}, Filter: q.AccountJournal().Type().Equals("general")},
-		"Date": models.DateField{Required: true, Default: func(env models.Environment) interface{} {
-			return dates.Today()
-		}},
-		"DebitAccount": models.Many2OneField{RelationModel: h.AccountAccount(), Required: true,
-			Filter: q.AccountAccount().Deprecated().Equals(false)},
-		"CreditAccount": models.Many2OneField{RelationModel: h.AccountAccount(), Required: true,
-			Filter: q.AccountAccount().Deprecated().Equals(false)},
-		"Amount": models.FloatField{ /*[currency_field 'company_currency_id']*/ Required: true},
-		"CompanyCurrency": models.Many2OneField{RelationModel: h.Currency(), ReadOnly: true,
+			},
+			Filter: q.AccountJournal().Type().Equals("general")},
+		"Date": models.DateField{
+			Required: true,
+			Default: func(env models.Environment) interface{} {
+				return dates.Today()
+			}},
+		"DebitAccount": models.Many2OneField{
+			RelationModel: h.AccountAccount(),
+			Required:      true,
+			Filter:        q.AccountAccount().Deprecated().Equals(false)},
+		"CreditAccount": models.Many2OneField{
+			RelationModel: h.AccountAccount(),
+			Required:      true,
+			Filter:        q.AccountAccount().Deprecated().Equals(false)},
+		"Amount": models.FloatField{
+			/*[currency_field 'company_currency_id']*/
+			Required: true},
+		"CompanyCurrency": models.Many2OneField{
+			RelationModel: h.Currency(),
+			ReadOnly:      true,
 			Default: func(env models.Environment) interface{} {
 				return h.User().NewSet(env).CurrentUser().Company()
 			}},
-		"Tax": models.Many2OneField{String: "Adjustment Tax", RelationModel: h.AccountTax(),
-			OnDelete: models.Restrict, Required: true,
-			Filter: q.AccountTax().TypeTaxUse().Equals("none").And().TaxAdjustment().Equals(true)},
+		"Tax": models.Many2OneField{
+			String:        "Adjustment Tax",
+			RelationModel: h.AccountTax(),
+			OnDelete:      models.Restrict,
+			Required:      true,
+			Filter:        q.AccountTax().TypeTaxUse().Equals("none").And().TaxAdjustment().Equals(true)},
 	})
 
 	h.TaxAdjustmentsWizard().Methods().CreateMovePrivate().DeclareMethod(
 		`CreateMovePrivate`,
-		func(rs h.TaxAdjustmentsWizardSet) {
-			//@api.multi
-			/*def _create_move(self):
-			  debit_vals = {
-			      'name': self.reason,
-			      'debit': self.amount,
-			      'credit': 0.0,
-			      'account_id': self.debit_account_id.id,
-			      'tax_line_id': self.tax_id.id,
-			  }
-			  credit_vals = {
-			      'name': self.reason,
-			      'debit': 0.0,
-			      'credit': self.amount,
-			      'account_id': self.credit_account_id.id,
-			      'tax_line_id': self.tax_id.id,
-			  }
-			  vals = {
-			      'journal_id': self.journal_id.id,
-			      'date': self.date,
-			      'state': 'draft',
-			      'line_ids': [(0, 0, debit_vals), (0, 0, credit_vals)]
-			  }
-			  move = self.env['account.move'].create(vals)
-			  move.post()
-			  return move.id
-
-			*/
+		func(rs h.TaxAdjustmentsWizardSet) h.AccountMoveSet {
+			debitData := h.AccountMoveLine().NewData().
+				SetName(rs.Reason()).
+				SetDebit(rs.Amount()).
+				SetCredit(0.0).
+				SetAccount(rs.DebitAccount()).
+				SetTaxLine(rs.Tax())
+			creditData := h.AccountMoveLine().NewData().
+				SetName(rs.Reason()).
+				SetDebit(0.0).
+				SetCredit(rs.Amount()).
+				SetAccount(rs.CreditAccount()).
+				SetTaxLine(rs.Tax())
+			data := h.AccountMove().NewData().
+				SetJournal(rs.Journal()).
+				SetDate(rs.Date()).
+				SetState("draft").
+				SetLines(h.AccountMoveLine().Create(rs.Env(), debitData).Union(
+					h.AccountMoveLine().Create(rs.Env(), creditData)))
+			move := h.AccountMove().Create(rs.Env(), data)
+			move.Post()
+			return move
 		})
 
 	h.TaxAdjustmentsWizard().Methods().CreateMove().DeclareMethod(

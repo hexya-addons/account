@@ -5,10 +5,8 @@ package account
 
 import (
 	"fmt"
-	"github.com/hexya-erp/hexya/src/i18n"
 	"github.com/hexya-erp/hexya/src/models/security"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
-	"github.com/hexya-erp/hexya/src/tools/strutils"
 	"log"
 	"math"
 	"sort"
@@ -41,38 +39,6 @@ func CoalesceInt(lst ...int) int {
 		}
 	}
 	return 0
-}
-
-func FormatLang(env models.Environment, value float64, currency models.RecordSet) string {
-	if currency.IsEmpty() || currency.ModelName() != "Currency" {
-		panic("Error while formatting float. the model given is not a Currency model")
-	}
-	ctx := env.Context()
-	locale := i18n.GetLocale(ctx.GetString("lang"))
-	curColl := currency.Collection()
-	digits := CoalesceInt(curColl.Get("DecimalPlaces").(int), 2)
-	if ctx.Get("digits") != nil {
-		digits = int(ctx.GetInteger("digits"))
-	}
-	grouping := CoalesceStr(ctx.GetString("grouping"), locale.Grouping, "[3,0]")
-	groupingSpl := strings.Split(strings.TrimSuffix(strings.TrimPrefix(grouping, "["), "]"), ",")
-	groupingLeft, err := strconv.Atoi(groupingSpl[0])
-	if err != nil {
-		groupingLeft = 3
-	}
-	groupingRight, err := strconv.Atoi(groupingSpl[1])
-	if err != nil {
-		groupingRight = 0
-	}
-	separator := CoalesceStr(ctx.GetString("separator"), locale.DecimalPoint, ".")
-	thSeparator := CoalesceStr(ctx.GetString("th_separator"), locale.ThousandsSep, ",")
-	symbol := CoalesceStr(ctx.GetString("symbol"), curColl.Get("Symbol").(string), "$")
-	symPos := CoalesceStr(ctx.GetString("sym_pos"), curColl.Get("Position").(string), "before")
-	symToLeft := false
-	if symPos == "before" {
-		symToLeft = true
-	}
-	return strutils.FormatMonetary(value, digits, groupingLeft, groupingRight, separator, thSeparator, symbol, symToLeft)
 }
 
 func init() {

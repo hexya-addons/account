@@ -16,8 +16,10 @@ func init() {
 	h.AccountAgedTrialBalance().InheritModel(h.AccountCommonPartnerReport())
 
 	h.AccountAgedTrialBalance().AddFields(map[string]models.FieldDefinition{
-		"PeriodLength": models.IntegerField{String: "Period Length (days)", Required: true,
-			Default: models.DefaultValue(30)},
+		"PeriodLength": models.IntegerField{
+			String:   "Period Length (days)",
+			Required: true,
+			Default:  models.DefaultValue(30)},
 	})
 	h.AccountAgedTrialBalance().Fields().Journals().SetRequired(true)
 	h.AccountAgedTrialBalance().Fields().DateFrom().SetDefault(func(env models.Environment) interface{} {
