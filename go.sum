@@ -3,6 +3,7 @@ github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03
 github.com/armon/consul-api v0.0.0-20180202201655-eb2c6b5be1b6/go.mod h1:grANhF5doyWs3UAsr3K4I6qtAmlQcZDesFNEHPZAzj8=
 github.com/beevik/etree v1.0.1 h1:lWzdj5v/Pj1X360EV7bUudox5SRipy4qZLjY0rhb0ck=
 github.com/beevik/etree v1.0.1/go.mod h1:r8Aw8JqVegEf0w2fDnATrX9VpkMcyFeM0FhwO62wh+A=
+github.com/beevik/etree v1.1.0/go.mod h1:r8Aw8JqVegEf0w2fDnATrX9VpkMcyFeM0FhwO62wh+A=
 github.com/boj/redistore v0.0.0-20180917114910-cd5dcc76aeff/go.mod h1:+RTT1BOk5P97fT2CiHkbFQwkK3mjsFAP6zCYV2aXtjw=
 github.com/boyter/scc v2.0.0+incompatible h1:QLWdzapEg5h9wdVhAhWv3o24GZw+LTEIKG+/I2uUy/4=
 github.com/boyter/scc v2.0.0+incompatible/go.mod h1:VB5w4e0dahmIiKnpZ7LRh/sjauoY0BmCWjIzZcShNY0=
@@ -16,6 +17,7 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/disintegration/imaging v1.5.0 h1:uYqUhwNmLU4K1FN44vhqS4TZJRAA4RhBINgbQlKyGi0=
 github.com/disintegration/imaging v1.5.0/go.mod h1:9B/deIUIrliYkyMTuXJd6OUFLcrZ2tf+3Qlwnaf/CjU=
+github.com/disintegration/imaging v1.6.0/go.mod h1:xuIt+sRxDFrHS0drzXUlCJthkJ8k7lkkUojDSR247MQ=
 github.com/flosch/pongo2 v0.0.0-20180809100617-24195e6d38b0 h1:ZHx2BEERvWkuwuE7qWN9TuRxucHDH2JrsvneZjVJfo0=
 github.com/flosch/pongo2 v0.0.0-20180809100617-24195e6d38b0/go.mod h1:rE0ErqqBaMcp9pzj8JxV1GcfDBpuypXYxlR1c37AUwg=
 github.com/flosch/pongo2 v0.0.0-20181225140029-79872a7b2769 h1:XToLChWPMXLomJ2InnkrmUkddaXfevrmomMTFL+MaKU=
@@ -24,6 +26,7 @@ github.com/fsnotify/fsnotify v1.4.7 h1:IXs+QLmnXW2CcXuY+8Mzv/fWEsPGWxqefPtCP5CnV
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
 github.com/garyburd/redigo v1.6.0/go.mod h1:NR3MbYisc3/PwhQ00EMzDiPmrwpPxAn5GI05/YaO1SY=
 github.com/gin-contrib/pprof v0.0.0-20180827024024-a27513940d36/go.mod h1:rjNkoBuke5raVIHOBtw9U0BL9x22EQ/ZcoWrJ2nc0Yw=
+github.com/gin-contrib/pprof v0.0.0-20181223171755-ea03ef73484d/go.mod h1:gOv+/B5pK9Hm3wuppCDM+WUwmGff5bwenVHS9/qpYYk=
 github.com/gin-contrib/sessions v0.0.0-20181124110724-7687b645ca6b h1:anIoEqZRku2+0ugTPlRXdW62w1KSwEOHC2h9EU7Hn5w=
 github.com/gin-contrib/sessions v0.0.0-20181124110724-7687b645ca6b/go.mod h1:F4TwIEOO0sgMULDVvcP85n9Jl8RPcOWfs17D0/fCWcE=
 github.com/gin-contrib/sessions v0.0.0-20190101140330-dc5246754963 h1:ldKXSIxdVtXVCP4JW0p4ErvnPhISjbb5QSIqMnBa3ak=
@@ -59,6 +62,7 @@ github.com/hexya-addons/base v0.0.2 h1:a1h+8x+vstVxzsW+BfNeRdV9IOlVz6IuUSZVFr9xN
 github.com/hexya-addons/base v0.0.2/go.mod h1:7Qy3Lb5tiBc5b9wA4emJtsAPGx3envov1JiqsYXxTxk=
 github.com/hexya-addons/base v0.0.4 h1:IkJsPtQ6FnQqSapEaDcscg9f3oRrkL/xZLF9wRXqKpU=
 github.com/hexya-addons/base v0.0.4/go.mod h1:pJyPj2MpNo7SNvstrCvNJ2zgYgERNbDENwy9XmITgXA=
+github.com/hexya-addons/base v0.0.7/go.mod h1:mOvYyU2RgBicKhniLCRzamzGuwsx6+1LNaRGRZ6x3no=
 github.com/hexya-addons/decimalPrecision v0.0.2 h1:SMZTNwcqVFOAMcLeTQGQBgsGoKEVu1NCbDF0B17dTDA=
 github.com/hexya-addons/decimalPrecision v0.0.2/go.mod h1:WsQeJGmW/r7jvgmCdfhT+lo8ioIAaVV+gsWlotMGJcQ=
 github.com/hexya-addons/product v0.0.2 h1:QDp98ZeBB18VkxOZPxvvzd1Q/T6QwlKtkMuwTmQ7b38=
@@ -67,6 +71,7 @@ github.com/hexya-addons/web v0.0.2 h1:0ZgibQ26NXWAxXHHdf+taxORxTPB9uf8746k5jQhFR
 github.com/hexya-addons/web v0.0.2/go.mod h1:txhXHGu7fqWZkZLpaLvocMGKrK+BJhmEX47DWpMfy4E=
 github.com/hexya-addons/web v0.0.5 h1:nNF31zhTAIXz5Y6/0Im/2UPeZFNgVwmTj64ZyjpAY2Q=
 github.com/hexya-addons/web v0.0.5/go.mod h1:4/1qg54Cfxq8m+ZgG3tzM5QaezKgmw7YPisAWXfBo1A=
+github.com/hexya-addons/web v0.0.7/go.mod h1:eRP2QHoY9R0cWBaVTY2j4kfGrb4o9TqxBfzjvaeUE7I=
 github.com/hexya-addons/webKanban v0.0.2 h1:Nwh/aBI6bBwnBZaYvTMUk2pEIGIus0pyhyRUB/+BL0o=
 github.com/hexya-addons/webKanban v0.0.2/go.mod h1:aAGXzJoPfFVWlg/E+alMxnY1FHNNgvHsC/h7ueRJKg4=
 github.com/hexya-erp/hexya v0.0.2 h1:mZzk/p9IDOTaDdkVwX4J1s08nBOzNmnvR9cdzoZQTp0=
@@ -123,6 +128,7 @@ github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZN
 github.com/quasoft/memstore v0.0.0-20180925164028-84a050167438/go.mod h1:wTPjTepVu7uJBYgZ0SdWHQlIas582j6cn2jgk4DDdlg=
 github.com/smartystreets/assertions v0.0.0-20180927180507-b2de0cb4f26d h1:zE9ykElWQ6/NYmHa3jpm/yHnI4xSofP+UP6SpjHcSeM=
 github.com/smartystreets/assertions v0.0.0-20180927180507-b2de0cb4f26d/go.mod h1:OnSkiWE9lh6wB0YB77sQom3nweQdgAjqCqsofrRNTgc=
+github.com/smartystreets/assertions v0.0.0-20190116191733-b6c0e53d7304/go.mod h1:OnSkiWE9lh6wB0YB77sQom3nweQdgAjqCqsofrRNTgc=
 github.com/smartystreets/goconvey v0.0.0-20181108003508-044398e4856c h1:Ho+uVpkel/udgjbwB5Lktg9BtvJSh2DT0Hi6LPSyI2w=
 github.com/smartystreets/goconvey v0.0.0-20181108003508-044398e4856c/go.mod h1:XDJAKZRPZ1CvBcN2aX5YOUTYGHki24fSF0Iv48Ibg0s=
 github.com/spf13/afero v1.1.2 h1:m8/z1t7/fwjysjQRYbP0RD+bUIF/8tJwPdEZsI83ACI=
@@ -165,6 +171,8 @@ golang.org/x/crypto v0.0.0-20181127143415-eb0de9b17e85/go.mod h1:6SG95UA2DQfeDnf
 golang.org/x/crypto v0.0.0-20181203042331-505ab145d0a9/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
 golang.org/x/crypto v0.0.0-20190103213133-ff983b9c42bc h1:F5tKCVGp+MUAHhKp5MZtGqAlGX3+oCsiL1Q629FL90M=
 golang.org/x/crypto v0.0.0-20190103213133-ff983b9c42bc/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
+golang.org/x/crypto v0.0.0-20190208162236-193df9c0f06f/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
+golang.org/x/image v0.0.0-20180708004352-c73c2afc3b81/go.mod h1:ux5Hcp/YLpHSI86hEcLt0YII63i6oz57MZXIpbrjZUs=
 golang.org/x/image v0.0.0-20181116024801-cd38e8056d9b h1:VHyIDlv3XkfCa5/a81uzaoDkHH4rr81Z62g+xlnO8uM=
 golang.org/x/image v0.0.0-20181116024801-cd38e8056d9b/go.mod h1:ux5Hcp/YLpHSI86hEcLt0YII63i6oz57MZXIpbrjZUs=
 golang.org/x/net v0.0.0-20180724234803-3673e40ba225/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
@@ -181,6 +189,7 @@ golang.org/x/sys v0.0.0-20180906133057-8cf3aee42992/go.mod h1:STP8DvDyc/dI5b8T5h
 golang.org/x/sys v0.0.0-20181128092732-4ed8d59d0b35 h1:YAFjXN64LMvktoUZH9zgY4lGc/msGN7HQfoSuKCgaDU=
 golang.org/x/sys v0.0.0-20181128092732-4ed8d59d0b35/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
 golang.org/x/sys v0.0.0-20181205085412-a5c9d58dba9a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+golang.org/x/sys v0.0.0-20181221143128-b4a75ba826a6/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
 golang.org/x/sys v0.0.0-20181228144115-9a3f9b0469bb/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
 golang.org/x/sys v0.0.0-20190102155601-82a175fd1598 h1:S8GOgffXV1X3fpVG442QRfWOt0iFl79eHJ7OPt725bo=
 golang.org/x/sys v0.0.0-20190102155601-82a175fd1598/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
@@ -194,6 +203,7 @@ golang.org/x/tools v0.0.0-20181221001348-537d06c36207/go.mod h1:n7NCudcB/nEzxVGm
 golang.org/x/tools v0.0.0-20190103205943-8a6051197512 h1:cPzUDKmykdmMxTKZILiVfXIbNBgLkSVoG2KcpNQWhu4=
 golang.org/x/tools v0.0.0-20190103205943-8a6051197512/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
 golang.org/x/tools v0.0.0-20190110211028-68c5ac90f574/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+golang.org/x/tools v0.0.0-20190208185513-a3f91d6be4f3/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
 google.golang.org/appengine v1.3.0 h1:FBSsiFRMz3LBeXIomRnVzrQwSDj4ibvcRexLG0LZGQk=
 google.golang.org/appengine v1.3.0/go.mod h1:xpcJRLb0r/rnEns0DIKYYv+WjYCduHsrkT7/EB5XEv4=
 google.golang.org/appengine v1.4.0 h1:/wp5JvzpHIxhs/dumFmF7BXTf3Z+dd4uXta4kVyO508=
