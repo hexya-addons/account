@@ -1,9 +1,11 @@
 package account
 
 import (
+	"fmt"
+	"strconv"
+
 	"github.com/hexya-addons/web/webdata"
 	"github.com/hexya-erp/hexya/src/tools/strutils"
-	"log"
 
 	"github.com/hexya-addons/base"
 	"github.com/hexya-erp/hexya/src/actions"
@@ -13,6 +15,7 @@ import (
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
 )
 
@@ -82,13 +85,13 @@ func init() {
 
 	h.AccountFiscalPosition().Methods().ComputeStatesCount().DeclareMethod(
 		`ComputeStatesCount returns the number of states of the partner's country'`,
-		func(rs h.AccountFiscalPositionSet) *h.AccountFiscalPositionData {
+		func(rs m.AccountFiscalPositionSet) m.AccountFiscalPositionData {
 			return h.AccountFiscalPosition().NewData().SetStatesCount(rs.Country().States().Len())
 		})
 
 	h.AccountFiscalPosition().Methods().CheckZip().DeclareMethod(
 		`CheckZip fails if the zip range is the wrong way round`,
-		func(rs h.AccountFiscalPositionSet) {
+		func(rs m.AccountFiscalPositionSet) {
 			if rs.ZipFrom() > rs.ZipTo() {
 				log.Panic("Invalid 'Zip Range', please configure it properly.")
 			}
@@ -96,8 +99,8 @@ func init() {
 
 	h.AccountFiscalPosition().Methods().MapTax().DeclareMethod(
 		`MapTax`,
-		func(rs h.AccountFiscalPositionSet, taxes h.AccountTaxSet, product h.ProductProductSet,
-			partner h.PartnerSet) h.AccountTaxSet {
+		func(rs m.AccountFiscalPositionSet, taxes m.AccountTaxSet, product m.ProductProductSet,
+			partner m.PartnerSet) m.AccountTaxSet {
 
 			result := h.AccountTax().NewSet(rs.Env())
 			for _, tax := range taxes.Records() {
@@ -119,7 +122,7 @@ func init() {
 
 	h.AccountFiscalPosition().Methods().MapAccount().DeclareMethod(
 		`MapAccount`,
-		func(rs h.AccountFiscalPositionSet, account h.AccountAccountSet) h.AccountAccountSet {
+		func(rs m.AccountFiscalPositionSet, account m.AccountAccountSet) m.AccountAccountSet {
 			for _, pos := range rs.Accounts().Records() {
 				if pos.AccountSrc().Equals(account) {
 					return pos.AccountDest()
@@ -130,9 +133,9 @@ func init() {
 
 	h.AccountFiscalPosition().Methods().MapAccounts().DeclareMethod(
 		`MapAccounts Receive a dictionary having accounts in values and try to replace those accounts accordingly to the fiscal position.`,
-		func(rs h.AccountFiscalPositionSet, accounts map[string]h.AccountAccountSet) map[string]h.AccountAccountSet {
+		func(rs m.AccountFiscalPositionSet, accounts map[string]m.AccountAccountSet) map[string]m.AccountAccountSet {
 
-			refDict := make(map[int64]h.AccountAccountSet)
+			refDict := make(map[int64]m.AccountAccountSet)
 			for _, line := range rs.Accounts().Records() {
 				refDict[line.AccountSrc().ID()] = line.AccountDest()
 			}
@@ -146,13 +149,13 @@ func init() {
 
 	h.AccountFiscalPosition().Methods().OnchangeCountry().DeclareMethod(
 		`OnchangeCountryId`,
-		func(rs h.AccountFiscalPositionSet) *h.AccountFiscalPositionData {
+		func(rs m.AccountFiscalPositionSet) m.AccountFiscalPositionData {
 			data := h.AccountFiscalPosition().NewData()
 			if rs.Country().IsNotEmpty() {
 				data.
 					SetZipFrom(0).
 					SetZipTo(0).
-					SetCountryGroup(h.CountryGroupSet{}).
+					SetCountryGroup(h.CountryGroup().NewSet(rs.Env())).
 					SetStates(h.CountryState().NewSet(rs.Env())).
 					SetStatesCount(rs.Country().States().Len())
 			}
@@ -161,13 +164,13 @@ func init() {
 
 	h.AccountFiscalPosition().Methods().OnchangeCountryGroup().DeclareMethod(
 		`OnchangeCountryGroupId`,
-		func(rs h.AccountFiscalPositionSet) *h.AccountFiscalPositionData {
+		func(rs m.AccountFiscalPositionSet) m.AccountFiscalPositionData {
 			data := h.AccountFiscalPosition().NewData()
 			if rs.Country().IsNotEmpty() {
 				data.
 					SetZipFrom(0).
 					SetZipTo(0).
-					SetCountry(h.CountrySet{}).
+					SetCountry(h.Country().NewSet(rs.Env())).
 					SetStates(h.CountryState().NewSet(rs.Env()))
 			}
 			return data
@@ -175,11 +178,11 @@ func init() {
 
 	h.AccountFiscalPosition().Methods().GetFposByRegion().DeclareMethod(
 		`GetFposByRegion`,
-		func(rs h.AccountFiscalPositionSet, country h.CountrySet, state h.CountryStateSet, zipCode int64,
-			vatRequired bool) h.AccountFiscalPositionSet {
+		func(rs m.AccountFiscalPositionSet, country m.CountrySet, state m.CountryStateSet, zipCode string,
+			vatRequired bool) m.AccountFiscalPositionSet {
 
 			if country.IsEmpty() {
-				return h.AccountFiscalPositionSet{}
+				return h.AccountFiscalPosition().NewSet(rs.Env())
 			}
 			baseCond := q.AccountFiscalPosition().AutoApply().Equals(true).
 				And().VatRequired().Equals(vatRequired)
@@ -193,9 +196,13 @@ func init() {
 			nullCountryCond := q.AccountFiscalPosition().Country().Equals(h.Country().NewSet(rs.Env())).
 				And().CountryGroup().Equals(h.CountryGroup().NewSet(rs.Env()))
 
-			if zipCode != 0 {
-				zipCond = q.AccountFiscalPosition().ZipFrom().LowerOrEqual(zipCode).
-					And().ZipTo().GreaterOrEqual(zipCode)
+			var zipInt int64
+			if zipCode != "" {
+				if zip, err := strconv.Atoi(zipCode); err != nil {
+					zipCond = q.AccountFiscalPosition().ZipFrom().LowerOrEqual(int64(zip)).
+						And().ZipTo().GreaterOrEqual(int64(zip))
+					zipInt = int64(zip)
+				}
 			}
 			if state.IsNotEmpty() {
 				stateCond = q.AccountFiscalPosition().States().Equals(state)
@@ -210,10 +217,10 @@ func init() {
 			if fpos.IsEmpty() && state.IsNotEmpty() {
 				fpos = rs.Search(CondCountry.AndCond(nullStateCond).AndCond(zipCond)).Limit(1)
 			}
-			if fpos.IsEmpty() && zipCode != 0 {
+			if fpos.IsEmpty() && zipInt != 0 {
 				fpos = rs.Search(CondCountry.AndCond(stateCond).AndCond(nullZipCond)).Limit(1)
 			}
-			if fpos.IsEmpty() && state.IsNotEmpty() && zipCode != 0 {
+			if fpos.IsEmpty() && state.IsNotEmpty() && zipInt != 0 {
 				fpos = rs.Search(CondCountry.AndCond(nullStateCond).AndCond(nullZipCond)).Limit(1)
 			}
 
@@ -233,7 +240,7 @@ func init() {
 
 	h.AccountFiscalPosition().Methods().GetFiscalPosition().DeclareMethod(
 		`GetFiscalPosition`,
-		func(rs h.AccountFiscalPositionSet, partner, delivery h.PartnerSet) h.AccountFiscalPositionSet {
+		func(rs m.AccountFiscalPositionSet, partner, delivery m.PartnerSet) m.AccountFiscalPositionSet {
 			if partner.IsNotEmpty() {
 				return h.AccountFiscalPosition().NewSet(rs.Env())
 			}
@@ -288,7 +295,7 @@ func init() {
 		"A tax fiscal position could be defined only once time on same taxes.")
 
 	h.AccountFiscalPositionTax().Methods().NameGet().Extend("",
-		func(rs h.AccountFiscalPositionTaxSet) string {
+		func(rs m.AccountFiscalPositionTaxSet) string {
 			return rs.Position().DisplayName()
 		})
 
@@ -316,7 +323,7 @@ func init() {
 		"An account fiscal position could be defined only once time on same accounts.")
 
 	h.AccountFiscalPositionAccount().Methods().NameGet().Extend("",
-		func(rs h.AccountFiscalPositionAccountSet) string {
+		func(rs m.AccountFiscalPositionAccountSet) string {
 			return rs.Position().DisplayName()
 		})
 
@@ -426,7 +433,7 @@ credit or if you click the "Done" button.`},
 
 	h.Partner().Methods().ComputeCreditDebit().DeclareMethod(
 		`CreditDebitGet`,
-		func(rs h.PartnerSet) *h.PartnerData {
+		func(rs m.PartnerSet) m.PartnerData {
 			type tDest struct {
 				typ string
 				val float64
@@ -437,7 +444,7 @@ credit or if you click the "Done" button.`},
 
 			whereClause, whereParams = h.AccountMoveLine().NewSet(rs.Env()).QueryGet(q.AccountMoveLineCondition{})
 			whereParams = append([]interface{}{rs.Ids()}, whereParams...)
-			if whereClause {
+			if whereClause != "" {
 				whereClause = "AND " + whereClause
 			}
 			rs.Env().Cr().Get(&out, `SELECT act.type, SUM(account_move_line.amount_residual)
@@ -463,7 +470,7 @@ credit or if you click the "Done" button.`},
 
 	h.Partner().Methods().AssetDifferenceSearch().DeclareMethod(
 		`AssetDifferenceSearch`,
-		func(rs h.PartnerSet, accountType string, op operator.Operator, operand float64) q.PartnerCondition {
+		func(rs m.PartnerSet, accountType string, op operator.Operator, operand float64) q.PartnerCondition {
 			if !strutils.IsIn(string(op), "<", "=", ">", ">=", "<=") {
 				return q.PartnerCondition{}
 			}
@@ -493,25 +500,23 @@ credit or if you click the "Done" button.`},
 
 	h.Partner().Methods().CreditSearch().DeclareMethod(
 		`CreditSearch returns the condition to search on partners credits.`,
-		func(rs h.PartnerSet, op operator.Operator, operand interface{}) q.PartnerCondition {
+		func(rs m.PartnerSet, op operator.Operator, operand interface{}) q.PartnerCondition {
 			return rs.AssetDifferenceSearch("receivable", op, operand.(float64))
 		})
 
 	h.Partner().Methods().DebitSearch().DeclareMethod(
 		`DebitSearch returns the condition to search on partners debits.`,
-		func(rs h.PartnerSet, op operator.Operator, operand interface{}) q.PartnerCondition {
+		func(rs m.PartnerSet, op operator.Operator, operand interface{}) q.PartnerCondition {
 			return rs.AssetDifferenceSearch("payable", op, operand.(float64))
 		})
 
 	h.Partner().Methods().ComputeTotalInvoiced().DeclareMethod(
 		`InvoiceTotal`,
-		func(rs h.PartnerSet) *h.PartnerData {
-			var data *h.PartnerData
-			var userCurrency h.CurrencySet
-			var allPartnersAndChildren map[h.PartnerSet]h.PartnerSet
-			var allPartners h.PartnerSet
-			var condition q.AccountInvoiceReportCondition
-			var currentUser h.UserSet
+		func(rs m.PartnerSet) m.PartnerData {
+			var data m.PartnerData
+			var allPartnersAndChildren map[m.PartnerSet]m.PartnerSet
+			var allPartners m.PartnerSet
+			var currentUser m.UserSet
 			var sqlWhere string
 			var sqlParams []interface{}
 			var dest struct {
@@ -525,8 +530,7 @@ credit or if you click the "Done" button.`},
 			}
 
 			currentUser = h.User().NewSet(rs.Env()).CurrentUser()
-			userCurrency = currentUser.Currency()
-			allPartnersAndChildren = make(map[h.PartnerSet]h.PartnerSet)
+			allPartnersAndChildren = make(map[m.PartnerSet]m.PartnerSet)
 			allPartners = h.Partner().NewSet(rs.Env())
 
 			for _, partner := range rs.Records() {
@@ -541,7 +545,7 @@ credit or if you click the "Done" button.`},
 			// access directly these elements
 
 			// generate where clause to include multicompany rules
-			condition = q.AccountInvoiceReport().Partner().In(allPartners).
+			condition := q.AccountInvoiceReport().Partner().In(allPartners).
 				And().State().NotIn([]string{"draft", "cancel"}).
 				And().Company().Equals(currentUser.Company()).
 				And().Type().In([]string{"out_invoice", "out_refund"})
@@ -550,7 +554,9 @@ credit or if you click the "Done" button.`},
 				where_query = account_invoice_report._where_calc(condition)
 				  account_invoice_report._apply_ir_rules(where_query, 'read')
 			*/
-			sqlWhere, sqlParams := rs.SqlFromCondition(condition)
+			// FIXME
+			fmt.Println(condition)
+			//sqlWhere, sqlParams = rs.SqlFromCondition(condition)
 
 			//price_total is in the company currency
 			rs.Env().Cr().Get(&dest, `
@@ -560,7 +566,7 @@ credit or if you click the "Done" button.`},
 			             GROUP BY partner_id
 			          `, sqlParams)
 
-			data.TotalInvoiced() = dest.total
+			data.SetTotalInvoiced(dest.total)
 			/* tovalid all this method will clearly not work as intended
 			odoo makes a sum of with all partners found,
 			hexya, with its singleton recordsets given to comupte funcs, dont
@@ -570,7 +576,7 @@ credit or if you click the "Done" button.`},
 
 	h.Partner().Methods().ComputeJournalItemCount().DeclareMethod(
 		`ComputeJournalItemCount`,
-		func(rs h.PartnerSet) *h.PartnerData {
+		func(rs m.PartnerSet) m.PartnerData {
 			data := h.Partner().NewData()
 
 			data.SetJournalItemCount(h.AccountMoveLine().Search(rs.Env(), q.AccountMoveLine().Partner().Equals(rs)).Len())
@@ -580,7 +586,7 @@ credit or if you click the "Done" button.`},
 
 	h.Partner().Methods().GetFollowupLinesDomain().DeclareMethod(
 		`GetFollowupLinesDomain`,
-		func(rs h.PartnerSet, date dates.Date, overdueOnly, onlyUnblocked bool) q.AccountMoveLineCondition {
+		func(rs m.PartnerSet, date dates.Date, overdueOnly, onlyUnblocked bool) q.AccountMoveLineCondition {
 			domain := q.AccountMoveLine().
 				Reconciled().Equals(false).
 				And().AccountFilteredOn(q.AccountAccount().Deprecated().Equals(false).
@@ -611,7 +617,7 @@ credit or if you click the "Done" button.`},
 
 	h.Partner().Methods().ComputeIssuedTotal().DeclareMethod(
 		`ComputeIssuedTotal Returns the issued total as will be displayed on partner view`,
-		func(rs h.PartnerSet) *h.PartnerData {
+		func(rs m.PartnerSet) m.PartnerData {
 			today := dates.Today()
 			domain := rs.GetFollowupLinesDomain(today, true, false)
 			domain = domain.And().Partner().Equals(rs)
@@ -624,7 +630,7 @@ credit or if you click the "Done" button.`},
 
 	h.Partner().Methods().ComputeHasUnreconciledEntries().DeclareMethod(
 		`ComputeHasUnreconciledEntries`,
-		func(rs h.PartnerSet) *h.PartnerData {
+		func(rs m.PartnerSet) m.PartnerData {
 			// Avoid useless work if has_unreconciled_entries is not relevant for this partner
 			if !rs.Active() || !rs.IsCompany() && rs.Parent().IsNotEmpty() {
 				return h.Partner().NewData()
@@ -664,14 +670,14 @@ credit or if you click the "Done" button.`},
 
 	h.Partner().Methods().MarkAsReconciled().DeclareMethod(
 		`MarkAsReconciled`,
-		func(rs h.PartnerSet) bool {
+		func(rs m.PartnerSet) bool {
 			h.AccountPartialReconcile().NewSet(rs.Env()).CheckAccessRights(webdata.CheckAccessRightsArgs{"write", true})
 			return rs.Sudo().Write(h.Partner().NewData().SetLastTimeEntriesChecked(dates.Now()))
 		})
 
 	h.Partner().Methods().ComputeCurrency().DeclareMethod(
 		`GetCompanyCurrency`,
-		func(rs h.PartnerSet) *h.PartnerData {
+		func(rs m.PartnerSet) m.PartnerData {
 			if rs.Company().IsNotEmpty() {
 				return h.Partner().NewData().SetCurrency(rs.Sudo().Company().Currency())
 			} else {
@@ -681,7 +687,7 @@ credit or if you click the "Done" button.`},
 
 	h.Partner().Methods().ComputeBankCount().DeclareMethod(
 		`ComputeBankCount`,
-		func(rs h.PartnerSet) *h.PartnerData {
+		func(rs m.PartnerSet) m.PartnerData {
 			bankData := h.BankAccount().NewSet(rs.Env()).ReadGroup(webdata.ReadGroupParams{
 				Domain:  q.BankAccount().Partner().In(rs).Serialize(),
 				Fields:  []string{"Partner"},
@@ -698,12 +704,12 @@ credit or if you click the "Done" button.`},
 
 	h.Partner().Methods().FindAccountingPartner().DeclareMethod(
 		`FindAccountingPartner finds the partner for which the accounting entries will be created`,
-		func(rs h.PartnerSet, partner h.PartnerSet) h.PartnerSet {
+		func(rs m.PartnerSet, partner m.PartnerSet) m.PartnerSet {
 			return rs.CommercialPartner()
 		})
 
 	h.Partner().Methods().CommercialFields().Extend("",
-		func(rs h.PartnerSet) []models.FieldNamer {
+		func(rs m.PartnerSet) []models.FieldNamer {
 			return append(rs.Super().CommercialFields(), models.ConvertToFieldNameSlice([]string{
 				`DebitLimit`, `PropertyAccountPayable`, `PropertyAccountReceivable`, `PropertyAccountPosition`,
 				`PropertyPaymentTerm`, `PropertySupplierPaymentTerm`, `LastTimeEntriesChecked`})...)
@@ -711,9 +717,12 @@ credit or if you click the "Done" button.`},
 
 	h.Partner().Methods().OpenPartnerHistory().DeclareMethod(
 		`OpenPartnerHistory returns an action that display invoices/refunds made for the given partners.`,
-		func(rs h.PartnerSet) *actions.Action {
+		func(rs m.PartnerSet) *actions.Action {
 			action := actions.Registry.GetById("account_action_invoice_refund_out_tree")
-			action.Domain = append(action.Domain, "('partner_id', 'child_of', self.ids)") //tovalid clearly wont work
+			// FIXME
+			//cond := domains.ParseDomain(action.Domain)
+			//cond = cond.AndCond(q.Partner().Parent().ChildOf(rs).Condition)
+			//action.Domain = domains.Domain(cond.Serialize()).String()
 			return action
 		})
 

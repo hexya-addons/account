@@ -8,6 +8,7 @@ import (
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 )
 
 func init() {
@@ -41,7 +42,7 @@ func init() {
 
 	h.AccountCommonReport().Methods().BuildContexts().DeclareMethod(
 		`BuildContexts`,
-		func(rs h.AccountCommonReportSet, args struct {
+		func(rs m.AccountCommonReportSet, args struct {
 			Data interface{}
 		}) {
 
@@ -59,13 +60,13 @@ func init() {
 
 	h.AccountCommonReport().Methods().PrintReport().DeclareMethod(
 		`PrintReport`,
-		func(rs h.AccountCommonReportSet, data interface{}) *actions.Action {
+		func(rs m.AccountCommonReportSet, data interface{}) *actions.Action {
 			panic(rs.T("Not implemented"))
 		})
 
 	h.AccountCommonReport().Methods().CheckReport().DeclareMethod(
 		`CheckReport`,
-		func(rs h.AccountCommonReportSet) {
+		func(rs m.AccountCommonReportSet) {
 			//@api.multi
 			/*def check_report(self):
 			  self.ensure_one()

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"github.com/hexya-erp/hexya/src/models/security"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
-	"log"
+	"github.com/hexya-erp/pool/m"
 	"math"
 	"sort"
 	"strconv"
@@ -15,6 +15,7 @@ import (
 
 	"github.com/hexya-addons/account/accounttypes"
 	"github.com/hexya-erp/hexya/src/actions"
+	"github.com/hexya-erp/hexya/src/i18n"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/operator"
 	"github.com/hexya-erp/hexya/src/models/types"
@@ -39,6 +40,41 @@ func CoalesceInt(lst ...int) int {
 		}
 	}
 	return 0
+}
+
+func FormatLang(env models.Environment, value float64, currency models.RecordSet) string {
+	if currency.IsEmpty() || currency.ModelName() != "Currency" {
+		panic("Error while formatting float. the model given is not a Currency model")
+	}
+	ctx := env.Context()
+	locale := i18n.GetLocale(ctx.GetString("lang"))
+	curColl := currency.Collection()
+	digits := CoalesceInt(curColl.Get("DecimalPlaces").(int), 2)
+	if ctx.Get("digits") != nil {
+		digits = int(ctx.GetInteger("digits"))
+	}
+	grouping := CoalesceStr(ctx.GetString("grouping"), locale.Grouping, "[3,0]")
+	groupingSpl := strings.Split(strings.TrimSuffix(strings.TrimPrefix(grouping, "["), "]"), ",")
+	groupingLeft, err := strconv.Atoi(groupingSpl[0])
+	if err != nil {
+		groupingLeft = 3
+	}
+	groupingRight, err := strconv.Atoi(groupingSpl[1])
+	if err != nil {
+		groupingRight = 0
+	}
+	separator := CoalesceStr(ctx.GetString("separator"), locale.DecimalPoint, ".")
+	thSeparator := CoalesceStr(ctx.GetString("th_separator"), locale.ThousandsSep, ",")
+	symbol := CoalesceStr(ctx.GetString("symbol"), curColl.Get("Symbol").(string), "$")
+	symPos := CoalesceStr(ctx.GetString("sym_pos"), curColl.Get("Position").(string), "before")
+	symToLeft := false
+	if symPos == "before" {
+		symToLeft = true
+	}
+	//return strutils.FormatMonetary(value, digits, groupingLeft, groupingRight, separator, thSeparator, symbol, symToLeft)
+	// FIXME
+	fmt.Println(value, digits, groupingLeft, groupingRight, separator, thSeparator, symbol, symToLeft)
+	return "FIXME"
 }
 
 func init() {
@@ -152,7 +188,7 @@ or if you click the "Done" button.`},
 
 	h.AccountAccount().Methods().CheckReconcile().DeclareMethod(
 		`CheckReconcile`,
-		func(rs h.AccountAccountSet) {
+		func(rs m.AccountAccountSet) {
 			for _, r := range rs.Records() {
 				if (r.InternalType() == "receivable" || r.InternalType() == "payable") && r.Reconcile() == false {
 					panic(rs.T(`You cannot have a recievable/payable account that is not reconciliable. (account code: %s)`, r.Code()))
@@ -163,7 +199,7 @@ or if you click the "Done" button.`},
 	h.AccountAccount().Methods().DefaultGet().Extend(
 		`If we're creating a new account through a many2one, there are chances that we typed the account code
 	instead of its name. In that case, switch both fields values.`,
-		func(rs h.AccountAccountSet) models.FieldMap {
+		func(rs m.AccountAccountSet) models.FieldMap {
 			defaultName := rs.Env().Context().GetString("default_name")
 			defaultCode := rs.Env().Context().GetInteger("default_code") //int??
 
@@ -179,7 +215,7 @@ or if you click the "Done" button.`},
 		})
 
 	h.AccountAccount().Methods().SearchByName().Extend("",
-		func(rs h.AccountAccountSet, name string, op operator.Operator, additionalCond q.AccountAccountCondition, limit int) h.AccountAccountSet {
+		func(rs m.AccountAccountSet, name string, op operator.Operator, additionalCond q.AccountAccountCondition, limit int) m.AccountAccountSet {
 			//Tovalid
 			//@api.model
 			/*def name_search(self, name, args=None, operator='ilike', limit=100):
@@ -198,7 +234,7 @@ or if you click the "Done" button.`},
 
 	h.AccountAccount().Methods().OnchangeInternalType().DeclareMethod(
 		`OnchangeInternalType`,
-		func(rs h.AccountAccountSet) *h.AccountAccountData {
+		func(rs m.AccountAccountSet) m.AccountAccountData {
 			res := h.AccountAccount().NewData()
 			if rs.InternalType() == "receivable" || rs.InternalType() == "payable" {
 				res.SetReconcile(true)
@@ -209,7 +245,7 @@ or if you click the "Done" button.`},
 		})
 
 	h.AccountAccount().Methods().NameGet().Extend("",
-		func(rs h.AccountAccountSet) string {
+		func(rs m.AccountAccountSet) string {
 			var names string
 			for _, r := range rs.Records() {
 				name := r.Code() + " " + r.Name()
@@ -219,13 +255,13 @@ or if you click the "Done" button.`},
 		})
 
 	h.AccountAccount().Methods().Copy().Extend("",
-		func(rs h.AccountAccountSet, overrides *h.AccountAccountData) h.AccountAccountSet {
+		func(rs m.AccountAccountSet, overrides m.AccountAccountData) m.AccountAccountSet {
 			overrides.SetCode(rs.T(`%s (copy)`, rs.Code()))
 			return rs.Super().Copy(overrides)
 		})
 
 	h.AccountAccount().Methods().Write().Extend("",
-		func(rs h.AccountAccountSet, vals *h.AccountAccountData) bool {
+		func(rs m.AccountAccountSet, vals m.AccountAccountData) bool {
 			// Dont allow changing the company_id when account_move_line already exist
 			if vals.HasCompany() {
 				query := q.AccountMoveLine().Account().In(rs)
@@ -259,7 +295,7 @@ or if you click the "Done" button.`},
 		})
 
 	h.AccountAccount().Methods().Unlink().Extend("",
-		func(rs h.AccountAccountSet) int64 {
+		func(rs m.AccountAccountSet) int64 {
 			query := q.AccountMoveLine().Account().In(rs)
 			if !h.AccountMoveLine().Search(rs.Env(), query).IsEmpty() {
 				panic(rs.T(`You cannot do that on an account that contains journal items.`))
@@ -279,13 +315,13 @@ or if you click the "Done" button.`},
 
 	h.AccountAccount().Methods().MarkAsReconciled().DeclareMethod(
 		`MarkAsReconciled`,
-		func(rs h.AccountAccountSet) bool {
+		func(rs m.AccountAccountSet) bool {
 			return rs.Write(rs.First().SetLastTimeEntriesChecked(dates.Now()))
 		})
 
 	h.AccountAccount().Methods().ActionOpenReconcile().DeclareMethod(
 		`ActionOpenReconcile`,
-		func(rs h.AccountAccountSet) *actions.Action {
+		func(rs m.AccountAccountSet) *actions.Action {
 			rs.EnsureOne()
 			var ctx *types.Context
 			ctx = ctx.WithKey("show_mode_selector", false)
@@ -454,7 +490,7 @@ to manage payments outside of the software.`},
 
 	h.AccountJournal().Methods().CheckCurrency().DeclareMethod(
 		`CheckCurrency`,
-		func(rs h.AccountJournalSet) {
+		func(rs m.AccountJournalSet) {
 			if !rs.Currency().IsEmpty() {
 				if rs.Currency().Equals(rs.Company().Currency()) {
 					panic(rs.T(`Currency field should only be set if the journal's currency is different from the company's. Leave the field blank to use company currency.`))
@@ -470,7 +506,7 @@ to manage payments outside of the software.`},
 
 	h.AccountJournal().Methods().CheckBankAccount().DeclareMethod(
 		`CheckBankAccount`,
-		func(rs h.AccountJournalSet) {
+		func(rs m.AccountJournalSet) {
 			if rs.Type() == "bank" && !rs.BankAccount().IsEmpty() {
 				if rs.BankAccount().Company() != rs.Company() {
 					panic(rs.T(`The bank account of a bank journal must belong to the same company (%s).`, rs.Company().Name()))
@@ -485,7 +521,7 @@ to manage payments outside of the software.`},
 
 	h.AccountJournal().Methods().OnchangeDebitAccountId().DeclareMethod(
 		`OnchangeDebitAccountId`,
-		func(rs h.AccountJournalSet) *h.AccountJournalData {
+		func(rs m.AccountJournalSet) m.AccountJournalData {
 			res := h.AccountJournal().NewData()
 			if rs.DefaultCreditAccount().IsEmpty() {
 				rs.SetDefaultCreditAccount(rs.DefaultDebitAccount())
@@ -495,7 +531,7 @@ to manage payments outside of the software.`},
 
 	h.AccountJournal().Methods().OnchangeCreditAccountId().DeclareMethod(
 		`OnchangeCreditAccountId`,
-		func(rs h.AccountJournalSet) *h.AccountJournalData {
+		func(rs m.AccountJournalSet) m.AccountJournalData {
 			res := h.AccountJournal().NewData()
 			if rs.DefaultDebitAccount().IsEmpty() {
 				res.SetDefaultDebitAccount(rs.DefaultCreditAccount())
@@ -504,9 +540,9 @@ to manage payments outside of the software.`},
 		})
 
 	h.AccountJournal().Methods().Unlink().Extend("",
-		func(rs h.AccountJournalSet) int64 {
+		func(rs m.AccountJournalSet) int64 {
 			bankAccounts := h.BankAccount().Browse(rs.Env(), []int64{})
-			var BAlist []h.BankAccountSet
+			var BAlist []m.BankAccountSet
 			for _, r := range rs.Records() {
 				BAlist = append(BAlist, r.BankAccount())
 			}
@@ -522,14 +558,14 @@ to manage payments outside of the software.`},
 		})
 
 	h.AccountJournal().Methods().Copy().Extend("",
-		func(rs h.AccountJournalSet, overrides *h.AccountJournalData) h.AccountJournalSet {
+		func(rs m.AccountJournalSet, overrides m.AccountJournalData) m.AccountJournalSet {
 			overrides.SetCode(rs.T("%s (copy)", rs.Code()))
 			overrides.SetName(rs.T("%s (copy)", rs.Name()))
 			return rs.Super().Copy(overrides)
 		})
 
 	h.AccountJournal().Methods().Write().Extend("",
-		func(rs h.AccountJournalSet, vals *h.AccountJournalData) bool {
+		func(rs m.AccountJournalSet, vals m.AccountJournalData) bool {
 			for _, journal := range rs.Records() {
 				if !vals.Company().IsEmpty() && journal.Company().ID() != vals.Company().ID() {
 					if !h.AccountMove().Search(rs.Env(), q.AccountMove().Journal().In(rs)).IsEmpty() {
@@ -565,16 +601,16 @@ to manage payments outside of the software.`},
 			result := rs.Super().Write(vals)
 			// Create the bank_account_id if necessary
 			if vals.BankAccNumber() != "" {
-				for _, journal := range rs.Filtered(func(rs h.AccountJournalSet) bool { return rs.Type() == "bank" && !rs.BankAccount().IsEmpty() }).Records() {
+				for _, journal := range rs.Filtered(func(rs m.AccountJournalSet) bool { return rs.Type() == "bank" && !rs.BankAccount().IsEmpty() }).Records() {
 					journal.DefineBankAccount(vals.BankAccNumber(), vals.Bank())
 				}
 			}
 			// Create the relevant refund sequence
 			if _, ok := vals.Get("RefundSequence"); ok {
-				for _, journal := range rs.Filtered(func(rs h.AccountJournalSet) bool {
+				for _, journal := range rs.Filtered(func(rs m.AccountJournalSet) bool {
 					return (rs.Type() == "sale" || rs.Type() == "purchase") && !rs.RefundEntrySequence().IsEmpty()
 				}).Records() {
-					jVals := new(h.AccountJournalData)
+					jVals := h.AccountJournal().NewData()
 					jVals.SetName(journal.Name())
 					jVals.SetCompany(journal.Company())
 					jVals.SetCode(journal.Code())
@@ -586,7 +622,7 @@ to manage payments outside of the software.`},
 
 	h.AccountJournal().Methods().GetSequencePrefix().DeclareMethod(
 		`GetSequencePrefix returns the prefix of the sequence for the given code.`,
-		func(rs h.AccountJournalSet, code string, refund bool) string {
+		func(rs m.AccountJournalSet, code string, refund bool) string {
 			prefix := strings.ToUpper(code)
 			if refund {
 				prefix = "R" + prefix
@@ -596,7 +632,7 @@ to manage payments outside of the software.`},
 
 	h.AccountJournal().Methods().CreateSequence().DeclareMethod(
 		`CreateSequence creates new no_gap entry sequence for every new Journal`,
-		func(rs h.AccountJournalSet, vals *h.AccountJournalData, refund bool) h.SequenceSet {
+		func(rs m.AccountJournalSet, vals m.AccountJournalData, refund bool) m.SequenceSet {
 			prefix := rs.GetSequencePrefix(vals.Code(), refund)
 			name := vals.Name()
 			if refund {
@@ -616,7 +652,7 @@ to manage payments outside of the software.`},
 	h.AccountJournal().Methods().PrepareLiquidityAccount().DeclareMethod(
 		`PrepareLiquidityAccount prepares the value to use for the creation of the default debit and credit accounts of a
 			  liquidity journal (created through the wizard of generating COA from templates for example).`,
-		func(rs h.AccountJournalSet, name string, company h.CompanySet, currency h.CurrencySet, accType string) *h.AccountAccountData {
+		func(rs m.AccountJournalSet, name string, company m.CompanySet, currency m.CurrencySet, accType string) m.AccountAccountData {
 			// Seek the next available number for the account code
 			codeDigits := company.AccountsCodeDigits()
 			accountCodePrefix := company.BankAccountCodePrefix()
@@ -654,7 +690,7 @@ to manage payments outside of the software.`},
 		})
 
 	h.AccountJournal().Methods().Create().Extend("",
-		func(rs h.AccountJournalSet, vals *h.AccountJournalData) h.AccountJournalSet {
+		func(rs m.AccountJournalSet, vals m.AccountJournalData) m.AccountJournalSet {
 			company := vals.Company()
 			if company.IsEmpty() {
 				company = h.User().NewSet(rs.Env()).CurrentUser().Company()
@@ -722,9 +758,9 @@ to manage payments outside of the software.`},
 
 	h.AccountJournal().Methods().DefineBankAccount().DeclareMethod(
 		`Create a res.partner.bank and set it as value of the  field bank_account_id`,
-		func(rs h.AccountJournalSet, accNumber string, bank h.BankSet) {
+		func(rs m.AccountJournalSet, accNumber string, bank m.BankSet) {
 			rs.EnsureOne()
-			data := new(h.BankAccountData)
+			data := h.BankAccount().NewData()
 			data.SetSanitizedAccountNumber(accNumber)
 			data.SetBank(bank)
 			data.SetCompany(rs.Company())
@@ -734,7 +770,7 @@ to manage payments outside of the software.`},
 		})
 
 	h.AccountJournal().Methods().NameGet().Extend("",
-		func(rs h.AccountJournalSet) string {
+		func(rs m.AccountJournalSet) string {
 			currency := rs.Company().Currency()
 			if !rs.Currency().IsEmpty() {
 				currency = rs.Currency()
@@ -744,7 +780,7 @@ to manage payments outside of the software.`},
 		})
 
 	h.AccountJournal().Methods().SearchByName().Extend("",
-		func(rs h.AccountJournalSet, name string, op operator.Operator, additionalCond q.AccountJournalCondition, limit int) h.AccountJournalSet {
+		func(rs m.AccountJournalSet, name string, op operator.Operator, additionalCond q.AccountJournalCondition, limit int) m.AccountJournalSet {
 			//@api.model
 			/*def name_search(self, name, args=None, operator='ilike', limit=100): tovalid
 			args = args or []
@@ -760,7 +796,7 @@ to manage payments outside of the software.`},
 
 	h.AccountJournal().Methods().BelongToCompany().DeclareMethod(
 		`BelongToCompany`,
-		func(rs h.AccountJournalSet) *h.AccountJournalData {
+		func(rs m.AccountJournalSet) m.AccountJournalData {
 			r := h.AccountJournal().NewData()
 			cond := rs.Company().Equals(h.User().NewSet(rs.Env()).CurrentUser().Company())
 			if rs.BelongsToCompany() != cond {
@@ -772,8 +808,8 @@ to manage payments outside of the software.`},
 
 	h.AccountJournal().Methods().SearchCompanyJournals().DeclareMethod(
 		`SearchCompanyJournals`,
-		func(rs h.AccountJournalSet, op operator.Operator, value string) {
-			var recs h.AccountJournalSet
+		func(rs m.AccountJournalSet, op operator.Operator, value string) {
+			var recs m.AccountJournalSet
 			if op == "=" {
 				recs = rs.Search(q.AccountJournal().Company().NotEquals(h.User().NewSet(rs.Env()).CurrentUser().Company()))
 			} else {
@@ -785,7 +821,7 @@ to manage payments outside of the software.`},
 
 	h.AccountJournal().Methods().MethodsCompute().DeclareMethod(
 		`MethodsCompute`,
-		func(rs h.AccountJournalSet) *h.AccountJournalData {
+		func(rs m.AccountJournalSet) m.AccountJournalData {
 			r := h.AccountJournal().NewData()
 			b := len(rs.InboundPaymentMethods().Ids()) > 0
 			if b != rs.AtLeastOneInbound() {
@@ -811,7 +847,7 @@ to manage payments outside of the software.`},
 
 	h.BankAccount().Methods().CheckJournal().DeclareMethod(
 		`CheckJournal`,
-		func(rs h.BankAccountSet) {
+		func(rs m.BankAccountSet) {
 			if rs.Journal().Len() > 1 {
 				panic(rs.T(`A bank account can only belong to one journal.`))
 			}
@@ -934,7 +970,7 @@ to the same analytic account as the invoice line (if any)`},
 	//	"Tax names must be unique !")
 
 	h.AccountTax().Methods().Unlink().Extend("",
-		func(rs h.AccountTaxSet) int64 {
+		func(rs m.AccountTaxSet) int64 {
 			//@api.multi
 			/*def unlink(self):
 			  company_id = self.env.user.company_id.id
@@ -955,7 +991,7 @@ to the same analytic account as the invoice line (if any)`},
 
 	h.AccountTax().Methods().CheckChildrenScope().DeclareMethod(
 		`CheckChildrenScope`,
-		func(rs h.AccountTaxSet) {
+		func(rs m.AccountTaxSet) {
 			for _, child := range rs.ChildrenTaxes().Records() {
 				if !(child.TypeTaxUse() == "none" || child.TypeTaxUse() == rs.TypeTaxUse()) {
 					panic(rs.T(`The application scope of taxes in a group must be either the same as the group or "None".`))
@@ -964,13 +1000,13 @@ to the same analytic account as the invoice line (if any)`},
 		})
 
 	h.AccountTax().Methods().Copy().Extend("",
-		func(rs h.AccountTaxSet, overrides *h.AccountTaxData) h.AccountTaxSet {
+		func(rs m.AccountTaxSet, overrides m.AccountTaxData) m.AccountTaxSet {
 			overrides.SetName(rs.T("%s (Copy)", rs.Name()))
 			return rs.Super().Copy(overrides)
 		})
 
 	h.AccountTax().Methods().SearchByName().Extend(`SearchByName`,
-		func(rs h.AccountTaxSet, name string, op operator.Operator, additionalCond q.AccountTaxCondition, limit int) h.AccountTaxSet {
+		func(rs m.AccountTaxSet, name string, op operator.Operator, additionalCond q.AccountTaxCondition, limit int) m.AccountTaxSet {
 			/* tovalid
 			args = args or []
 			if operator in expression.NEGATIVE_TERM_OPERATORS:
@@ -985,7 +1021,7 @@ to the same analytic account as the invoice line (if any)`},
 		})
 
 	h.AccountTax().Methods().Search().Extend("",
-		func(rs h.AccountTaxSet, cond q.AccountTaxCondition) h.AccountTaxSet {
+		func(rs m.AccountTaxSet, cond q.AccountTaxCondition) m.AccountTaxSet {
 			ctx := rs.Env().Context()
 			typ := ctx.GetString(`type`)
 			switch typ {
@@ -1006,7 +1042,7 @@ to the same analytic account as the invoice line (if any)`},
 
 	h.AccountTax().Methods().OnchangeAmount().DeclareMethod(
 		`OnchangeAmount`,
-		func(rs h.AccountTaxSet) *h.AccountTaxData {
+		func(rs m.AccountTaxSet) m.AccountTaxData {
 			res := h.AccountTax().NewData()
 			if (rs.AmountType() == "percent" || rs.AmountType() == "division") && rs.Amount() != 0.0 && rs.Description() == "" {
 				res.SetDescription(fmt.Sprintf("%.4f", rs.Amount()))
@@ -1016,7 +1052,7 @@ to the same analytic account as the invoice line (if any)`},
 
 	h.AccountTax().Methods().OnchangeAccount().DeclareMethod(
 		`OnchangeAccount`,
-		func(rs h.AccountTaxSet) *h.AccountTaxData {
+		func(rs m.AccountTaxSet) m.AccountTaxData {
 			res := h.AccountTax().NewData()
 			if !rs.RefundAccount().Equals(rs.Account()) {
 				res.SetRefundAccount(rs.Account())
@@ -1026,7 +1062,7 @@ to the same analytic account as the invoice line (if any)`},
 
 	h.AccountTax().Methods().OnchangePriceInclude().DeclareMethod(
 		`OnchangePriceInclude`,
-		func(rs h.AccountTaxSet) *h.AccountTaxData {
+		func(rs m.AccountTaxSet) m.AccountTaxData {
 			res := h.AccountTax().NewData()
 			if rs.PriceInclude() && !rs.IncludeBaseAmount() {
 				res.SetIncludeBaseAmount(true)
@@ -1036,7 +1072,7 @@ to the same analytic account as the invoice line (if any)`},
 
 	h.AccountTax().Methods().GetGroupingKey().DeclareMethod(
 		`Returns a string that will be used to group account.invoice.tax sharing the same properties`,
-		func(rs h.AccountTaxSet, invoiceTaxVal *h.AccountInvoiceTaxData) string {
+		func(rs m.AccountTaxSet, invoiceTaxVal m.AccountInvoiceTaxData) string {
 			rs.EnsureOne()
 			str := fmt.Sprintf(`%d-%d-%d`, invoiceTaxVal.Tax().ID(), invoiceTaxVal.Account().ID(), invoiceTaxVal.AccountAnalytic().ID())
 			return str
@@ -1047,7 +1083,7 @@ to the same analytic account as the invoice line (if any)`},
 
 		baseAmount is the actual amount on which the tax is applied, which is priceUnit * quantity eventually
 		affected by previous taxes (if tax is include_base_amount XOR price_include)`,
-		func(rs h.AccountTaxSet, baseAmount, priceUnit, quantity float64, product h.ProductProductSet, partner h.PartnerSet) float64 {
+		func(rs m.AccountTaxSet, baseAmount, priceUnit, quantity float64, product m.ProductProductSet, partner m.PartnerSet) float64 {
 			rs.EnsureOne()
 			if rs.AmountType() == "fixed" {
 				// Use Copysign to take into account the sign of the base amount which includes the sign
@@ -1072,13 +1108,13 @@ to the same analytic account as the invoice line (if any)`},
 			if rs.AmountType() == "division" && !rs.PriceInclude() {
 				return baseAmount/(1-rs.Amount()/100) - baseAmount
 			}
-			log.Fatal("Unhandled tax type", "tax", rs.ID(), "type", rs.AmountType(), "priceInclude", rs.PriceInclude())
+			log.Panic("Unhandled tax type", "tax", rs.ID(), "type", rs.AmountType(), "priceInclude", rs.PriceInclude())
 			panic("Unhandled tax type")
 		})
 
 	h.AccountTax().Methods().JSONFriendlyComputeAll().DeclareMethod(
 		`Just converts parameters in browse records and calls for compute_all, because js widgets can't serialize browse records`,
-		func(rs h.AccountTaxSet, priceUnit float64, currencyID int64, quantity float64, productID int64, partnerID int64) (float64, float64, float64, []accounttypes.AppliedTaxData) {
+		func(rs m.AccountTaxSet, priceUnit float64, currencyID int64, quantity float64, productID int64, partnerID int64) (float64, float64, float64, []accounttypes.AppliedTaxData) {
 			currency := h.Currency().NewSet(rs.Env())
 			if currencyID > 0 {
 				currency = h.Currency().Browse(rs.Env(), []int64{currencyID})
@@ -1110,8 +1146,8 @@ to the same analytic account as the invoice line (if any)`},
 
                    []AppliedTaxData     # One struct for each tax in rs and their children
 			  } `,
-		func(rs h.AccountTaxSet, priceUnit float64, currency h.CurrencySet, quantity float64,
-			product h.ProductProductSet, partner h.PartnerSet) (float64, float64, float64, []accounttypes.AppliedTaxData) {
+		func(rs m.AccountTaxSet, priceUnit float64, currency m.CurrencySet, quantity float64,
+			product m.ProductProductSet, partner m.PartnerSet) (float64, float64, float64, []accounttypes.AppliedTaxData) {
 
 			company := rs.Company()
 			if rs.IsEmpty() {
@@ -1224,9 +1260,9 @@ to the same analytic account as the invoice line (if any)`},
 
 	h.AccountTax().Methods().FixTaxIncludedPrice().DeclareMethod(
 		`Subtract tax amount from price when corresponding "price included" taxes do not apply`,
-		func(rs h.AccountTaxSet, price float64, prodTaxes, lineTaxes h.AccountTaxSet) float64 {
+		func(rs m.AccountTaxSet, price float64, prodTaxes, lineTaxes m.AccountTaxSet) float64 {
 			// FIXME get currency in param?
-			inclTax := prodTaxes.Filtered(func(r h.AccountTaxSet) bool { return !r.Subtract(lineTaxes).IsEmpty() && r.PriceInclude() })
+			inclTax := prodTaxes.Filtered(func(r m.AccountTaxSet) bool { return !r.Subtract(lineTaxes).IsEmpty() && r.PriceInclude() })
 			if !inclTax.IsEmpty() {
 				//return inclTax.ComputeAll() //tovalid
 			}
@@ -1312,7 +1348,7 @@ to the same analytic account as the invoice line (if any)`},
 
 	h.AccountReconcileModel().Methods().OnchangeName().DeclareMethod(
 		`OnchangeName`,
-		func(rs h.AccountReconcileModelSet) *h.AccountReconcileModelData {
+		func(rs m.AccountReconcileModelSet) m.AccountReconcileModelData {
 			res := h.AccountReconcileModel().NewData()
 			if rs.Label() != rs.Name() {
 				res.SetLabel(rs.Name())

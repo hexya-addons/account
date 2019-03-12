@@ -4,9 +4,12 @@
 package account
 
 import (
+	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
+	"github.com/hexya-erp/hexya/src/views"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
 )
 
@@ -39,7 +42,6 @@ func init() {
 			Required:      true,
 			Filter:        q.AccountAccount().Deprecated().Equals(false)},
 		"Amount": models.FloatField{
-			/*[currency_field 'company_currency_id']*/
 			Required: true},
 		"CompanyCurrency": models.Many2OneField{
 			RelationModel: h.Currency(),
@@ -57,7 +59,7 @@ func init() {
 
 	h.TaxAdjustmentsWizard().Methods().CreateMovePrivate().DeclareMethod(
 		`CreateMovePrivate`,
-		func(rs h.TaxAdjustmentsWizardSet) h.AccountMoveSet {
+		func(rs m.TaxAdjustmentsWizardSet) m.AccountMoveSet {
 			debitData := h.AccountMoveLine().NewData().
 				SetName(rs.Reason()).
 				SetDebit(rs.Amount()).
@@ -83,18 +85,18 @@ func init() {
 
 	h.TaxAdjustmentsWizard().Methods().CreateMove().DeclareMethod(
 		`CreateMove`,
-		func(rs h.TaxAdjustmentsWizardSet) {
-			//@api.multi
-			/*def create_move(self):
-			  #create the adjustment move
-			  move_id = self._create_move()
-			  #return an action showing the created move
-			  action = self.env.ref(self.env.context.get('action', 'account.action_move_line_form'))
-			  result = action.read()[0]
-			  result['views'] = [(False, 'form')]
-			  result['res_id'] = move_id
-			  return result
-			*/
+		func(rs m.TaxAdjustmentsWizardSet) *actions.Action {
+			// create the adjustment move
+			move := rs.CreateMovePrivate()
+			// return an action showing the created move
+			actionId := rs.Env().Context().GetString("action")
+			if actionId == "" {
+				actionId = "account.action_move_line_from"
+			}
+			action := actions.Registry.GetById(actionId)
+			action.Views = []views.ViewTuple{{"", "form"}}
+			action.ResID = move.ID()
+			return action
 		})
 
 }

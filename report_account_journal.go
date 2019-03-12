@@ -3,13 +3,16 @@
 
 package account
 
-import "github.com/hexya-erp/pool/h"
+import (
+	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
+)
 
 func init() {
 	h.ReportAccountReportJournal().DeclareTransientModel()
 	h.ReportAccountReportJournal().Methods().Lines().DeclareMethod(
 		`Lines`,
-		func(rs h.ReportAccountReportJournalSet, args struct {
+		func(rs m.ReportAccountReportJournalSet, args struct {
 			TargetMove    interface{}
 			JournalIds    interface{}
 			SortSelection interface{}
@@ -39,7 +42,7 @@ func init() {
 		})
 	h.ReportAccountReportJournal().Methods().SumDebit().DeclareMethod(
 		`SumDebit`,
-		func(rs h.ReportAccountReportJournalSet, args struct {
+		func(rs m.ReportAccountReportJournalSet, args struct {
 			Data      interface{}
 			JournalId interface{}
 		}) {
@@ -59,7 +62,7 @@ func init() {
 		})
 	h.ReportAccountReportJournal().Methods().SumCredit().DeclareMethod(
 		`SumCredit`,
-		func(rs h.ReportAccountReportJournalSet, args struct {
+		func(rs m.ReportAccountReportJournalSet, args struct {
 			Data      interface{}
 			JournalId interface{}
 		}) {
@@ -79,7 +82,7 @@ func init() {
 		})
 	h.ReportAccountReportJournal().Methods().GetTaxes().DeclareMethod(
 		`GetTaxes`,
-		func(rs h.ReportAccountReportJournalSet, args struct {
+		func(rs m.ReportAccountReportJournalSet, args struct {
 			Data      interface{}
 			JournalId interface{}
 		}) {
@@ -126,7 +129,7 @@ func init() {
 		})
 	h.ReportAccountReportJournal().Methods().GetQueryGetClause().DeclareMethod(
 		`GetQueryGetClause`,
-		func(rs h.ReportAccountReportJournalSet, args struct {
+		func(rs m.ReportAccountReportJournalSet, args struct {
 			Data interface{}
 		}) {
 			/*def _get_query_get_clause(self, data):
@@ -136,7 +139,7 @@ func init() {
 		})
 	h.ReportAccountReportJournal().Methods().RenderHtml().DeclareMethod(
 		`RenderHtml`,
-		func(rs h.ReportAccountReportJournalSet, args struct {
+		func(rs m.ReportAccountReportJournalSet, args struct {
 			Docids interface{}
 			Data   interface{}
 		}) {

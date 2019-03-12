@@ -7,6 +7,7 @@ import (
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 )
 
 func init() {
@@ -15,7 +16,7 @@ func init() {
 	h.AccountingReport().InheritModel(h.AccountCommonReport())
 	h.AccountingReport().Methods().GetAccountReport().DeclareMethod(
 		`GetAccountReport`,
-		func(rs h.AccountingReportSet) {
+		func(rs m.AccountingReportSet) {
 			//@api.model
 			/*def _get_account_report(self):
 			    reports = []
@@ -55,7 +56,7 @@ func init() {
 	})
 	h.AccountingReport().Methods().BuildComparisonContext().DeclareMethod(
 		`BuildComparisonContext`,
-		func(rs h.AccountingReportSet, args struct {
+		func(rs m.AccountingReportSet, args struct {
 			Data interface{}
 		}) {
 			/*def _build_comparison_context(self, data):
@@ -72,7 +73,7 @@ func init() {
 		})
 	h.AccountingReport().Methods().CheckReport().DeclareMethod(
 		`CheckReport`,
-		func(rs h.AccountingReportSet) {
+		func(rs m.AccountingReportSet) {
 			//@api.multi
 			/*def check_report(self):
 			  res = super(AccountingReport, self).check_report()
@@ -89,7 +90,7 @@ func init() {
 		})
 	h.AccountingReport().Methods().PrintReport().DeclareMethod(
 		`PrintReport`,
-		func(rs h.AccountingReportSet, args struct {
+		func(rs m.AccountingReportSet, args struct {
 			Data interface{}
 		}) {
 			/*def _print_report(self, data):

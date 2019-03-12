@@ -6,6 +6,7 @@ package account
 import (
 	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 )
 
 func init() {
@@ -13,7 +14,7 @@ func init() {
 	h.ValidateAccountMove().DeclareTransientModel()
 	h.ValidateAccountMove().Methods().ValidateMove().DeclareMethod(
 		`ValidateMove`,
-		func(rs h.ValidateAccountMoveSet) *actions.Action {
+		func(rs m.ValidateAccountMoveSet) *actions.Action {
 			context := rs.Env().Context()
 			moves := h.AccountMove().Browse(rs.Env(), context.GetIntegerSlice("active_ids"))
 			moveToPost := h.AccountMove().NewSet(rs.Env())

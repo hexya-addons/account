@@ -6,6 +6,7 @@ package account
 import (
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
 )
 
@@ -50,9 +51,9 @@ to value expenses for the current product.`},
 	})
 
 	h.ProductTemplate().Methods().Write().Extend("",
-		func(rs h.ProductTemplateSet, data *h.ProductTemplateData) bool {
+		func(rs m.ProductTemplateSet, data m.ProductTemplateData) bool {
 			// should be a better way to do this with Hexya
-			var uoms h.ProductTemplateSet
+			var uoms m.ProductTemplateSet
 			check := rs.IsNotEmpty() && data.HasUomPo()
 			cond := q.ProductTemplate().ID().In(rs.Ids())
 			if check {
@@ -72,22 +73,22 @@ to value expenses for the current product.`},
 
 	h.ProductTemplate().Methods().GetProductDirectAccounts().DeclareMethod(
 		`GetProductDirectAccounts`,
-		func(rs h.ProductTemplateSet) (h.AccountAccountSet, h.AccountAccountSet) {
+		func(rs m.ProductTemplateSet) (m.AccountAccountSet, m.AccountAccountSet) {
 			return h.AccountAccount().Coalesce(rs.PropertyAccountIncome(), rs.Category().PropertyAccountIncomeCateg()),
 				h.AccountAccount().Coalesce(rs.PropertyAccountExpense(), rs.Category().PropertyAccountExpenseCateg())
 		})
 
 	h.ProductTemplate().Methods().GetAssetAccounts().DeclareMethod(
 		`GetAssetAccounts`,
-		func(rs h.ProductTemplateSet) (h.AccountAccountSet, h.AccountAccountSet) {
+		func(rs m.ProductTemplateSet) (m.AccountAccountSet, m.AccountAccountSet) {
 			return h.AccountAccount().NewSet(rs.Env()), h.AccountAccount().NewSet(rs.Env())
 		})
 
 	h.ProductTemplate().Methods().GetProductAccounts().DeclareMethod(
 		`GetProductAccounts`,
-		func(rs h.ProductTemplateSet, fiscalPos h.AccountFiscalPositionSet) (h.AccountAccountSet, h.AccountAccountSet) {
+		func(rs m.ProductTemplateSet, fiscalPos m.AccountFiscalPositionSet) (m.AccountAccountSet, m.AccountAccountSet) {
 			income, expense := rs.GetProductDirectAccounts()
-			m := map[string]h.AccountAccountSet{
+			m := map[string]m.AccountAccountSet{
 				"income":  income,
 				"expense": expense,
 			}

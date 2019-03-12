@@ -3,13 +3,16 @@
 
 package account
 
-import "github.com/hexya-erp/pool/h"
+import (
+	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
+)
 
 func init() {
 	h.ReportAccountReportOverdue().DeclareTransientModel()
 	h.ReportAccountReportOverdue().Methods().GetAccountMoveLines().DeclareMethod(
 		`GetAccountMoveLines`,
-		func(rs h.ReportAccountReportOverdueSet, args struct {
+		func(rs m.ReportAccountReportOverdueSet, args struct {
 			PartnerIds interface{}
 		}) {
 			/*def _get_account_move_lines(self, partner_ids):
@@ -34,7 +37,7 @@ func init() {
 		})
 	h.ReportAccountReportOverdue().Methods().RenderHtml().DeclareMethod(
 		`RenderHtml`,
-		func(rs h.ReportAccountReportOverdueSet, args struct {
+		func(rs m.ReportAccountReportOverdueSet, args struct {
 			Docids interface{}
 			Data   interface{}
 		}) {

@@ -1,14 +1,17 @@
 package account
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
-	"github.com/hexya-erp/hexya/src/tools/strutils"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
-	"strconv"
-	"strings"
 )
 
 func init() {
@@ -126,17 +129,16 @@ Best Regards,`)},
 		`ComputeFiscalyearDates Computes the start and end dates of the fiscalyear where the given 'date' belongs to
 			      @param date: a datetime object
 			      @returns: a dictionary with date_from and date_to`,
-		func(rs h.CompanySet, date dates.Date) (dates.Date, dates.Date) {
-			var lastMonth int
-			var lastDay int
+		func(rs m.CompanySet, date dates.Date) (dates.Date, dates.Date) {
 			var dateTo dates.Date
 			var dateFrom dates.Date
 
 			rs = rs.Records()[0]
-			lastMonth, _ = strconv.Atoi(rs.FiscalyearLastMonth())
-			lastDay = int(rs.FiscalyearLastDay())
+			lm, _ := strconv.Atoi(rs.FiscalyearLastMonth())
+			lastMonth := time.Month(lm)
+			lastDay := int(rs.FiscalyearLastDay())
 
-			if int(date.Month()) < lastMonth || (int(date.Month()) == lastMonth && date.Day() <= lastDay) {
+			if date.Month() < lastMonth || date.Month() == lastMonth && date.Day() <= lastDay {
 				date = date.SetMonth(lastMonth).SetDay(lastDay)
 			} else {
 				if lastMonth == 2 && lastDay == 29 && (date.Year()+1)%4 != 0 {
@@ -158,16 +160,17 @@ Best Regards,`)},
 
 	h.Company().Methods().GetNewAccountCode().DeclareMethod(
 		`GetNewAccountCode`,
-		func(rs h.CompanySet, currentCode, oldPrefix, newPrefix string, digits int) string {
+		func(rs m.CompanySet, currentCode, oldPrefix, newPrefix string, digits int) string {
 			code := strings.Replace(currentCode, oldPrefix, "", 1)
 			code = strings.TrimLeft(code, "0")
-			code = strutils.RightJustify(code, digits-len(newPrefix), "0")
+			// FIXME: normalement tu devrais pouvoir le gérer avec un simple Sprintf
+			//code = strutils.RightJustify(code, digits-len(newPrefix), "0")
 			return newPrefix + code
 		})
 
 	h.Company().Methods().ReflectCodePrefixChange().DeclareMethod(
 		`ReflectCodePrefixChange`,
-		func(rs h.CompanySet, oldCode, newCode string, digits int) {
+		func(rs m.CompanySet, oldCode, newCode string, digits int) {
 			accounts := h.AccountAccount().Search(rs.Env(),
 				q.AccountAccount().Code().Contains(oldCode).
 					And().InternalType().Equals("liquidity").
@@ -182,18 +185,20 @@ Best Regards,`)},
 
 	h.Company().Methods().ReflectCodeDigitsChange().DeclareMethod(
 		`ReflectCodeDigitsChange`,
-		func(rs h.CompanySet, digits int) {
+		func(rs m.CompanySet, digits int) {
 			accounts := h.AccountAccount().Search(rs.Env(),
 				q.AccountAccount().Company().Equals(rs)).OrderBy("code asc")
-
-			for _, account := range accounts.Records() {
-				account.SetCode(strutils.LeftJustify(strings.TrimLeft(account.Code(), "0"), digits, "0"))
-			}
+			// FIXME
+			fmt.Println(accounts)
+			//for _, account := range accounts.Records() {
+			// FIXME: normalement tu devrais pouvoir le gérer avec un simple Sprintf
+			//account.SetCode(strutils.LeftJustify(strings.TrimLeft(account.Code(), "0"), digits, "0"))
+			//}
 		})
 
 	h.Company().Methods().ValidateFiscalyearLock().DeclareMethod(
 		`ValidateFiscalyearLock`,
-		func(rs h.CompanySet, values *h.CompanyData, fieldsToReset ...models.FieldNamer) {
+		func(rs m.CompanySet, values m.CompanyData, fieldsToReset ...models.FieldNamer) {
 			if values.FiscalyearLockDate().IsZero() {
 				return
 			}
@@ -207,7 +212,7 @@ Best Regards,`)},
 		})
 
 	h.Company().Methods().Write().Extend("",
-		func(rs h.CompanySet, data *h.CompanyData) bool {
+		func(rs m.CompanySet, data m.CompanyData) bool {
 			// restrict the closing of FY if there are still unposted entries
 			rs.ValidateFiscalyearLock(data)
 

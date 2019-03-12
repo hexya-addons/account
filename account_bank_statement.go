@@ -5,6 +5,8 @@ package account
 
 import (
 	"fmt"
+	"math"
+
 	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types"
@@ -12,8 +14,8 @@ import (
 	"github.com/hexya-erp/hexya/src/tools/nbutils"
 	"github.com/hexya-erp/hexya/src/views"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
-	"math"
 )
 
 func init() {
@@ -38,7 +40,7 @@ func init() {
 
 	h.AccountCashboxLine().Methods().SubTotal().DeclareMethod(
 		`Calculates Sub total`,
-		func(rs h.AccountCashboxLineSet) *h.AccountCashboxLineData {
+		func(rs m.AccountCashboxLineSet) m.AccountCashboxLineData {
 			value := rs.CoinValue() * float64(rs.Number())
 			res := h.AccountCashboxLine().NewData()
 
@@ -59,7 +61,7 @@ func init() {
 
 	h.AccountBankStatementCashbox().Methods().Validate().DeclareMethod(
 		`Validate`,
-		func(rs h.AccountBankStatementCashboxSet) *actions.Action {
+		func(rs m.AccountBankStatementCashboxSet) *actions.Action {
 			bankStmtId := rs.Env().Context().GetInteger("bank_statement_id")
 			if bankStmtId == 0 {
 				bankStmtId = rs.Env().Context().GetInteger("active_id")
@@ -89,7 +91,7 @@ func init() {
 
 	h.AccountBankStatementClosebalance().Methods().Validate().DeclareMethod(
 		`Validate`,
-		func(rs h.AccountBankStatementClosebalanceSet) *actions.Action {
+		func(rs m.AccountBankStatementClosebalanceSet) *actions.Action {
 			id := rs.Env().Context().GetInteger("active_id")
 			if id > 0 {
 				h.AccountBankStatement().Browse(rs.Env(), []int64{id}).ButtonConfirmBank()
@@ -233,7 +235,7 @@ func init() {
 
 	h.AccountBankStatement().Methods().EndBalance().DeclareMethod(
 		`EndBalance`,
-		func(rs h.AccountBankStatementSet) *h.AccountBankStatementData {
+		func(rs m.AccountBankStatementSet) m.AccountBankStatementData {
 			res := h.AccountBankStatement().NewData()
 			value := 0.0
 			for _, line := range rs.Lines().Records() {
@@ -249,9 +251,9 @@ func init() {
 
 	h.AccountBankStatement().Methods().ComputeIsDifferenceZero().DeclareMethod(
 		`ComputeIsDifferenceZero`,
-		func(rs h.AccountBankStatementSet) *h.AccountBankStatementData {
+		func(rs m.AccountBankStatementSet) m.AccountBankStatementData {
 			res := h.AccountBankStatement().NewData()
-			value := nbutils.IsZero(res.Difference(), nbutils.DPToPrecision(res.Currency().DecimalPlaces()))
+			value := nbutils.IsZero(res.Difference(), nbutils.Digits{16, int8(res.Currency().DecimalPlaces())}.ToPrecision())
 			if rs.IsDifferenceZero() != value {
 				res.SetIsDifferenceZero(value)
 			}
@@ -260,7 +262,7 @@ func init() {
 
 	h.AccountBankStatement().Methods().ComputeCurrency().DeclareMethod(
 		`ComputeCurrency`,
-		func(rs h.AccountBankStatementSet) *h.AccountBankStatementData {
+		func(rs m.AccountBankStatementSet) m.AccountBankStatementData {
 			res := h.AccountBankStatement().NewData()
 			value := rs.Journal().Currency()
 			if value.IsEmpty() {
@@ -274,7 +276,7 @@ func init() {
 
 	h.AccountBankStatement().Methods().CheckLinesReconciled().DeclareMethod(
 		`CheckLinesReconciled`,
-		func(rs h.AccountBankStatementSet) *h.AccountBankStatementData {
+		func(rs m.AccountBankStatementSet) m.AccountBankStatementData {
 			value := true
 			for _, line := range rs.Lines().Records() {
 				if line.JournalEntries().IsEmpty() && line.Account().IsEmpty() {
@@ -291,7 +293,7 @@ func init() {
 
 	h.AccountBankStatement().Methods().DefaultJournal().DeclareMethod(
 		`DefaultJournal`,
-		func(rs h.AccountBankStatementSet) *h.AccountJournalData {
+		func(rs m.AccountBankStatementSet) m.AccountJournalData {
 			journalType := rs.Env().Context().GetString("journal_type")
 			company := h.Company().NewSet(rs.Env()).CompanyDefaultGet()
 			if journalType != "" {
@@ -306,7 +308,7 @@ func init() {
 
 	h.AccountBankStatement().Methods().GetOpeningBalance().DeclareMethod(
 		`GetOpeningBalance`,
-		func(rs h.AccountBankStatementSet, journal h.AccountJournalSet) float64 {
+		func(rs m.AccountBankStatementSet, journal m.AccountJournalSet) float64 {
 			lastBnkStmt := rs.Search(q.AccountBankStatement().Journal().Equals(journal)).Limit(1)
 			if !lastBnkStmt.IsEmpty() {
 				return lastBnkStmt.BalanceEnd()
@@ -316,7 +318,7 @@ func init() {
 
 	h.AccountBankStatement().Methods().DefineOpeningBalance().DeclareMethod(
 		`DefineOpeningBalance`,
-		func(rs h.AccountBankStatementSet, journal h.AccountJournalSet) {
+		func(rs m.AccountBankStatementSet, journal m.AccountJournalSet) {
 			val := rs.GetOpeningBalance(journal)
 			if rs.BalanceStart() != val {
 				rs.SetBalanceStart(val)
@@ -325,7 +327,7 @@ func init() {
 
 	h.AccountBankStatement().Methods().OnchangeJournal().DeclareMethod(
 		`OnchangeJournalId`,
-		func(rs h.AccountBankStatementSet) *h.AccountBankStatementData {
+		func(rs m.AccountBankStatementSet) m.AccountBankStatementData {
 			res := h.AccountBankStatement().NewData()
 			rs.DefineOpeningBalance(rs.Journal())
 			return res
@@ -333,11 +335,11 @@ func init() {
 
 	h.AccountBankStatement().Methods().BalanceCheck().DeclareMethod(
 		`BalanceCheck`,
-		func(rs h.AccountBankStatementSet) bool {
+		func(rs m.AccountBankStatementSet) bool {
 			for _, stmt := range rs.Records() {
 				if !stmt.Currency().IsZero(stmt.Difference()) {
 					if stmt.JournalType() == "cash" {
-						var account h.AccountAccountSet
+						var account m.AccountAccountSet
 						var name string
 						if stmt.Difference() < 0.0 {
 							account = stmt.Journal().LossAccount()
@@ -367,7 +369,7 @@ func init() {
 		})
 
 	h.AccountBankStatement().Methods().Unlink().Extend("",
-		func(rs h.AccountBankStatementSet) int64 {
+		func(rs m.AccountBankStatementSet) int64 {
 			for _, stmt := range rs.Records() {
 				if stmt.State() != "open" {
 					panic(rs.T(`In order to delete a bank statement, you must first cancel it to delete related journal items.`))
@@ -380,7 +382,7 @@ func init() {
 
 	h.AccountBankStatement().Methods().OpenCashboxId().DeclareMethod(
 		`OpenCashboxId`,
-		func(rs h.AccountBankStatementSet) *actions.Action {
+		func(rs m.AccountBankStatementSet) *actions.Action {
 			cashBoxId := rs.Env().Context().GetInteger("cashbox_id")
 			if cashBoxId > 0 {
 				rs.Env().Context().WithKey("active_id", rs.ID())
@@ -402,7 +404,7 @@ func init() {
 
 	h.AccountBankStatement().Methods().ButtonCancel().DeclareMethod(
 		`ButtonCancel`,
-		func(rs h.AccountBankStatementSet) {
+		func(rs m.AccountBankStatementSet) {
 			for _, stmt := range rs.Records() {
 				for _, line := range stmt.Lines().Records() {
 					if !line.JournalEntries().IsEmpty() {
@@ -415,7 +417,7 @@ func init() {
 
 	h.AccountBankStatement().Methods().CheckConfirmBank().DeclareMethod(
 		`CheckConfirmBank`,
-		func(rs h.AccountBankStatementSet) {
+		func(rs m.AccountBankStatementSet) {
 			//@api.multi
 			/*def check_confirm_bank(self):
 			  if self.journal_type == 'cash' and not self.currency_id.is_zero(self.difference):
@@ -429,9 +431,9 @@ func init() {
 
 	h.AccountBankStatement().Methods().ButtonConfirmBank().DeclareMethod(
 		`ButtonConfirmBank`,
-		func(rs h.AccountBankStatementSet) {
+		func(rs m.AccountBankStatementSet) {
 			rs.BalanceCheck()
-			statements := rs.Filtered(func(rs h.AccountBankStatementSet) bool { return rs.State() == "open" })
+			statements := rs.Filtered(func(rs m.AccountBankStatementSet) bool { return rs.State() == "open" })
 			for _, stmt := range statements.Records() {
 				moves := h.AccountMove().NewSet(rs.Env())
 				for _, stLine := range stmt.Lines().Records() {
@@ -457,14 +459,13 @@ func init() {
 
 	h.AccountBankStatement().Methods().ButtonJournalEntries().DeclareMethod(
 		`ButtonJournalEntries`,
-		func(rs h.AccountBankStatementSet) *actions.Action {
+		func(rs m.AccountBankStatementSet) *actions.Action {
 			ctx := rs.Env().Context().WithKey("journal_id", rs.Journal().ID())
 			return &actions.Action{
 				Type:     actions.ActionActWindow,
 				Name:     rs.T("Journal Entries"),
 				ViewMode: "tree,form",
 				Model:    "AccountMove",
-				View:     nil,
 				Domain:   "[('id', 'in', self.mapped('move_line_ids').mapped('move_id').ids)]",
 				Context:  ctx,
 			}
@@ -472,7 +473,7 @@ func init() {
 
 	h.AccountBankStatement().Methods().ButtonOpen().DeclareMethod(
 		`Changes statement state to Running.`,
-		func(rs h.AccountBankStatementSet) {
+		func(rs m.AccountBankStatementSet) {
 			for _, stmt := range rs.Records() {
 				data := h.AccountBankStatement().NewData()
 				if stmt.Name() == "" {
@@ -492,7 +493,7 @@ func init() {
 	h.AccountBankStatement().Methods().ReconciliationWidgetPreprocess().DeclareMethod(
 		`Get statement lines of the specified statements or all unreconciled statement lines and try to automatically reconcile them / find them a partner.
 			      Return ids of statement lines left to reconcile and other data for the reconciliation widget.`,
-		func(rs h.AccountBankStatementSet) (h.AccountBankStatementLineSet, []string, string, int) {
+		func(rs m.AccountBankStatementSet) (m.AccountBankStatementLineSet, []string, string, int) {
 			//NB : The field account_id can be used at the statement line creation/import to avoid the reconciliation process on it later on,
 			//this is why we filter out statements lines where account_id is set
 			query := q.AccountBankStatementLine().Account().IsNull().
@@ -553,7 +554,7 @@ func init() {
 
 	h.AccountBankStatement().Methods().LinkBankToPartner().DeclareMethod(
 		`LinkBankToPartner`,
-		func(rs h.AccountBankStatementSet) {
+		func(rs m.AccountBankStatementSet) {
 			for _, stmt := range rs.Records() {
 				for _, stL := range stmt.Lines().Records() {
 					if !stL.BankAccount().IsEmpty() && !stL.Partner().IsEmpty() && !stL.BankAccount().Partner().Equals(stL.Partner()) {
@@ -649,7 +650,7 @@ set to draft and re-processed again.`},
 
 	h.AccountBankStatementLine().Methods().CheckAmount().DeclareMethod(
 		`CheckAmount`,
-		func(rs h.AccountBankStatementLineSet) {
+		func(rs m.AccountBankStatementLineSet) {
 			//This constraint could possibly underline flaws in bank statement import (eg. inability to
 			//support hacks such as using dummy transactions to give additional informations)
 			if rs.IsEmpty() {
@@ -658,7 +659,7 @@ set to draft and re-processed again.`},
 		})
 
 	h.AccountBankStatementLine().Methods().Create().Extend("",
-		func(rs h.AccountBankStatementLineSet, data *h.AccountBankStatementLineData) h.AccountBankStatementLineSet {
+		func(rs m.AccountBankStatementLineSet, data m.AccountBankStatementLineData) m.AccountBankStatementLineSet {
 			line := rs.Super().Create(data)
 			// The most awesome copy-pasta you will ever see is below. //tovalid
 			// Explanation (lel): during a 'create', the 'convert_to_cache' method is not called. Moreover, at
@@ -673,7 +674,7 @@ set to draft and re-processed again.`},
 		})
 
 	h.AccountBankStatementLine().Methods().Unlink().Extend("",
-		func(rs h.AccountBankStatementLineSet) int64 {
+		func(rs m.AccountBankStatementLineSet) int64 {
 			for _, line := range rs.Records() {
 				if !line.JournalEntries().IsEmpty() {
 					panic(rs.T(`In order to delete a bank statement line, you must first cancel it to delete related journal items.`))
@@ -684,7 +685,7 @@ set to draft and re-processed again.`},
 
 	//h.AccountBankStatementLine().Methods().NeedactionDomainGet().DeclareMethod(
 	//	`NeedactionDomainGet`,
-	//	func(rs h.AccountBankStatementLineSet) {
+	//	func(rs m.AccountBankStatementLineSet) {
 	//		//@api.model
 	//		/*def _needaction_domain_get(self):
 	//		  return [('journal_entry_ids', '=', False), ('account_id', '=', False)]
@@ -694,7 +695,7 @@ set to draft and re-processed again.`},
 
 	h.AccountBankStatementLine().Methods().ButtonCancelReconciliation().DeclareMethod(
 		`ButtonCancelReconciliation`,
-		func(rs h.AccountBankStatementLineSet) {
+		func(rs m.AccountBankStatementLineSet) {
 			movesToCancel := h.AccountMove().NewSet(rs.Env())
 			payToUnreconcile := h.AccountPayment().NewSet(rs.Env())
 			payToCancel := h.AccountPayment().NewSet(rs.Env())
@@ -711,12 +712,12 @@ set to draft and re-processed again.`},
 					}
 				}
 				movesToUnbind = movesToUnbind.Subtract(movesToCancel)
-				data := movesToUnbind.Model().NewData()
+				data := h.AccountMove().NewData()
 				data.SetStatementLine(h.AccountBankStatementLine().NewSet(rs.Env()))
 				movesToUnbind.Write(data)
 				for _, move := range movesToUnbind.Records() {
-					moveLine := move.Lines().Filtered(func(rs h.AccountMoveLineSet) bool { return rs.Statement().Equals(stL.Statement()) })
-					dataLine := moveLine.Model().NewData()
+					moveLine := move.Lines().Filtered(func(rs m.AccountMoveLineSet) bool { return rs.Statement().Equals(stL.Statement()) })
+					dataLine := h.AccountMoveLine().NewData()
 					dataLine.SetStatement(h.AccountBankStatement().NewSet(rs.Env()))
 					moveLine.Write(dataLine)
 				}
@@ -734,9 +735,9 @@ set to draft and re-processed again.`},
 
 	h.AccountBankStatementLine().Methods().ReconciliationWidgetAutoReconcile().DeclareMethod(
 		`ReconciliationWidgetAutoReconcile`,
-		func(rs h.AccountBankStatementLineSet, numAlreadyReconciledLines int) (h.AccountBankStatementLineSet, []map[string]interface{}, string, int) {
+		func(rs m.AccountBankStatementLineSet, numAlreadyReconciledLines int) (m.AccountBankStatementLineSet, []map[string]interface{}, string, int) {
 			var out struct {
-				StL                    h.AccountBankStatementLineSet
+				StL                    m.AccountBankStatementLineSet
 				Notifs                 []map[string]interface{}
 				NumAlrReconciliedLines int
 			}
@@ -769,10 +770,10 @@ set to draft and re-processed again.`},
 
 	h.AccountBankStatementLine().Methods().GetDataForReconciliationWidget().DeclareMethod(
 		`Returns the data required to display a reconciliation widget, for each statement line in self`,
-		func(rs h.AccountBankStatementLineSet, excludedIds []int64) (*h.AccountBankStatementLineData, *h.AccountMoveLineData) {
+		func(rs m.AccountBankStatementLineSet, excludedIds []int64) (m.AccountBankStatementLineData, m.AccountMoveLineData) {
 			for _, stl := range rs.Records() {
 				amlRecs := stl.GetReconciliationProposition(excludedIds)
-				var tgtCurrency h.CurrencySet
+				var tgtCurrency m.CurrencySet
 				tgtCurrency = h.Currency().Coalesce(stl.Currency(), stl.Journal().Currency(), stl.Journal().Company().Currency())
 				rp := amlRecs.PrepareMoveLinesForReconciliationWidget(tgtCurrency, stl.Date())
 				for _, ml := range rp {
@@ -785,12 +786,13 @@ set to draft and re-processed again.`},
 						})
 				*/
 			}
-			return new(h.AccountBankStatementLineData), new(h.AccountMoveLineData) // tovalid return values
+			// FIXME
+			return h.AccountBankStatementLine().NewData(), h.AccountMoveLine().NewData() // tovalid return values
 		})
 
 	h.AccountBankStatementLine().Methods().GetStatementLineForReconciliationWidget().DeclareMethod(
 		`Returns the data required by the bank statement reconciliation widget to display a statement line`,
-		func(rs h.AccountBankStatementLineSet) map[string]interface{} {
+		func(rs m.AccountBankStatementLineSet) map[string]interface{} {
 			stmtCurrency := h.Currency().Coalesce(rs.Journal().Currency(), rs.Journal().Company().Currency())
 			amtCurrencyStr := ""
 			amount := rs.Amount()
@@ -831,7 +833,7 @@ set to draft and re-processed again.`},
 
 	h.AccountBankStatementLine().Methods().GetMoveLinesForReconciliationWidget().DeclareMethod(
 		`Returns move lines for the bank statement reconciliation widget, formatted as a list of dicts`,
-		func(rs h.AccountBankStatementLineSet, excludedIds []int64, str string, offset int, limit int) []map[string]interface{} {
+		func(rs m.AccountBankStatementLineSet, excludedIds []int64, str string, offset int, limit int) []map[string]interface{} {
 			amlRecs := rs.GetMoveLinesForReconciliation(excludedIds, str, offset, limit, q.AccountMoveLineCondition{}, h.Partner().NewSet(rs.Env()))
 			tgtCurrency := h.Currency().Coalesce(rs.Currency(), rs.Journal().Currency(), rs.Journal().Company().Currency())
 			return amlRecs.PrepareMoveLinesForReconciliationWidget(tgtCurrency, rs.Date())
@@ -846,8 +848,8 @@ set to draft and re-processed again.`},
 			      :param limit:
 			      :param additional_domain:
 			      :param overlook_partner:`,
-		func(rs h.AccountBankStatementLineSet, excludedIds []int64, str string, offset, limit int,
-			additionalCond q.AccountMoveLineCondition, overlookPartner h.PartnerSet) h.AccountMoveLineSet {
+		func(rs m.AccountBankStatementLineSet, excludedIds []int64, str string, offset, limit int,
+			additionalCond q.AccountMoveLineCondition, overlookPartner m.PartnerSet) m.AccountMoveLineSet {
 			// Blue lines = payment on bank account not assigned to a statement yet
 			qDomainReconciliation := q.AccountMoveLine().Statement().IsNull().
 				And().Payment().IsNotNull().
@@ -875,7 +877,7 @@ set to draft and re-processed again.`},
 
 	h.AccountBankStatementLine().Methods().GetCommonSqlQuery().DeclareMethod(
 		`GetCommonSqlQuery`,
-		func(rs h.AccountBankStatementLineSet, overlookPartner h.PartnerSet, excludedIds []int64) (string, string, string) {
+		func(rs m.AccountBankStatementLineSet, overlookPartner m.PartnerSet, excludedIds []int64) (string, string, string) {
 			accType := `acc.reconcile = true`
 			if rs.Partner().IsNotEmpty() || overlookPartner.IsNotEmpty() {
 				accType = `acc.internal_type IN ('payable', 'receivable')`
@@ -900,7 +902,7 @@ set to draft and re-processed again.`},
 	h.AccountBankStatementLine().Methods().GetReconciliationProposition().DeclareMethod(
 		`Returns move lines that constitute the best guess to reconcile a statement line
 					Note: it only looks for move lines in the same currency as the statement line.`,
-		func(rs h.AccountBankStatementLineSet, excludedIds []int64) h.AccountMoveLineSet {
+		func(rs m.AccountBankStatementLineSet, excludedIds []int64) m.AccountMoveLineSet {
 			/*def get_reconciliation_proposition(self, excluded_ids=None):
 			params = {'company_id': self.env.user.company_id.id,
 						'account_payable_receivable': (self.journal_id.default_credit_account_id.id, self.journal_id.default_debit_account_id.id),
@@ -967,19 +969,21 @@ set to draft and re-processed again.`},
 					return h.AccountMoveLine().BrowseOne(rs.Env(), result.id)
 				}
 			}
+			// FIXME
+			fmt.Println(currency, precision)
 			return h.AccountMoveLine().NewSet(rs.Env())
 		})
 
 	h.AccountBankStatementLine().Methods().GetMoveLinesForAutoReconcile().DeclareMethod(
 		`Returns the move lines that the method auto_reconcile can use to try to reconcile the statement line`,
-		func(rs h.AccountBankStatementLineSet) h.AccountMoveLineSet {
+		func(rs m.AccountBankStatementLineSet) m.AccountMoveLineSet {
 			return h.AccountMoveLine().NewSet(rs.Env())
 		})
 
 	h.AccountBankStatementLine().Methods().AutoReconcile().DeclareMethod(
 		`Try to automatically reconcile the statement.line ; return the counterpart journal entry/ies if the automatic reconciliation succeeded, False otherwise.
             TODO : this method could be greatly improved and made extensible`,
-		func(rs h.AccountBankStatementLineSet) h.AccountMoveLineSet {
+		func(rs m.AccountBankStatementLineSet) m.AccountMoveLineSet {
 			//@api.multi
 			/*def auto_reconcile(self):
 			self.ensure_one()
@@ -1061,7 +1065,7 @@ set to draft and re-processed again.`},
 
 			     :param char move_ref: will be used as the reference of the generated account move
 			     :return: dict of value to create() the account.move`,
-		func(rs h.AccountBankStatementLineSet, moveRef string) *h.AccountMoveData {
+		func(rs m.AccountBankStatementLineSet, moveRef string) m.AccountMoveData {
 			ref := moveRef
 			if rs.Ref() != "" {
 				ref = rs.Ref()
@@ -1085,7 +1089,7 @@ set to draft and re-processed again.`},
 
 			      :param recordset move: the account.move to link the move line
 			      :param float amount: the amount of transaction that wasn't already reconciled`,
-		func(rs h.AccountBankStatementLineSet, move h.AccountMoveSet, amount float64) *h.AccountMoveLineData {
+		func(rs m.AccountBankStatementLineSet, move m.AccountMoveSet, amount float64) m.AccountMoveLineData {
 			cpnyCur := rs.Journal().Company().Currency()
 			stmtCur := h.Currency().Coalesce(rs.Journal().Currency(), cpnyCur)
 			stlCur := h.Currency().Coalesce(rs.Currency(), stmtCur)
@@ -1145,28 +1149,26 @@ set to draft and re-processed again.`},
 
 			      :param list of dicts data: must contains the keys 'counterpart_aml_dicts', 'payment_aml_ids' and 'new_aml_dicts',
 			          whose value is the same as described in process_reconciliation except that ids are used instead of recordsets.`,
-		func(rs h.AccountBankStatementLineSet, data []map[string]interface{}) {
+		func(rs m.AccountBankStatementLineSet, data []map[string]interface{}) {
 			type Datum struct {
-				PaymentAml          h.AccountMoveLineSet
-				CounterpartAmlDatas []*h.AccountMoveLineData
-				NewAmlDatas         []*h.AccountMoveLineData
+				PaymentAml          m.AccountMoveLineSet
+				CounterpartAmlDatas []m.AccountMoveLineData
+				NewAmlDatas         []m.AccountMoveLineData
 			}
 			safifyData := func(data map[string]interface{}) Datum {
-				out := Datum{h.AccountMoveLine().NewSet(rs.Env()), []*h.AccountMoveLineData{}, []*h.AccountMoveLineData{}}
+				out := Datum{h.AccountMoveLine().NewSet(rs.Env()), []m.AccountMoveLineData{}, []m.AccountMoveLineData{}}
 				if valPaymentAmlIds, ok := data["payment_aml_ids"]; ok {
 					out.PaymentAml = h.AccountMoveLine().Browse(rs.Env(), valPaymentAmlIds.([]int64))
 				}
 				if valCounterpartAmlDicts, ok := data["counterpart_aml_id"]; ok {
 					for _, val := range valCounterpartAmlDicts.([]map[string]interface{}) {
-						data := h.AccountMoveLine().NewData()
-						data.FieldMap = models.FieldMap(val)
+						data := h.AccountMoveLine().NewData(models.FieldMap(val))
 						out.CounterpartAmlDatas = append(out.CounterpartAmlDatas, data)
 					}
 				}
 				if valNewAmlDicts, ok := data["new_aml_dicts"]; ok {
 					for _, val := range valNewAmlDicts.([]map[string]interface{}) {
-						data := h.AccountMoveLine().NewData()
-						data.FieldMap = models.FieldMap(val)
+						data := h.AccountMoveLine().NewData(models.FieldMap(val))
 						out.NewAmlDatas = append(out.CounterpartAmlDatas, data)
 					}
 				}
@@ -1189,7 +1191,7 @@ set to draft and re-processed again.`},
 
 	h.AccountBankStatementLine().Methods().FastCounterpartCreation().DeclareMethod(
 		`FastCounterpartCreation`,
-		func(rs h.AccountBankStatementLineSet) {
+		func(rs m.AccountBankStatementLineSet) {
 			for _, stl := range rs.Records() {
 				data := h.AccountMoveLine().NewData()
 				data.SetName(stl.Name())
@@ -1199,13 +1201,13 @@ set to draft and re-processed again.`},
 					data.SetCredit(stl.Amount())
 				}
 				data.SetAccount(stl.Account())
-				stl.ProcessReconciliation(h.AccountMoveLine().NewSet(rs.Env()), []*h.AccountMoveLineData{h.AccountMoveLine().NewData()}, []*h.AccountMoveLineData{data})
+				stl.ProcessReconciliation(h.AccountMoveLine().NewSet(rs.Env()), []m.AccountMoveLineData{h.AccountMoveLine().NewData()}, []m.AccountMoveLineData{data})
 			}
 		})
 
 	h.AccountBankStatementLine().Methods().GetCommunication().DeclareMethod(
 		`GetCommunication`,
-		func(rs h.AccountBankStatementLineSet, paymentMethod h.AccountPaymentMethodSet) string {
+		func(rs m.AccountBankStatementLineSet, paymentMethod m.AccountPaymentMethodSet) string {
 			return rs.Name()
 		})
 
@@ -1237,7 +1239,7 @@ set to draft and re-processed again.`},
 			      :returns: The journal entries with which the transaction was matched. If there was at least an entry in counterpart_aml_dicts or new_aml_dicts, this list contains
 			          the move created by the reconciliation, containing entries for the statement.line (1), the counterpart move lines (0..*) and the new move lines (0..*).
 			  `,
-		func(rs h.AccountBankStatementLineSet, PaymentAmlRec h.AccountMoveLineSet, CounterpartAmlDicts, NewAmlDicts []*h.AccountMoveLineData) h.AccountMoveSet {
+		func(rs m.AccountBankStatementLineSet, PaymentAmlRec m.AccountMoveLineSet, CounterpartAmlDicts, NewAmlDicts []m.AccountMoveLineData) m.AccountMoveSet {
 			// Check and prepare recieved data
 			if rs.MoveName() != "" {
 				panic(rs.T(`Operation not allowed. Since your statement line already received a number, you cannot reconcile it entirely with existing journal entries otherwise it would make a gap in the numbering. You should book an entry and make a regular revert of it in case you want to cancel it.`))

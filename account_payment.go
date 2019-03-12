@@ -4,17 +4,19 @@
 package account
 
 import (
+	"fmt"
+	"math"
+	"strings"
+
 	"github.com/hexya-addons/account/accounttypes"
 	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
 	"github.com/hexya-erp/hexya/src/tools/strutils"
-	"github.com/hexya-erp/hexya/src/views"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
-	"math"
-	"strings"
 )
 
 func init() {
@@ -22,7 +24,7 @@ func init() {
 	h.AccountPaymentMethod().DeclareModel()
 	h.AccountPaymentMethod().AddFields(map[string]models.FieldDefinition{
 		"Name": models.CharField{
-			Required: true,
+			Required:  true,
 			Translate: true},
 		"Code": models.CharField{
 			Required: true},
@@ -35,17 +37,17 @@ func init() {
 
 	h.AccountAbstractPayment().DeclareMixinModel()
 	h.AccountAbstractPayment().AddFields(map[string]models.FieldDefinition{
-		"PamentType": models.SelectionField{
+		"PaymentType": models.SelectionField{
 			Selection: types.Selection{
 				"outbound": "Send Money",
 				"inbound":  "Receive Money"},
 			Required: true},
 		"PaymentMethod": models.Many2OneField{
-			String: "Payment Method Type",
+			String:        "Payment Method Type",
 			RelationModel: h.AccountPaymentMethod(),
-			Required: true},
+			Required:      true},
 		"PaymentMethodCode": models.CharField{
-			Help: "Technical field used to adapt the interface to the payment type selected.",
+			Help:     "Technical field used to adapt the interface to the payment type selected.",
 			ReadOnly: true},
 		"PartnerType": models.SelectionField{
 			Selection: types.Selection{
@@ -54,12 +56,12 @@ func init() {
 		"Partner": models.Many2OneField{
 			RelationModel: h.Partner()},
 		"Amount": models.FloatField{
-			String: "Payment Amount",
-			Required: true,
+			String:     "Payment Amount",
+			Required:   true,
 			Constraint: h.AccountAbstractPayment().Methods().CheckAmount()},
 		"Currency": models.Many2OneField{
 			RelationModel: h.Currency(),
-			Required: true,
+			Required:      true,
 			Default: func(env models.Environment) interface{} {
 				return h.User().NewSet(env).CurrentUser().Company().Currency()
 			}},
@@ -68,19 +70,19 @@ func init() {
 				return dates.Today()
 			},
 			Required: true,
-			NoCopy: true},
+			NoCopy:   true},
 		"Communication": models.CharField{
 			String: "Memo"},
 		"Journal": models.Many2OneField{
-			String: "Payment Journal",
+			String:        "Payment Journal",
 			RelationModel: h.AccountJournal(),
-			Required: true,
-			Filter: q.AccountJournal().Type().In([]string{"bank", "cash"}),
-			OnChange: h.AccountAbstractPayment().Methods().OnchangeJournal()},
+			Required:      true,
+			Filter:        q.AccountJournal().Type().In([]string{"bank", "cash"}),
+			OnChange:      h.AccountAbstractPayment().Methods().OnchangeJournal()},
 		"Company": models.Many2OneField{
 			RelationModel: h.Company(),
-			Related: "Journal.Company",
-			ReadOnly: true},
+			Related:       "Journal.Company",
+			ReadOnly:      true},
 		"HidePaymentMethod": models.BooleanField{
 			Compute: h.AccountAbstractPayment().Methods().ComputeHidePaymentMethod(),
 			Help: `Technical field used to hide the payment method if the selected journal
@@ -89,7 +91,7 @@ has only one available which is 'manual'`},
 
 	h.AccountAbstractPayment().Methods().CheckAmount().DeclareMethod(
 		`CheckAmount`,
-		func(rs h.AccountAbstractPaymentSet) {
+		func(rs m.AccountAbstractPaymentSet) {
 			if !(rs.Amount() > 0.0) {
 				panic(rs.T(`The payment amount must be strictly positive.`))
 			}
@@ -97,9 +99,9 @@ has only one available which is 'manual'`},
 
 	h.AccountAbstractPayment().Methods().ComputeHidePaymentMethod().DeclareMethod(
 		`ComputeHidePaymentMethod`,
-		func(rs h.AccountAbstractPaymentSet) *h.AccountAbstractPaymentData {
-			var data				   *h.AccountAbstractPaymentData
-			var journalPaymentMethods	h.AccountPaymentMethodSet
+		func(rs m.AccountAbstractPaymentSet) m.AccountAbstractPaymentData {
+			var data m.AccountAbstractPaymentData
+			var journalPaymentMethods m.AccountPaymentMethodSet
 
 			data = h.AccountAbstractPayment().NewData()
 			if rs.Journal().IsEmpty() {
@@ -117,16 +119,16 @@ has only one available which is 'manual'`},
 
 	h.AccountAbstractPayment().Methods().OnchangeJournal().DeclareMethod(
 		`OnchangeJournal`,
-		func(rs h.AccountAbstractPaymentSet) *h.AccountAbstractPaymentData {
-			var data 		  	*h.AccountAbstractPaymentData
-			var paymentMethods	 h.AccountPaymentMethodSet
-			var paymentType 	 string
+		func(rs m.AccountAbstractPaymentSet) m.AccountAbstractPaymentData {
+			var data m.AccountAbstractPaymentData
+			var paymentMethods m.AccountPaymentMethodSet
+			var paymentType string
 
 			data = h.AccountAbstractPayment().NewData()
 			if rs.Journal().IsEmpty() {
 				return data
 			}
-			data.SetCurrency(h.Currency().Coalesce(rs.Journal().Currency(), rs.Company().Currency())
+			data.SetCurrency(h.Currency().Coalesce(rs.Journal().Currency(), rs.Company().Currency()))
 			// Set default payment method (we consider the first to be the default one)
 			if rs.PaymentType() == "inbound" {
 				paymentMethods = rs.Journal().InboundPaymentMethods()
@@ -140,25 +142,25 @@ has only one available which is 'manual'`},
 			} else {
 				paymentType = "inbound"
 			}
-			/* tovalid:
-				return {'domain': {'payment_method_id': [('payment_type', '=', payment_type), ('id', 'in', payment_methods.ids)]}}
-			 */
+
+			//return {'domain': {'payment_method_id': [('payment_type', '=', payment_type), ('id', 'in', payment_methods.ids)]}}
+			fmt.Println(paymentType)
 			return data
 		})
 
 	h.AccountAbstractPayment().Methods().GetInvoices().DeclareMethod(
 		`GetInvoices Return the invoices of the payment. Must be overridden `,
-		func(rs h.AccountAbstractPaymentSet) h.AccountInvoiceSet {
+		func(rs m.AccountAbstractPaymentSet) m.AccountInvoiceSet {
 			panic(rs.T("Not implemented"))
 		})
 
 	h.AccountAbstractPayment().Methods().ComputeTotalInvoicesAmount().DeclareMethod(
 		`ComputeTotalInvoicesAmount Compute the sum of the residual of invoices, expressed in the payment currency`,
-		func(rs h.AccountAbstractPaymentSet) float64 {
-			var paymentCurrency	h.CurrencySet
-			var invoices 		h.AccountInvoiceSet
-			var all 			bool
-			var total 			float64
+		func(rs m.AccountAbstractPaymentSet) float64 {
+			var paymentCurrency m.CurrencySet
+			var invoices m.AccountInvoiceSet
+			var all bool
+			var total float64
 
 			paymentCurrency = h.Currency().Coalesce(
 				rs.Currency(),
@@ -199,8 +201,8 @@ has only one available which is 'manual'`},
 
 	h.AccountRegisterPayments().Methods().OnchangePaymentType().DeclareMethod(
 		`OnchangePaymentType`,
-		func(rs h.AccountRegisterPaymentsSet) *h.AccountRegisterPaymentsData {
-			var data *h.AccountRegisterPaymentsData
+		func(rs m.AccountRegisterPaymentsSet) m.AccountRegisterPaymentsData {
+			var data m.AccountRegisterPaymentsData
 
 			data = h.AccountRegisterPayments().NewData()
 			if rs.PaymentType() != "" {
@@ -211,7 +213,7 @@ has only one available which is 'manual'`},
 
 	h.AccountRegisterPayments().Methods().GetInvoices().Extend(
 		"Return the invoices of the payment. Must be overridden",
-		func(rs h.AccountRegisterPaymentsSet) h.AccountInvoiceSet {
+		func(rs m.AccountRegisterPaymentsSet) m.AccountInvoiceSet {
 			if rs.Env().Context().HasKey("active_ids") {
 				return h.AccountInvoice().Browse(rs.Env(), rs.Env().Context().GetIntegerSlice("active_ids"))
 			}
@@ -219,20 +221,19 @@ has only one available which is 'manual'`},
 		})
 
 	h.AccountRegisterPayments().Methods().DefaultGet().Extend("",
-		func(rs h.AccountRegisterPaymentsSet) models.FieldMap {
-			var rec				models.FieldMap
-			var context			*types.Context
-			var activeModel		string
-			var activeIds		[]int64
-			var invoices		h.AccountInvoiceSet
-			var totalAmount		float64
-			var communication	string
+		func(rs m.AccountRegisterPaymentsSet) models.FieldMap {
+			var context *types.Context
+			var activeModel string
+			var activeIds []int64
+			var invoices m.AccountInvoiceSet
+			var totalAmount float64
+			var communication string
 
-			rec = rs.Super().DefaultGet()
+			rec := h.AccountRegisterPayments().NewData(rs.Super().DefaultGet())
 			context = rs.Env().Context()
 			activeModel = context.GetString("active_model")
 			activeIds = context.GetIntegerSlice("active_ids")
-			if activeModel == "" ||len(activeIds) == 0 {
+			if activeModel == "" || len(activeIds) == 0 {
 				panic(rs.T(`Programmation error: wizard action executed without active_model or active_ids in context.`))
 			}
 			if activeModel != "accountInvoice" {
@@ -259,22 +260,22 @@ has only one available which is 'manual'`},
 			}
 			communication = strings.TrimPrefix(communication, " ")
 
-			rec.Set("Amount", math.Abs(totalAmount), rs.Model().Model)
-			rec.Set("Currency", invoices.Currency(), rs.Model().Model)
+			rec.SetAmount(math.Abs(totalAmount))
+			rec.SetCurrency(invoices.Currency())
 			if totalAmount > 0 {
-				rec.Set("PaymentType", "inbound", rs.Model().Model)
+				rec.SetPaymentType("inbound")
 			} else {
-				rec.Set("PaymentType", "outbound", rs.Model().Model)
+				rec.SetPaymentType("outbound")
 			}
-			rec.Set("Partner", invoices.CommercialPartner(), rs.Model().Model)
-			rec.Set("PartnerType", accounttypes.MapInvoiceType_PartnerType[invoices.Type()], rs.Model().Model)
-			rec.Set("Communication", communication, rs.Model().Model)
-			return rec
+			rec.SetPartner(invoices.CommercialPartner())
+			rec.SetPartnerType(accounttypes.MapInvoiceType_PartnerType[invoices.Type()])
+			rec.SetCommunication(communication)
+			return rec.Underlying()
 		})
 
 	h.AccountRegisterPayments().Methods().GetPaymentVals().DeclareMethod(
 		`GetPaymentVals Hook for extension `,
-		func(rs h.AccountRegisterPaymentsSet) *h.AccountPaymentData {
+		func(rs m.AccountRegisterPaymentsSet) m.AccountPaymentData {
 			return h.AccountPayment().NewData().
 				SetJournal(rs.Journal()).
 				SetPaymentMethod(rs.PaymentMethod()).
@@ -290,7 +291,7 @@ has only one available which is 'manual'`},
 
 	h.AccountRegisterPayments().Methods().CreatePayment().DeclareMethod(
 		`CreatePayment`,
-		func(rs h.AccountRegisterPaymentsSet) *actions.Action {
+		func(rs m.AccountRegisterPaymentsSet) *actions.Action {
 			payment := h.AccountPayment().Create(rs.Env(), rs.GetPaymentVals())
 			payment.Post()
 			return &actions.Action{
@@ -304,10 +305,10 @@ has only one available which is 'manual'`},
 
 	h.AccountPayment().AddFields(map[string]models.FieldDefinition{
 		"Name": models.CharField{
-			String: "Name",
+			String:   "Name",
 			ReadOnly: true,
-			NoCopy: true,
-			Default: models.DefaultValue("Draft Payment")},
+			NoCopy:   true,
+			Default:  models.DefaultValue("Draft Payment")},
 		"State": models.SelectionField{
 			String: "Status",
 			Selection: types.Selection{
@@ -316,36 +317,36 @@ has only one available which is 'manual'`},
 				"sent":       "Sent",
 				"reconciled": "Reconciled"},
 			ReadOnly: true,
-			Default: models.DefaultValue("draft"),
-			NoCopy: true},
+			Default:  models.DefaultValue("draft"),
+			NoCopy:   true},
 		"PaymentReference": models.CharField{
-			String: "PaymentReference",
-			NoCopy: true,
+			String:   "PaymentReference",
+			NoCopy:   true,
 			ReadOnly: true,
-			Help: "Reference of the document used to issue this payment. Eg. check number, file name, etc."},
+			Help:     "Reference of the document used to issue this payment. Eg. check number, file name, etc."},
 		"MoveName": models.CharField{
-			String: "Journal Entry Name",
+			String:   "Journal Entry Name",
 			ReadOnly: true,
-			Default: models.DefaultValue(false),
-			NoCopy: true,
+			Default:  models.DefaultValue(false),
+			NoCopy:   true,
 			Help: `Technical field holding the number given to the journal entry, automatically set when the statement
 line is reconciled then stored to set the same number again if the line is cancelled,
 set to draft and re-processed again." `},
 		"DestinationAccount": models.Many2OneField{
 			RelationModel: h.AccountAccount(),
-			Compute: h.AccountPayment().Methods().ComputeDestinationAccount()},
+			Compute:       h.AccountPayment().Methods().ComputeDestinationAccount()},
 		"DestinationJournal": models.Many2OneField{
-			String: "Transfer To",
+			String:        "Transfer To",
 			RelationModel: h.AccountJournal(),
-			Filter: q.AccountJournal().Type().In([]string{"bank", "cash"})},
+			Filter:        q.AccountJournal().Type().In([]string{"bank", "cash"})},
 		"Invoices": models.Many2ManyField{
 			RelationModel: h.AccountInvoice(),
-			JSON: "invoice_ids",
-			NoCopy: true,
-			ReadOnly: true},
+			JSON:          "invoice_ids",
+			NoCopy:        true,
+			ReadOnly:      true},
 		"HasInvoice": models.BooleanField{
 			Compute: h.AccountPayment().Methods().ComputeHasInvoice(),
-			Help: "Technical field used for usability purposes"},
+			Help:    "Technical field used for usability purposes"},
 		"PaymentDifference": models.FloatField{
 			Compute: h.AccountPayment().Methods().ComputePaymentDifference()},
 		"PaymentDifferenceHandling": models.SelectionField{
@@ -354,16 +355,16 @@ set to draft and re-processed again." `},
 				"open":      "Keep open",
 				"reconcile": "Mark invoice as fully paid"},
 			Default: models.DefaultValue("open"),
-			NoCopy: true},
+			NoCopy:  true},
 		"WriteoffAccount": models.Many2OneField{
-			String: "Difference Account",
+			String:        "Difference Account",
 			RelationModel: h.AccountAccount(),
-			Filter: q.AccountAccount().Deprecated().Equals(false)},
+			Filter:        q.AccountAccount().Deprecated().Equals(false)},
 		"MoveLines": models.One2ManyField{
 			RelationModel: h.AccountMoveLine(),
-			ReverseFK: "Payment",
-			JSON: "move_line_ids",
-			ReadOnly: true},
+			ReverseFK:     "Payment",
+			JSON:          "move_line_ids",
+			ReadOnly:      true},
 	})
 
 	//h.AccountPayment().Fields().PaymentType().
@@ -374,15 +375,15 @@ set to draft and re-processed again." `},
 
 	h.AccountPayment().Methods().ComputeHasInvoice().DeclareMethod(
 		`ComputeHasInvoice`,
-		func(rs h.AccountPaymentSet) *h.AccountPaymentData {
+		func(rs m.AccountPaymentSet) m.AccountPaymentData {
 			data := h.AccountPayment().NewData().SetHasInvoice(rs.Invoices().IsNotEmpty())
 			return data
 		})
 
 	h.AccountPayment().Methods().ComputePaymentDifference().DeclareMethod(
 		`ComputePaymentDifference`,
-		func(rs h.AccountPaymentSet) *h.AccountPaymentData {
-			var data *h.AccountPaymentData
+		func(rs m.AccountPaymentSet) m.AccountPaymentData {
+			var data m.AccountPaymentData
 
 			data = h.AccountPayment().NewData()
 			if rs.Invoices().IsEmpty() {
@@ -399,8 +400,8 @@ set to draft and re-processed again." `},
 
 	h.AccountPayment().Methods().ComputeDestinationAccount().DeclareMethod(
 		`ComputeDestinationAccountId`,
-		func(rs h.AccountPaymentSet) *h.AccountPaymentData {
-			var data *h.AccountPaymentData
+		func(rs m.AccountPaymentSet) m.AccountPaymentData {
+			var data m.AccountPaymentData
 
 			data = h.AccountPayment().NewData()
 			switch {
@@ -423,8 +424,8 @@ set to draft and re-processed again." `},
 
 	h.AccountPayment().Methods().OnchangePartnerType().DeclareMethod(
 		`OnchangePartnerType`,
-		func(rs h.AccountPaymentSet) *h.AccountPaymentData {
-			var data *h.AccountPaymentData
+		func(rs m.AccountPaymentSet) m.AccountPaymentData {
+			var data m.AccountPaymentData
 
 			data = h.AccountPayment().NewData()
 			// Set partner_id domain
@@ -436,8 +437,8 @@ set to draft and re-processed again." `},
 
 	h.AccountPayment().Methods().OnchangePaymentType().DeclareMethod(
 		`OnchangePaymentType`,
-		func(rs h.AccountPaymentSet) *h.AccountPaymentData {
-			var data *h.AccountPaymentData
+		func(rs m.AccountPaymentSet) m.AccountPaymentData {
+			var data m.AccountPaymentData
 
 			data = h.AccountPayment().NewData()
 			// Set partner_id domain
@@ -448,12 +449,11 @@ set to draft and re-processed again." `},
 		})
 
 	h.AccountPayment().Methods().DefaultGet().Extend("",
-		func(rs h.AccountPaymentSet) models.FieldMap {
-			var rec models.FieldMap
-			var invoices h.AccountInvoiceSet
-			var invoice h.AccountInvoiceSet
+		func(rs m.AccountPaymentSet) models.FieldMap {
+			var invoices m.AccountInvoiceSet
+			var invoice m.AccountInvoiceSet
 
-			rec = rs.Super().DefaultGet()
+			rec := h.AccountPayment().NewData(rs.Super().DefaultGet())
 			invoices = rs.Invoices()
 			if invoices.IsNotEmpty() {
 				invoice = invoices.Records()[0]
@@ -464,60 +464,59 @@ set to draft and re-processed again." `},
 				if val == "" {
 					val = invoice.Number()
 				}
-				rec.Set("Communication", val, invoice.Model().Model)
-
-				rec.Set("Currency", invoice.Currency(), invoice.Model().Model)
+				rec.SetCommunication(val)
+				rec.SetCurrency(invoice.Currency())
 				if strutils.IsIn(invoice.Type(), "out_invoice", "in_refund") {
-					rec.Set("PaymentType", "inbound", invoice.Model().Model)
+					rec.SetPaymentType("inbound")
 				} else {
-					rec.Set("PaymentType", "outbound", invoice.Model().Model)
+					rec.SetPaymentType("outbound")
 				}
-				rec.Set("PartnerType", accounttypes.MapInvoiceType_PartnerType[invoice.Type()], invoice.Model().Model)
-				rec.Set("Partner", invoice.Partner(), invoice.Model().Model)
-				rec.Set("Amount", invoice.Residual(), invoice.Model().Model)
+				rec.SetPartnerType(accounttypes.MapInvoiceType_PartnerType[invoice.Type()])
+				rec.SetPartner(invoice.Partner())
+				rec.SetAmount(invoice.Residual())
 			}
-			return rec
+			return rec.Underlying()
 		})
 
 	h.AccountPayment().Methods().GetInvoices().Extend("",
-		func(rs h.AccountPaymentSet) h.AccountInvoiceSet {
+		func(rs m.AccountPaymentSet) m.AccountInvoiceSet {
 			return rs.Invoices()
 		})
 
 	h.AccountPayment().Methods().ButtonJournalEntries().DeclareMethod(
 		`ButtonJournalEntries`,
-		func(rs h.AccountPaymentSet) *actions.Action {
+		func(rs m.AccountPaymentSet) *actions.Action {
 			return &actions.Action{
-				Name: rs.T(`Journal Items"`),
-				Type: actions.ActionActWindow,
-				Model: "AccountMoveLine",
+				Name:     rs.T(`Journal Items"`),
+				Type:     actions.ActionActWindow,
+				Model:    "AccountMoveLine",
 				ViewMode: "tree,form",
-				Domain: "[('payment_id', 'in', rs.ids)]",
+				Domain:   "[('payment_id', 'in', rs.ids)]",
 			}
 		})
 
 	h.AccountPayment().Methods().ButtonInvoices().DeclareMethod(
 		`ButtonInvoices`,
-		func(rs h.AccountPaymentSet) *actions.Action {
+		func(rs m.AccountPaymentSet) *actions.Action {
 			return &actions.Action{
-				Name: rs.T(`Paid invoices`),
-				Type: actions.ActionActWindow,
-				Model: "AccountInvoice",
+				Name:     rs.T(`Paid invoices`),
+				Type:     actions.ActionActWindow,
+				Model:    "AccountInvoice",
 				ViewMode: "tree,form",
-				Domain: "[('id', 'in', [x.id for x in self.invoice_ids])]",
+				Domain:   "[('id', 'in', [x.id for x in self.invoice_ids])]",
 			}
 		})
 
 	h.AccountPayment().Methods().ButtonDummy().DeclareMethod(
 		`ButtonDummy`,
-		func(rs h.AccountPaymentSet) bool {
+		func(rs m.AccountPaymentSet) bool {
 			return true
 		})
 
 	h.AccountPayment().Methods().Unreconcile().DeclareMethod(
 		`Unreconcile Set back the payments in 'posted' or 'sent' state, without deleting the journal entries.
 			      Called when cancelling a bank statement line linked to a pre-registered payment.`,
-		func(rs h.AccountPaymentSet) {
+		func(rs m.AccountPaymentSet) {
 			data := h.AccountPayment().NewData()
 			for _, payment := range rs.Records() {
 				if payment.PaymentReference() != "" {
@@ -531,7 +530,7 @@ set to draft and re-processed again." `},
 
 	h.AccountPayment().Methods().Cancel().DeclareMethod(
 		`Cancel`,
-		func(rs h.AccountPaymentSet) {
+		func(rs m.AccountPaymentSet) {
 			for _, rec := range rs.Records() {
 				for _, moves := range rec.MoveLines().Records() {
 					move := moves.Move()
@@ -546,7 +545,7 @@ set to draft and re-processed again." `},
 		})
 
 	h.AccountPayment().Methods().Unlink().Extend("",
-		func(rs h.AccountPaymentSet) int64 {
+		func(rs m.AccountPaymentSet) int64 {
 			for _, rec := range rs.Records() {
 				if rec.MoveLines().IsNotEmpty() {
 					panic(rs.T(`You can not delete a payment that is already posted`))
@@ -564,14 +563,14 @@ set to draft and re-processed again." `},
 			      and another in the destination reconciliable account (see _compute_destination_account_id).
 			      If invoice_ids is not empty, there will be one reconciliable move line per invoice to reconcile with.
 			      If the payment is a transfer, a second journal entry is created in the destination journal to receive money from the transfer account.`,
-		func(rs h.AccountPaymentSet) {
-			var sequenceCode		string
-			var amount				float64
-			var sign				float64
-			var move				h.AccountMoveSet
-			var transferCreditAml	h.AccountMoveLineSet
-			var transferDebitAml	h.AccountMoveLineSet
-			var data			   *h.AccountPaymentData
+		func(rs m.AccountPaymentSet) {
+			var sequenceCode string
+			var amount float64
+			var sign float64
+			var move m.AccountMoveSet
+			var transferCreditAml m.AccountMoveLineSet
+			var transferDebitAml m.AccountMoveLineSet
+			var data m.AccountPaymentData
 
 			for _, rec := range rs.Records() {
 				if rec.State() != "draft" {
@@ -588,9 +587,9 @@ set to draft and re-processed again." `},
 				switch {
 				case rec.PaymentType() == "transfer":
 					sequenceCode = "account.payment.transfer"
-				case rec.PaymentType() == "inbound"	 && rec.PartnerType() == "customer":
+				case rec.PaymentType() == "inbound" && rec.PartnerType() == "customer":
 					sequenceCode = "account.payment.customer.invoice"
-				case rec.PaymentType() == "inbound"  && rec.PartnerType() == "supplier":
+				case rec.PaymentType() == "inbound" && rec.PartnerType() == "supplier":
 					sequenceCode = "account.payment.supplier.refund"
 				case rec.PaymentType() == "outbound" && rec.PartnerType() == "customer":
 					sequenceCode = "account.payment.customer.refund"
@@ -612,9 +611,9 @@ set to draft and re-processed again." `},
 				// In case of a transfer, the first journal entry created debited the source liquidity account and credited
 				// the transfer account. Now we debit the transfer account and credit the destination liquidity account.
 				if rec.PaymentType() == "transfer" {
-					transferCreditAml = move.Lines().Filtered(func(r h.AccountMoveLineSet) bool { return r.Account().Equals(rec.Company().TransferAccount()) })
+					transferCreditAml = move.Lines().Filtered(func(r m.AccountMoveLineSet) bool { return r.Account().Equals(rec.Company().TransferAccount()) })
 					transferDebitAml = rec.CreateTransferEntry(amount)
-					transferCreditAml.Union(transferDebitAml).Reconcile(h.AccountAccountSet{}, h.AccountJournalSet{})
+					transferCreditAml.Union(transferDebitAml).Reconcile(h.AccountAccount().NewSet(rs.Env()), h.AccountJournal().NewSet(rs.Env()))
 				}
 
 				data.SetState("posted").
@@ -627,25 +626,25 @@ set to draft and re-processed again." `},
 	h.AccountPayment().Methods().CreatePaymentEntry().DeclareMethod(
 		`Create a journal entry corresponding to a payment, if the payment references invoice(s) they are reconciled.
 			      Return the journal entry.`,
-		func(rs h.AccountPaymentSet, amount float64) h.AccountMoveSet {
-			var all 						bool
-			var debit 						float64
-			var credit 						float64
-			var amountCurrency 				float64
-			var amountWo 					float64
-			var debitWo 					float64
-			var creditWo 					float64
-			var amountCurrencyWo 			float64
-			var totalResidualCompanySigned	float64
-			var totalPaymentCompanySigned	float64
-			var invoiceCurrency				h.CurrencySet
-			var currency					h.CurrencySet
-			var move						h.AccountMoveSet
-			var amlObj						h.AccountMoveLineSet
-			var counterpartAml				h.AccountMoveLineSet
-			var counterpartAmlData		   *h.AccountMoveLineData
-			var liquidityAmlDict		   *h.AccountMoveLineData
-			var writeoffLine			   *h.AccountMoveLineData
+		func(rs m.AccountPaymentSet, amount float64) m.AccountMoveSet {
+			var all bool
+			var debit float64
+			var credit float64
+			var amountCurrency float64
+			var amountWo float64
+			var debitWo float64
+			var creditWo float64
+			var amountCurrencyWo float64
+			var totalResidualCompanySigned float64
+			var totalPaymentCompanySigned float64
+			var invoiceCurrency m.CurrencySet
+			var currency m.CurrencySet
+			var move m.AccountMoveSet
+			var amlObj m.AccountMoveLineSet
+			var counterpartAml m.AccountMoveLineSet
+			var counterpartAmlData m.AccountMoveLineData
+			var liquidityAmlDict m.AccountMoveLineData
+			var writeoffLine m.AccountMoveLineData
 
 			amlObj = h.AccountMoveLine().NewSet(rs.Env()).WithContext("check_move_validity", false)
 
@@ -662,15 +661,17 @@ set to draft and re-processed again." `},
 			}
 
 			debit, credit, amountCurrency, currency = amlObj.WithContext("date", rs.PaymentDate()).ComputeAmountFields(amount, rs.Currency(), rs.Company().Currency(), invoiceCurrency)
-			move = h.AccountMove().Create(rs.Env(), rs.GetMoveVals(h.AccountJournalSet{}))
+			move = h.AccountMove().Create(rs.Env(), rs.GetMoveVals(h.AccountJournal().NewSet(rs.Env())))
 
 			// Write line corresponding to invoice payment
-			counterpartAmlData = rs.GetSharedMoveLineVals(debit, credit, amountCurrency, move, h.AccountInvoiceSet{})
-			counterpartAmlData.Update(rs.GetCounterpartMoveLineVals(rs.Invoices()).SetCurrency(currency))
+			// TODO Check that it works or create a MergeWith method for typed model data objects
+			counterpartAmlData = rs.GetSharedMoveLineVals(debit, credit, amountCurrency, move, h.AccountInvoice().NewSet(rs.Env()))
+			cpFM := counterpartAmlData.Underlying()
+			(&cpFM).MergeWith(rs.GetCounterpartMoveLineVals(rs.Invoices()).SetCurrency(currency).Underlying(), h.AccountMoveLine().Model)
 
 			// Reconcile with the invoices
 			if rs.PaymentDifferenceHandling() == "reconcile" && rs.PaymentDifference() != 0.0 {
-				writeoffLine = rs.GetSharedMoveLineVals(0, 0, 0, move, h.AccountInvoiceSet{})
+				writeoffLine = rs.GetSharedMoveLineVals(0, 0, 0, move, h.AccountInvoice().NewSet(rs.Env()))
 				_, _, amountCurrencyWo, currency = amlObj.WithContext("date", rs.PaymentDate()).ComputeAmountFields(rs.PaymentDifference(), rs.Currency(), rs.Company().Currency(), invoiceCurrency)
 				// the writeoff debit and credit must be computed from the invoice residual in company currency
 				// minus the payment amount in company currency, and not from the payment difference in the payment currency
@@ -688,7 +689,7 @@ set to draft and re-processed again." `},
 				// amount in the company currency
 				if amountWo > 0 {
 					debitWo = amountWo
-					amountCurrencyWo =  math.Abs(amountCurrencyWo)
+					amountCurrencyWo = math.Abs(amountCurrencyWo)
 				} else {
 					creditWo = -amountWo
 					amountCurrencyWo = -math.Abs(amountCurrencyWo)
@@ -709,14 +710,15 @@ set to draft and re-processed again." `},
 				counterpartAmlData.SetAmountCurrency(counterpartAmlData.AmountCurrency() - amountCurrencyWo)
 			}
 			counterpartAml = amlObj.Create(counterpartAmlData)
-			rs.Invoices().RegisterPayment(counterpartAml, h.AccountAccountSet{}, h.AccountJournalSet{})
+			rs.Invoices().RegisterPayment(counterpartAml, h.AccountAccount().NewSet(rs.Env()), h.AccountJournal().NewSet(rs.Env()))
 
 			// Write counterpart lines
 			if !rs.Currency().Equals(rs.Company().Currency()) {
 				amountCurrency = 0.0
 			}
-			liquidityAmlDict = rs.GetSharedMoveLineVals(credit, debit, -amountCurrency, move, h.AccountInvoiceSet{})
-			liquidityAmlDict.Update(rs.GetLiquidityMoveLineVals(-amount))
+			liquidityAmlDict = rs.GetSharedMoveLineVals(credit, debit, -amountCurrency, move, h.AccountInvoice().NewSet(rs.Env()))
+			laFM := liquidityAmlDict.Underlying()
+			(&laFM).MergeWith(rs.GetLiquidityMoveLineVals(-amount).Underlying(), h.AccountMoveLine().Model)
 			amlObj.Create(liquidityAmlDict)
 
 			move.Post()
@@ -725,30 +727,30 @@ set to draft and re-processed again." `},
 
 	h.AccountPayment().Methods().CreateTransferEntry().DeclareMethod(
 		`CreateTransferEntry Create the journal entry corresponding to the 'incoming money' part of an internal transfer, return the reconciliable move line`,
-		func(rs h.AccountPaymentSet, amount float64) h.AccountMoveLineSet {
-			var debit 					float64
-			var credit 					float64
-			var amountCurrency 			float64
-			var dstMove					h.AccountMoveSet
-			var transferDebitAml		h.AccountMoveLineSet
-			var amlObj 					h.AccountMoveLineSet
-			var transferDebitAmlData   *h.AccountMoveLineData
+		func(rs m.AccountPaymentSet, amount float64) m.AccountMoveLineSet {
+			var debit float64
+			var credit float64
+			var amountCurrency float64
+			var dstMove m.AccountMoveSet
+			var transferDebitAml m.AccountMoveLineSet
+			var amlObj m.AccountMoveLineSet
+			var transferDebitAmlData m.AccountMoveLineData
 
 			amlObj = h.AccountMoveLine().NewSet(rs.Env()).WithContext("check_move_validity", false)
-			debit, credit, _, _ = amlObj.WithContext("date", rs.PaymentDate()).ComputeAmountFields(amount, rs.Currency(), rs.Company().Currency(), h.CurrencySet{})
+			debit, credit, _, _ = amlObj.WithContext("date", rs.PaymentDate()).ComputeAmountFields(amount, rs.Currency(), rs.Company().Currency(), h.Currency().NewSet(rs.Env()))
 			if rs.DestinationJournal().Currency().IsNotEmpty() {
 				amountCurrency = rs.Currency().WithContext("date", rs.PaymentDate()).Compute(amount, rs.DestinationJournal().Currency(), true)
 			}
 
 			dstMove = h.AccountMove().Create(rs.Env(), rs.GetMoveVals(rs.DestinationJournal()))
-			amlObj.Create(rs.GetSharedMoveLineVals(debit, credit, amountCurrency, dstMove, h.AccountInvoiceSet{}).
+			amlObj.Create(rs.GetSharedMoveLineVals(debit, credit, amountCurrency, dstMove, h.AccountInvoice().NewSet(rs.Env())).
 				SetName(rs.T(`Transfer from %s`, rs.Journal().Name())).
 				SetAccount(rs.DestinationJournal().DefaultCreditAccount()).
 				SetCurrency(rs.DestinationJournal().Currency()).
 				SetPayment(rs).
 				SetJournal(rs.DestinationJournal()))
 
-			transferDebitAmlData = rs.GetSharedMoveLineVals(credit, debit, 0, dstMove, h.AccountInvoiceSet{}).
+			transferDebitAmlData = rs.GetSharedMoveLineVals(credit, debit, 0, dstMove, h.AccountInvoice().NewSet(rs.Env())).
 				SetName(rs.Name()).
 				SetPayment(rs).
 				SetAccount(rs.Company().TransferAccount()).
@@ -764,7 +766,7 @@ set to draft and re-processed again." `},
 
 	h.AccountPayment().Methods().GetMoveVals().DeclareMethod(
 		`GetMoveVals Return dict to create the payment move`,
-		func(rs h.AccountPaymentSet, journal h.AccountJournalSet) *h.AccountMoveData {
+		func(rs m.AccountPaymentSet, journal m.AccountJournalSet) m.AccountMoveData {
 			var name string
 
 			journal = h.AccountJournal().Coalesce(journal, rs.Journal())
@@ -783,15 +785,14 @@ set to draft and re-processed again." `},
 				SetRef(rs.Communication()).
 				SetCompany(rs.Company()).
 				SetJournal(journal)
-			return &h.AccountMoveData{}
 		})
 
 	h.AccountPayment().Methods().GetSharedMoveLineVals().DeclareMethod(
 		`GetSharedMoveLineVals Returns values common to both move lines (except for debit, credit and amount_currency which are reversed)`,
-		func(rs h.AccountPaymentSet, debit, credit, amountCurrency float64, move h.AccountMoveSet,
-			invoice h.AccountInvoiceSet) *h.AccountMoveLineData {
+		func(rs m.AccountPaymentSet, debit, credit, amountCurrency float64, move m.AccountMoveSet,
+			invoice m.AccountInvoiceSet) m.AccountMoveLineData {
 
-			var data *h.AccountMoveLineData
+			var data m.AccountMoveLineData
 
 			data = h.AccountMoveLine().NewData().
 				SetInvoice(invoice).
@@ -807,10 +808,10 @@ set to draft and re-processed again." `},
 
 	h.AccountPayment().Methods().GetCounterpartMoveLineVals().DeclareMethod(
 		`GetCounterpartMoveLineVals`,
-		func(rs h.AccountPaymentSet, invoice h.AccountInvoiceSet) *h.AccountMoveLineData {
-			var name 		string
-			var CurrencyVal h.CurrencySet
-			
+		func(rs m.AccountPaymentSet, invoice m.AccountInvoiceSet) m.AccountMoveLineData {
+			var name string
+			var CurrencyVal m.CurrencySet
+
 			if rs.PaymentType() == "transfer" {
 				name = rs.Name()
 			} else {
@@ -849,9 +850,9 @@ set to draft and re-processed again." `},
 
 	h.AccountPayment().Methods().GetLiquidityMoveLineVals().DeclareMethod(
 		`GetLiquidityMoveLineVals`,
-		func(rs h.AccountPaymentSet, amount float64) *h.AccountMoveLineData {
+		func(rs m.AccountPaymentSet, amount float64) m.AccountMoveLineData {
 			var name string
-			var vals *h.AccountMoveLineData
+			var vals m.AccountMoveLineData
 
 			name = rs.Name()
 			if rs.PaymentType() == "transfer" {
@@ -873,7 +874,7 @@ set to draft and re-processed again." `},
 			// If the journal has a currency specified, the journal item need to be expressed in this currency
 			if rs.Journal().Currency().IsNotEmpty() && !rs.Currency().Equals(rs.Journal().Currency()) {
 				amount = rs.Currency().WithContext("date", rs.PaymentDate()).Compute(amount, rs.Journal().Currency(), true)
-				_, _, amount, _ = h.AccountMoveLine().NewSet(rs.Env()).WithContext("date", rs.PaymentDate()).ComputeAmountFields(amount, rs.Journal().Currency(), rs.Company().Currency(), h.CurrencySet{})
+				_, _, amount, _ = h.AccountMoveLine().NewSet(rs.Env()).WithContext("date", rs.PaymentDate()).ComputeAmountFields(amount, rs.Journal().Currency(), rs.Company().Currency(), h.Currency().NewSet(rs.Env()))
 				vals.SetAmountCurrency(amount).
 					SetCurrency(rs.Journal().Currency())
 			}

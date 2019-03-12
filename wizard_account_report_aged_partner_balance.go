@@ -8,6 +8,7 @@ import (
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 )
 
 func init() {
@@ -27,7 +28,7 @@ func init() {
 	})
 
 	h.AccountAgedTrialBalance().Methods().PrintReport().Extend("",
-		func(rs h.AccountAgedTrialBalanceSet, data interface{}) *actions.Action {
+		func(rs m.AccountAgedTrialBalanceSet, data interface{}) *actions.Action {
 			/*def _print_report(self, data):
 			  res = {}
 			  data = self.pre_print_report(data)

@@ -6,6 +6,7 @@ package account
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types"
@@ -13,6 +14,7 @@ import (
 	"github.com/hexya-erp/hexya/src/tools/strutils"
 	"github.com/hexya-erp/hexya/src/views"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
 )
 
@@ -33,7 +35,7 @@ func init() {
 
 	h.AccountJournal().Methods().ComputeKanbanDashboard().DeclareMethod(
 		`ComputeKanbanDashboard`,
-		func(rs h.AccountJournalSet) *h.AccountJournalData {
+		func(rs m.AccountJournalSet) m.AccountJournalData {
 			str, err := json.Marshal(rs.GetJournalDashboardDatas())
 			if err != nil {
 				panic(rs.T("Could not marshall journal dashboard datas. error: %s", err)) //tovalid is panic needed? is message correct?
@@ -43,7 +45,7 @@ func init() {
 
 	h.AccountJournal().Methods().ComputeKanbanDashboardGraph().DeclareMethod(
 		`ComputeKanbanDashboardGraph`,
-		func(rs h.AccountJournalSet) *h.AccountJournalData {
+		func(rs m.AccountJournalSet) m.AccountJournalData {
 			var str []byte
 			var err error
 			switch rs.Type() {
@@ -64,7 +66,7 @@ func init() {
 
 	h.AccountJournal().Methods().ToggleFavorite().DeclareMethod(
 		`ToggleFavorite`,
-		func(rs h.AccountJournalSet) bool {
+		func(rs m.AccountJournalSet) bool {
 			data := h.AccountJournal().NewData()
 			data.SetShowOnDashboard(!rs.ShowOnDashboard())
 			rs.Write(data)
@@ -73,7 +75,7 @@ func init() {
 
 	h.AccountJournal().Methods().GetLineGraphDatas().DeclareMethod(
 		`GetLineGraphDatas`,
-		func(rs h.AccountJournalSet) []map[string]interface{} {
+		func(rs m.AccountJournalSet) []map[string]interface{} {
 			today := dates.Today()
 			lastMonth := today.AddDate(0, 0, -30)
 			// Query to optimize loading of data for bank statement graphs
@@ -155,7 +157,7 @@ func init() {
 
 	h.AccountJournal().Methods().GetBarGraphDatas().DeclareMethod(
 		`GetBarGraphDatas`,
-		func(rs h.AccountJournalSet) []map[string]interface{} {
+		func(rs m.AccountJournalSet) []map[string]interface{} {
 			today := dates.Today()
 			data := []map[string]interface{}{{
 				"label": rs.T("Past"),
@@ -225,7 +227,7 @@ func init() {
 
 	h.AccountJournal().Methods().GetJournalDashboardDatas().DeclareMethod(
 		`GetJournalDashboardDatas`,
-		func(rs h.AccountJournalSet) map[string]interface{} {
+		func(rs m.AccountJournalSet) map[string]interface{} {
 			currency := h.Currency().Coalesce(rs.Currency(), rs.Company().Currency())
 			var numberToReconcile int64
 			var lastBalance float64
@@ -329,7 +331,7 @@ func init() {
 	h.AccountJournal().Methods().ActionCreateNew().DeclareMethod(
 		`ActionCreateNew`,
 		//TODO shorten me
-		func(rs h.AccountJournalSet) *actions.Action {
+		func(rs m.AccountJournalSet) *actions.Action {
 			ctx := rs.Env().Context().Copy().WithKey("default_journal", rs)
 			view := views.MakeViewRef("account_view_move_form")
 			model := "AccountMove"
@@ -371,7 +373,7 @@ func init() {
 
 	h.AccountJournal().Methods().CreateCashStatement().DeclareMethod(
 		`CreateCashStatement`,
-		func(rs h.AccountJournalSet) *actions.Action {
+		func(rs m.AccountJournalSet) *actions.Action {
 			ctx := rs.Env().Context().Copy().
 				WithKey("journal", rs).
 				WithKey("default_journal", rs).
@@ -387,7 +389,7 @@ func init() {
 
 	h.AccountJournal().Methods().ActionOpenReconcile().DeclareMethod(
 		`ActionOpenReconcile`,
-		func(rs h.AccountJournalSet) *actions.Action {
+		func(rs m.AccountJournalSet) *actions.Action {
 			out := actions.Action{
 				Type: actions.ActionClient,
 			}
@@ -414,7 +416,7 @@ func init() {
 
 	h.AccountJournal().Methods().OpenAction().DeclareMethod(
 		`OpenAction return action based on type for related journals`,
-		func(rs h.AccountJournalSet) *actions.Action {
+		func(rs m.AccountJournalSet) *actions.Action {
 			actionName := rs.Env().Context().GetString("action_name")
 			if actionName == "" {
 				switch rs.Type() {
@@ -464,25 +466,25 @@ func init() {
 
 	h.AccountJournal().Methods().OpenSpendMoney().DeclareMethod(
 		`OpenSpendMoney`,
-		func(rs h.AccountJournalSet) *actions.Action {
+		func(rs m.AccountJournalSet) *actions.Action {
 			return rs.OpenPaymentsAction("outbound")
 		})
 
 	h.AccountJournal().Methods().OpenCollectMoney().DeclareMethod(
 		`OpenCollectMoney`,
-		func(rs h.AccountJournalSet) *actions.Action {
+		func(rs m.AccountJournalSet) *actions.Action {
 			return rs.OpenPaymentsAction("inbound")
 		})
 
 	h.AccountJournal().Methods().OpenTransferMoney().DeclareMethod(
 		`OpenTransferMoney`,
-		func(rs h.AccountJournalSet) *actions.Action {
+		func(rs m.AccountJournalSet) *actions.Action {
 			return rs.OpenPaymentsAction("transfer")
 		})
 
 	h.AccountJournal().Methods().OpenPaymentsAction().DeclareMethod(
 		`OpenPaymentsAction`,
-		func(rs h.AccountJournalSet, paymentType string) *actions.Action {
+		func(rs m.AccountJournalSet, paymentType string) *actions.Action {
 			ctx := rs.Env().Context().Copy().
 				WithKey("default_payment_type", paymentType).
 				WithKey("default_journal_id", rs.ID()).
@@ -495,12 +497,14 @@ func init() {
 			      action['domain'] = [('journal_id','=',self.id),('payment_type','=',payment_type)]
 			      return action
 			*/
+			// FIXME
+			fmt.Println(ctx)
 			return new(actions.Action)
 		})
 
 	h.AccountJournal().Methods().OpenActionWithContext().DeclareMethod(
 		`OpenActionWithContext`,
-		func(rs h.AccountJournalSet) *actions.Action {
+		func(rs m.AccountJournalSet) *actions.Action {
 			ctx := rs.Env().Context().
 				WithKey("default_journal_id", rs.ID()).
 				Delete("group_by")
@@ -525,7 +529,7 @@ func init() {
 
 	h.AccountJournal().Methods().CreateBankStatement().DeclareMethod(
 		`CreateBankStatement return action to create a bank statements. This button should be called only on journals with type =='bank'`,
-		func(rs h.AccountJournalSet) *actions.Action {
+		func(rs m.AccountJournalSet) *actions.Action {
 			rs.SetBankStatementsSource("manual")
 			action := actions.Registry.GetById("account_action_bank_statement_tree")
 			action.Views = []views.ViewTuple{{"", "form"}}

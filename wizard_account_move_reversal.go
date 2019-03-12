@@ -7,6 +7,7 @@ import (
 	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 )
 
 func init() {
@@ -23,7 +24,7 @@ func init() {
 	})
 	h.AccountMoveReversal().Methods().ReverseMoves().DeclareMethod(
 		`ReverseMoves`,
-		func(rs h.AccountMoveReversalSet) *actions.Action {
+		func(rs m.AccountMoveReversalSet) *actions.Action {
 			acMoveIDs := rs.Env().Context().GetIntegerSlice("active_ids")
 			res := h.AccountMove().Browse(rs.Env(), acMoveIDs).ReverseMoves(rs.Date(), rs.Journal())
 			if res.IsNotEmpty() {

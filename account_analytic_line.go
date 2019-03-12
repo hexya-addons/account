@@ -4,10 +4,12 @@
 package account
 
 import (
+	"math"
+
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
-	"math"
 )
 
 func init() {
@@ -64,7 +66,7 @@ func init() {
 
 	h.AccountAnalyticLine().Methods().GetAnalyticAmountCurrency().DeclareMethod(
 		`GetAnalyticAmountCurrency`,
-		func(rs h.AccountAnalyticLineSet) *h.AccountAnalyticLineData {
+		func(rs m.AccountAnalyticLineSet) m.AccountAnalyticLineData {
 			r := h.AccountAnalyticLine().NewData()
 			value := math.Abs(rs.AmountCurrency()) * math.Copysign(1.0, rs.Amount())
 			if rs.AnalyticAmountCurrency() != value {
@@ -75,7 +77,7 @@ func init() {
 
 	h.AccountAnalyticLine().Methods().OnChangeUnitAmount().DeclareMethod(
 		`OnChangeUnitAmount`,
-		func(rs h.AccountAnalyticLineSet) *h.AccountAnalyticAccountData {
+		func(rs m.AccountAnalyticLineSet) m.AccountAnalyticLineData {
 			//@api.onchange('product_id','product_uom_id','unit_amount','currency_id')
 			/*def on_change_unit_amount(self):
 			  if not self.product_id:
@@ -97,6 +99,6 @@ func init() {
 			  self.product_uom_id = unit
 
 			*/
-			return h.AccountAnalyticAccount().NewData()
+			return h.AccountAnalyticLine().NewData()
 		})
 }

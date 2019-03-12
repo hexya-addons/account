@@ -8,6 +8,7 @@ import (
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/hexya/src/tools/nbutils"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
 )
 
@@ -16,7 +17,7 @@ func init() {
 	h.AccountInvoiceReport().DeclareModel()
 	h.AccountInvoiceReport().Methods().ComputeAmountsInUserCurrency().DeclareMethod(
 		`ComputeAmountsInUserCurrency`,
-		func(rs h.AccountInvoiceReportSet) *h.AccountInvoiceReportData {
+		func(rs m.AccountInvoiceReportSet) m.AccountInvoiceReportData {
 			//@api.depends('currency_id','date','price_total','price_average','residual')
 			/*def _compute_amounts_in_user_currency(self):
 			  """Compute the amounts in the currency of the user
@@ -34,7 +35,7 @@ func init() {
 			      record.user_currency_price_average = base_currency_id.with_context(ctx).compute(record.price_average, user_currency_id)
 			      record.user_currency_residual = base_currency_id.with_context(ctx).compute(record.residual, user_currency_id)
 			*/
-			return &h.AccountInvoiceReportData{}
+			return h.AccountInvoiceReport().NewData()
 		})
 	h.AccountInvoiceReport().AddFields(map[string]models.FieldDefinition{
 		"Date":       models.DateField{String: "Date", ReadOnly: true},
@@ -95,7 +96,7 @@ func init() {
 	})
 	h.AccountInvoiceReport().Methods().Select().DeclareMethod(
 		`Select`,
-		func(rs h.AccountInvoiceReportSet) string {
+		func(rs m.AccountInvoiceReportSet) string {
 			/*def _select(self):
 			  select_str = """
 			      SELECT sub.id, sub.date, sub.product_id, sub.partner_id, sub.country_id, sub.account_analytic_id,
@@ -114,7 +115,7 @@ func init() {
 
 	h.AccountInvoiceReport().Methods().SubSelect().DeclareMethod(
 		`SubSelect`,
-		func(rs h.AccountInvoiceReportSet) string {
+		func(rs m.AccountInvoiceReportSet) string {
 			/*def _sub_select(self):
 			  select_str = """
 			          SELECT ail.id AS id,
@@ -147,7 +148,7 @@ func init() {
 
 	h.AccountInvoiceReport().Methods().From().DeclareMethod(
 		`From`,
-		func(rs h.AccountInvoiceReportSet) string {
+		func(rs m.AccountInvoiceReportSet) string {
 			/*def _from(self):
 			  from_str = """
 			          FROM account_invoice_line ail
@@ -175,7 +176,7 @@ func init() {
 
 	h.AccountInvoiceReport().Methods().GroupByClause().DeclareMethod(
 		`GroupBy`,
-		func(rs h.AccountInvoiceReportSet) string {
+		func(rs m.AccountInvoiceReportSet) string {
 			/*def _group_by(self):
 			  group_by_str = """
 			          GROUP BY ail.id, ail.product_id, ail.account_analytic_id, ai.date_invoice, ai.id,
@@ -192,7 +193,7 @@ func init() {
 
 	h.AccountInvoiceReport().Methods().Init().DeclareMethod(
 		`Init`,
-		func(rs h.AccountInvoiceReportSet) {
+		func(rs m.AccountInvoiceReportSet) {
 			//@api.model_cr
 			/*def init(self):
 			  # self._table = account_invoice_report

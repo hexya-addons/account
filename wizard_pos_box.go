@@ -7,35 +7,39 @@ import (
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/tools/nbutils"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 )
 
 func init() {
 
 	h.CashBox().DeclareTransientModel()
 	h.CashBox().AddFields(map[string]models.FieldDefinition{
-		"Name":   models.CharField{String: "Name" /*[string 'Reason']*/, Required: true},
-		"Amount": models.FloatField{String: "Amount" /*[string 'Amount']*/, Digits: nbutils.Digits{0, 0}, Required: true},
+		"Name": models.CharField{
+			String:   "Name",
+			Required: true},
+		"Amount": models.FloatField{
+			String: "Amount",
+			Digits: nbutils.Digits{
+				Precision: 0,
+				Scale:     0},
+			Required: true},
 	})
 	h.CashBox().Methods().Run().DeclareMethod(
 		`Run`,
-		func(rs h.CashBoxSet) {
-			//@api.multi
-			/*def run(self):
-			  context = dict(self._context or {})
-			  active_model = context.get('active_model', False)
-			  active_ids = context.get('active_ids', [])
-
-			  records = self.env[active_model].browse(active_ids)
-
-			  return self._run(records)
-
-			*/
+		func(rs m.CashBoxSet) interface{} {
+			active_model := rs.Env().Context().GetString("active_model")
+			if active_model == "" {
+				return rs.RunPrivate(&models.RecordCollection{})
+			}
+			activeIds := rs.Env().Context().GetIntegerSlice("active_ids")
+			collection := rs.Env().Pool(active_model)
+			records := collection.Search(collection.Model().Field("ID").In(activeIds))
+			return rs.RunPrivate(records)
 		})
+
 	h.CashBox().Methods().RunPrivate().DeclareMethod(
 		`RunPrivate`,
-		func(rs h.CashBoxSet, args struct {
-			Records interface{}
-		}) {
+		func(rs m.CashBoxSet, records models.RecordSet) interface{} {
 			//@api.multi
 			/*def _run(self, records):
 			  for box in self:
@@ -51,7 +55,7 @@ func init() {
 		})
 	h.CashBox().Methods().CreateBankStatementLine().DeclareMethod(
 		`CreateBankStatementLine`,
-		func(rs h.CashBoxSet, args struct {
+		func(rs m.CashBoxSet, args struct {
 			Record interface{}
 		}) {
 			//@api.one
@@ -73,7 +77,7 @@ func init() {
 	h.CashBoxIn().InheritModel(h.CashBox())
 	h.CashBoxIn().Methods().CalculateValuesForStatementLine().DeclareMethod(
 		`CalculateValuesForStatementLine`,
-		func(rs h.CashBoxInSet, record h.AccountBankStatementSet) *h.AccountBankStatementLineData {
+		func(rs m.CashBoxInSet, record m.AccountBankStatementSet) m.AccountBankStatementLineData {
 			if record.Journal().Company().TransferAccount().IsEmpty() {
 				panic(rs.T(`You should have defined an 'Internal Transfer Account' in your cash register's journal!`))
 			}
@@ -91,7 +95,7 @@ func init() {
 	h.CashBoxOut().InheritModel(h.CashBox())
 	h.CashBoxOut().Methods().CalculateValuesForStatementLine().DeclareMethod(
 		`CalculateValuesForStatementLine`,
-		func(rs h.CashBoxOutSet, record h.AccountBankStatementSet) *h.AccountBankStatementLineData {
+		func(rs m.CashBoxOutSet, record m.AccountBankStatementSet) m.AccountBankStatementLineData {
 			if record.Journal().Company().TransferAccount().IsEmpty() {
 				panic(rs.T(`You should have defined an 'Internal Transfer Account' in your cash register's journal!`))
 			}
