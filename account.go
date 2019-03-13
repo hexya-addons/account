@@ -5,9 +5,6 @@ package account
 
 import (
 	"fmt"
-	"github.com/hexya-erp/hexya/src/models/security"
-	"github.com/hexya-erp/hexya/src/models/types/dates"
-	"github.com/hexya-erp/pool/m"
 	"math"
 	"sort"
 	"strconv"
@@ -18,9 +15,12 @@ import (
 	"github.com/hexya-erp/hexya/src/i18n"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/operator"
+	"github.com/hexya-erp/hexya/src/models/security"
 	"github.com/hexya-erp/hexya/src/models/types"
+	"github.com/hexya-erp/hexya/src/models/types/dates"
 	"github.com/hexya-erp/hexya/src/tools/nbutils"
 	"github.com/hexya-erp/pool/h"
+	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
 )
 

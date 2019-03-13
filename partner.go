@@ -2,19 +2,17 @@ package account
 
 import (
 	"fmt"
-	"github.com/hexya-addons/web/domains"
 	"strconv"
 
-	"github.com/hexya-addons/web/webdata"
-	"github.com/hexya-erp/hexya/src/tools/strutils"
-
 	"github.com/hexya-addons/base"
+	"github.com/hexya-addons/web/webdata"
 	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/operator"
 	"github.com/hexya-erp/hexya/src/models/security"
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
+	"github.com/hexya-erp/hexya/src/tools/strutils"
 	"github.com/hexya-erp/pool/h"
 	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
@@ -554,6 +552,8 @@ credit or if you click the "Done" button.`},
 				where_query = account_invoice_report._where_calc(condition)
 				  account_invoice_report._apply_ir_rules(where_query, 'read')
 			*/
+			// FIXME
+			fmt.Println(condition)
 			//sqlWhere, sqlParams = rs.SqlFromCondition(condition)
 
 			//price_total is in the company currency
@@ -717,7 +717,6 @@ credit or if you click the "Done" button.`},
 		`OpenPartnerHistory returns an action that display invoices/refunds made for the given partners.`,
 		func(rs m.PartnerSet) *actions.Action {
 			action := actions.Registry.GetById("account_action_invoice_refund_out_tree")
-			domains.ParseDomain()
 			// FIXME
 			//cond := domains.ParseDomain(action.Domain)
 			//cond = cond.AndCond(q.Partner().Parent().ChildOf(rs).Condition)
