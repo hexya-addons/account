@@ -2,6 +2,7 @@ package account
 
 import (
 	"fmt"
+	"github.com/hexya-addons/web/domains"
 	"strconv"
 
 	"github.com/hexya-addons/web/webdata"
@@ -421,12 +422,11 @@ credit or if you click the "Done" button.`},
 				"bad":    "Bad Debtor"},
 			Default: models.DefaultValue("normal") /*[ company_dependent True]*/},
 		"InvoiceWarn": models.SelectionField{
-			// TODO update hexya generate to master the Selection case below
 			Selection: base.WarningMessage,
 			String:    "Invoice",
-			/*Help: base.WarningHelp*/
-			Required: true,
-			Default:  models.DefaultValue("no-message")},
+			Help:      base.WarningHelp,
+			Required:  true,
+			Default:   models.DefaultValue("no-message")},
 		"InvoiceWarnMsg": models.TextField{
 			String: "Message for Invoice"},
 	})
@@ -554,8 +554,6 @@ credit or if you click the "Done" button.`},
 				where_query = account_invoice_report._where_calc(condition)
 				  account_invoice_report._apply_ir_rules(where_query, 'read')
 			*/
-			// FIXME
-			fmt.Println(condition)
 			//sqlWhere, sqlParams = rs.SqlFromCondition(condition)
 
 			//price_total is in the company currency
@@ -719,6 +717,7 @@ credit or if you click the "Done" button.`},
 		`OpenPartnerHistory returns an action that display invoices/refunds made for the given partners.`,
 		func(rs m.PartnerSet) *actions.Action {
 			action := actions.Registry.GetById("account_action_invoice_refund_out_tree")
+			domains.ParseDomain()
 			// FIXME
 			//cond := domains.ParseDomain(action.Domain)
 			//cond = cond.AndCond(q.Partner().Parent().ChildOf(rs).Condition)

@@ -4,6 +4,7 @@
 package account
 
 import (
+	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/pool/h"
 	"github.com/hexya-erp/pool/m"
 )
@@ -13,14 +14,13 @@ func init() {
 	h.AccountUnreconcile().DeclareTransientModel()
 	h.AccountUnreconcile().Methods().TransUnrec().DeclareMethod(
 		`TransUnrec`,
-		func(rs m.AccountUnreconcileSet) {
-			//@api.multi
-			/*def trans_unrec(self):
-			  context = dict(self._context or {})
-			  if context.get('active_ids', False):
-			      self.env['account.move.line'].browse(context.get('active_ids')).remove_move_reconcile()
-			  return {'type': 'ir.actions.act_window_close'}
-			*/
+		func(rs m.AccountUnreconcileSet) *actions.Action {
+			if ids := rs.Env().Context().GetIntegerSlice("active_ids"); len(ids) > 0 {
+				h.AccountMoveLine().Browse(rs.Env(), ids).RemoveMoveReconcile()
+			}
+			return &actions.Action{
+				Type: actions.ActionCloseWindow,
+			}
 		})
 
 }

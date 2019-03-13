@@ -12,7 +12,7 @@ import (
 
 func init() {
 
-	h.CashBox().DeclareTransientModel()
+	h.CashBox().DeclareMixinModel()
 	h.CashBox().AddFields(map[string]models.FieldDefinition{
 		"Name": models.CharField{
 			String:   "Name",
@@ -24,49 +24,49 @@ func init() {
 				Scale:     0},
 			Required: true},
 	})
+
 	h.CashBox().Methods().Run().DeclareMethod(
 		`Run`,
-		func(rs m.CashBoxSet) interface{} {
-			active_model := rs.Env().Context().GetString("active_model")
-			if active_model == "" {
-				return rs.RunPrivate(&models.RecordCollection{})
-			}
+		func(rs m.CashBoxSet) {
+			//activeModel := rs.Env().Context().GetString("active_model")
+			// in odoo, the context value associated with "active_model" is used
+			// since hexya is type safe, its not the case
+			// this may need to be changed
 			activeIds := rs.Env().Context().GetIntegerSlice("active_ids")
-			collection := rs.Env().Pool(active_model)
-			records := collection.Search(collection.Model().Field("ID").In(activeIds))
-			return rs.RunPrivate(records)
+			records := h.AccountBankStatement().Browse(rs.Env(), activeIds)
+			rs.RunPrivate(records)
 		})
 
 	h.CashBox().Methods().RunPrivate().DeclareMethod(
 		`RunPrivate`,
-		func(rs m.CashBoxSet, records models.RecordSet) interface{} {
-			//@api.multi
-			/*def _run(self, records):
-			  for box in self:
-			      for record in records:
-			          if not record.journal_id:
-			              raise UserError(_("Please check that the field 'Journal' is set on the Bank Statement"))
-			          if not record.journal_id.company_id.transfer_account_id:
-			              raise UserError(_("Please check that the field 'Transfer Account' is set on the company."))
-			          box._create_bank_statement_line(record)
-			  return {}
-
-			*/
+		func(rs m.CashBoxSet, records m.AccountBankStatementSet) {
+			for _, box := range rs.Records() {
+				for _, record := range records.Records() {
+					if record.Journal().IsEmpty() {
+						panic(rs.T(`Please check that the field 'Journal' is set on the Bank Statement`))
+					} else if record.Journal().Company().TransferAccount().IsEmpty() {
+						panic(rs.T(`Please check that the field 'Transfer Account' is set on the company.`))
+					}
+					box.CreateBankStatementLine(record)
+				}
+			}
 		})
+
 	h.CashBox().Methods().CreateBankStatementLine().DeclareMethod(
 		`CreateBankStatementLine`,
-		func(rs m.CashBoxSet, args struct {
-			Record interface{}
-		}) {
-			//@api.one
-			/*def _create_bank_statement_line(self, record):
-			  if record.state == 'confirm':
-			      raise UserError(_("You cannot put/take money in/out for a bank statement which is closed."))
-			  values = self._calculate_values_for_statement_line(record)
-			  return record.write({'line_ids': [(0, False, values)]})
+		func(rs m.CashBoxSet, record m.AccountBankStatementSet) bool {
+			rs.EnsureOne()
+			if record.State() == "confirm" {
+				panic(rs.T(`You cannot put/take money in/out for a bank statement which is closed.`))
+			}
+			line := h.AccountBankStatementLine().Create(rs.Env(), rs.CalculateValuesForStatementLine(record))
+			return record.Write(h.AccountBankStatement().NewData().SetLines(line))
+		})
 
-
-			*/
+	h.CashBox().Methods().CalculateValuesForStatementLine().DeclareMethod(
+		`CalculateValuesForStatementLine`,
+		func(rs m.CashBoxSet, record m.AccountBankStatementSet) m.AccountBankStatementLineData {
+			return h.AccountBankStatementLine().NewData()
 		})
 
 	h.CashBoxIn().DeclareTransientModel()
