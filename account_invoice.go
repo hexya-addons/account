@@ -1352,16 +1352,14 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				"out_refund":  rs.T(`Refund`),
 				"in_refund":   rs.T(`Vendor Refund`),
 			}
-			// FIXME
-			fmt.Println(types)
-			// tovalid return value tuple?
-			/*
-				  result = []
-				  for inv in self:
-					  result.append((inv.id, "%s %s" % (inv.number or TYPES[inv.type], inv.name or '')))
-				  return result
-			*/
-			return rs.Super().NameGet()
+			result := rs.Number()
+			if result == "" {
+				result = types[rs.Type()]
+			}
+			if name := rs.Name(); name != "" {
+				result = result + " " + name
+			}
+			return result
 		})
 
 	h.AccountInvoice().Methods().SearchByName().Extend("",

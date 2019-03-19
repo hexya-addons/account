@@ -116,19 +116,10 @@ will be created in 'Posted' status.'`},
 
 	h.AccountMove().Methods().NameGet().Extend("",
 		func(rs m.AccountMoveSet) string {
-			//@api.depends('name','state')
-			/*def name_get(self):
-			  result = []
-			  for move in self:
-			      if move.state == 'draft':
-			          name = '* ' + str(move.id)
-			      else:
-			          name = move.name
-			      result.append((move.id, name))
-			  return result
-
-			*/
-			return rs.Super().NameGet()
+			if rs.State() == "draft" {
+				return fmt.Sprintf("* %d", rs.ID())
+			}
+			return rs.Name()
 		})
 
 	h.AccountMove().Methods().AmountCompute().DeclareMethod(

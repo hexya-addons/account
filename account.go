@@ -74,7 +74,7 @@ func FormatLang(env models.Environment, value float64, currency models.RecordSet
 	//return strutils.FormatMonetary(value, digits, groupingLeft, groupingRight, separator, thSeparator, symbol, symToLeft)
 	// FIXME
 	fmt.Println(value, digits, groupingLeft, groupingRight, separator, thSeparator, symbol, symToLeft)
-	return "FIXME"
+	return "FIXME - Account/account.go - l.78"
 }
 
 func init() {

@@ -23,14 +23,13 @@ func init() {
 	})
 	h.AccountCommonPartnerReport().Methods().PrintReport().DeclareMethod(
 		`PrintReport`,
-		func(rs m.AccountCommonPartnerReportSet, args struct {
-			Data interface{}
-		}) {
+		func(rs m.AccountCommonPartnerReportSet, data map[string]interface{}) map[string]interface{} {
 			/*def _print_report(self, data):
 			  data = self.pre_print_report(data)
 			  data['form'].update({'reconciled': self.reconciled, 'amount_currency': self.amount_currency})
 			  return self.env['report'].get_action(self, 'account.report_partnerledger', data=data)
 			*/
+			return nil
 		})
 
 }

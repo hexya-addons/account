@@ -6,6 +6,7 @@ package account
 import (
 	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/hexya/src/models"
+	"github.com/hexya-erp/hexya/src/models/types/dates"
 	"github.com/hexya-erp/pool/h"
 	"github.com/hexya-erp/pool/m"
 )
@@ -15,12 +16,14 @@ func init() {
 	h.AccountMoveReversal().DeclareTransientModel()
 	h.AccountMoveReversal().AddFields(map[string]models.FieldDefinition{
 		"Date": models.DateField{
-			String: "Date" /*[string 'Reversal date']*/ /*[ default fields.Date.context_today]*/ /*[ required True]*/},
+			String:   "Reversal date",
+			Default:  models.DefaultValue(dates.Today()),
+			Required: true},
 		"Journal": models.Many2OneField{
 			String:        "Use Specific Journal",
 			RelationModel: h.AccountJournal(),
-			JSON:          "journal_id", /*['account.journal']*/
-			Help:          "If empty, uses the journal of the journal entry to be reversed." /*[ uses the journal of the journal entry to be reversed.']*/},
+			JSON:          "journal_id",
+			Help:          "If empty, uses the journal of the journal entry to be reversed."},
 	})
 	h.AccountMoveReversal().Methods().ReverseMoves().DeclareMethod(
 		`ReverseMoves`,

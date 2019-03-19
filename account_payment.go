@@ -630,16 +630,16 @@ set to draft and re-processed again." `},
 			var all bool
 			var debit float64
 			var credit float64
-			var amountCurrency float64
-			var amountWo float64
 			var debitWo float64
+			var amountWo float64
 			var creditWo float64
-			var amountCurrencyWo float64
-			var totalResidualCompanySigned float64
-			var totalPaymentCompanySigned float64
-			var invoiceCurrency m.CurrencySet
-			var currency m.CurrencySet
 			var move m.AccountMoveSet
+			var amountCurrency float64
+			var currency m.CurrencySet
+			var amountCurrencyWo float64
+			var invoiceCurrency m.CurrencySet
+			var totalPaymentCompanySigned float64
+			var totalResidualCompanySigned float64
 			var amlObj m.AccountMoveLineSet
 			var counterpartAml m.AccountMoveLineSet
 			var counterpartAmlData m.AccountMoveLineData
