@@ -16,7 +16,6 @@ import (
 	"github.com/hexya-erp/pool/h"
 	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
-	"golang.org/x/text/number"
 )
 
 func init() {
@@ -1098,6 +1097,8 @@ set to draft and re-processed again.`},
 					return False
 
 			*/
+
+			_, _, _, _ = params, field, liquidityField, matchRecs
 			return h.AccountMoveLine().NewSet(rs.Env())
 		})
 
