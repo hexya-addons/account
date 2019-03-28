@@ -1,0 +1,4 @@
+ID,Value,ValueAmount,Sequence,Days,Option
+account_account_payment_term_line_11,balance',0.0,500,0,last_day_following_month
+account_account_payment_term_line_12,percent',30.0,400,0,day_after_invoice_date
+account_account_payment_term_line_13,balance',0.0,500,0,last_day_following_month

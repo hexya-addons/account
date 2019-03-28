@@ -853,7 +853,6 @@ set to draft and re-processed again." `},
 		func(rs m.AccountPaymentSet, amount float64) m.AccountMoveLineData {
 			var name string
 			var vals m.AccountMoveLineData
-
 			name = rs.Name()
 			if rs.PaymentType() == "transfer" {
 				name = rs.T(`Transfer to %s`, rs.DestinationJournal().Name())

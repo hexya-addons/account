@@ -1,0 +1,4 @@
+ID,Name,Note
+account_account_payment_term_immediate,Immediate Payment,Payment term: Immediate Payment
+account_account_payment_term_15days,15 Days,Payment term: 15 Days
+account_account_payment_term_net,30 Net Days,Payment term: 30 Net Days

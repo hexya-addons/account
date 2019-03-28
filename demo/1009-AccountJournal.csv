@@ -1,0 +1,8 @@
+ID,Name,Code,Type,DefaultCreditAccount,DefaultDebitAccount,RefundSequence,ProfitAccount,LossAccount,ShowOnDashboard,BankAccount
+account_sales_journal,Customer Invoices - Test,TINV,sale,account_a_sale,account_a_sale,true,,,,
+account_expenses_journal,Vendor Bills - Test,TEXJ,purchase,account_a_expense,account_a_expense,true,,,,
+account_bank_journal,Bank - Test,TBNK,bank,account_bnk,account_bnk,,,,,
+account_cash_journal,Cash - Test,TCSH,cash,account_cash,account_cash,,account_rsa,account_rsa,,
+account_miscellaneous_journal,Miscellaneous - Test,TMIS,general,,,,,,false,
+account_currency_diff_journal,Currency Difference - Test,CUR,general,account_income_fx_expense,account_income_fx_income,,,,false,
+account_bank_journal_usd,USD Bank - Test,TUBK,bank,account_usd_bnk,account_usd_bnk,,,,,cd

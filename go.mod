@@ -1,6 +1,6 @@
 module github.com/hexya-addons/account
 
-replace github.com/hexya-erp/pool => /home/ray/workspace/go/project/pool
+replace github.com/hexya-erp/pool => /home/ray/workspace/go/account/pool
 
 replace github.com/hexya-addons/web => /home/ray/workspace/go/web
 
@@ -14,4 +14,5 @@ require (
 	github.com/hexya-erp/hexya v0.0.12
 	github.com/hexya-erp/pool v1.0.0
 	github.com/jmoiron/sqlx v1.2.0
+	github.com/smartystreets/goconvey v0.0.0-20190306220146-200a235640ff
 )

@@ -1,0 +1,3 @@
+ID,Name,BankName,Partner
+account_bank_account,987654321,Bank,base_main_partner
+account_bank_account_usd,123456789,Bank US,base_main_partner

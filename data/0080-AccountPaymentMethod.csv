@@ -1,0 +1,3 @@
+ID,Name,Code,PaymentType
+account_account_payment_method_manual_in,Manual,manual,inbound
+account_account_payment_method_manual_out,Manual,manual,outbound

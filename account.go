@@ -452,9 +452,11 @@ but you can always use the 'Manual' payment method in order
 to manage payments outside of the software.`},
 		"AtLeastOneInbound": models.BooleanField{
 			Compute: h.AccountJournal().Methods().MethodsCompute(),
+			Depends: []string{"InboundPaymentMethods", "OutboundPaymentMethods"},
 			Stored:  true},
 		"AtLeastOneOutbound": models.BooleanField{
 			Compute: h.AccountJournal().Methods().MethodsCompute(),
+			Depends: []string{"InboundPaymentMethods", "OutboundPaymentMethods"},
 			Stored:  true},
 		"ProfitAccount": models.Many2OneField{
 			RelationModel: h.AccountAccount(),
