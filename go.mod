@@ -4,6 +4,8 @@ replace github.com/hexya-erp/pool => /home/ray/workspace/go/account/pool
 
 replace github.com/hexya-addons/web => /home/ray/workspace/go/web
 
+replace github.com/hexya-addons/base => /home/ray/workspace/go/base
+
 replace github.com/hexya-erp/hexya => /home/ray/workspace/go/hexya
 
 require (

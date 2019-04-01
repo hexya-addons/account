@@ -510,13 +510,22 @@ to manage payments outside of the software.`},
 		`CheckBankAccount`,
 		func(rs m.AccountJournalSet) {
 			if rs.Type() == "bank" && !rs.BankAccount().IsEmpty() {
-				if rs.BankAccount().Company() != rs.Company() {
-					panic(rs.T(`The bank account of a bank journal must belong to the same company (%s).`, rs.Company().Name()))
+				if !rs.BankAccount().Company().Equals(rs.Company()) {
+					panic(rs.T(`
+The Company of the bank account associated to this journal (%s) must be the same as this journal's company
+journal.Company: '%s' - ID_%d
+journal.BankAccount.Company: '%s' - ID_%d).
+`, rs.Name(), rs.Company().Name(), rs.Company().ID(), rs.BankAccount().Company().Name(), rs.BankAccount().Company().ID()))
 				}
 				// A bank account can belong to a customer/supplier, in which case their partner_id is the customer/supplier.
 				// Or they are part of a bank journal and their partner_id must be the company's partner_id.
-				if rs.BankAccount().Partner() != rs.Company().Partner() {
-					panic(rs.T(`The holder of a journal\'s bank account must be the company (%s).`, rs.Company().Name()))
+				if !rs.BankAccount().Partner().Equals(rs.Company().Partner()) {
+					panic(rs.T(`
+The holder of a journal\'s bank account must be this journal's (%s) company holder.
+account holder: '%s' - ID_%d
+journalCompany holder: '%s' - ID_%d
+`, rs.Name(), rs.BankAccount().Partner(), rs.BankAccount().Partner().ID(), rs.Company().Partner(), rs.Company().Partner().ID()))
+
 				}
 			}
 		})
