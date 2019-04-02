@@ -1032,7 +1032,7 @@ set of tax defined for the chosen template is complete`},
 		})
 
 	h.WizardMultiChartsAccounts().Methods().DefaultGet().Extend("",
-		func(rs m.WizardMultiChartsAccountsSet) models.FieldMap {
+		func(rs m.WizardMultiChartsAccountsSet) m.WizardMultiChartsAccountsData {
 			var chartTemplates m.AccountChartTemplateSet
 			var chartID int64
 			var chart m.AccountChartTemplateSet
@@ -1041,7 +1041,7 @@ set of tax defined for the chosen template is complete`},
 			var saleTax m.AccountTaxTemplateSet
 			var purchaseTax m.AccountTaxTemplateSet
 
-			res := h.WizardMultiChartsAccounts().NewData(rs.Super().DefaultGet())
+			res := rs.Super().DefaultGet()
 			if res.HasBankAccounts() {
 				res.SetBankAccounts(rs.GetDefaultBankAccountIds())
 			}
@@ -1087,7 +1087,7 @@ set of tax defined for the chosen template is complete`},
 			}
 			res.SetPurchaseTaxRate(15.0)
 			res.SetSaleTaxRate(15.0)
-			return res.Underlying()
+			return res
 		})
 
 	h.WizardMultiChartsAccounts().Methods().FieldsViewGet().Extend("",

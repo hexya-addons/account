@@ -221,7 +221,7 @@ has only one available which is 'manual'`},
 		})
 
 	h.AccountRegisterPayments().Methods().DefaultGet().Extend("",
-		func(rs m.AccountRegisterPaymentsSet) models.FieldMap {
+		func(rs m.AccountRegisterPaymentsSet) m.AccountRegisterPaymentsData {
 			var context *types.Context
 			var activeModel string
 			var activeIds []int64
@@ -229,7 +229,7 @@ has only one available which is 'manual'`},
 			var totalAmount float64
 			var communication string
 
-			rec := h.AccountRegisterPayments().NewData(rs.Super().DefaultGet())
+			rec := rs.Super().DefaultGet()
 			context = rs.Env().Context()
 			activeModel = context.GetString("active_model")
 			activeIds = context.GetIntegerSlice("active_ids")
@@ -270,7 +270,7 @@ has only one available which is 'manual'`},
 			rec.SetPartner(invoices.CommercialPartner())
 			rec.SetPartnerType(accounttypes.MapInvoiceType_PartnerType[invoices.Type()])
 			rec.SetCommunication(communication)
-			return rec.Underlying()
+			return rec
 		})
 
 	h.AccountRegisterPayments().Methods().GetPaymentVals().DeclareMethod(
@@ -449,11 +449,11 @@ set to draft and re-processed again." `},
 		})
 
 	h.AccountPayment().Methods().DefaultGet().Extend("",
-		func(rs m.AccountPaymentSet) models.FieldMap {
+		func(rs m.AccountPaymentSet) m.AccountPaymentData {
 			var invoices m.AccountInvoiceSet
 			var invoice m.AccountInvoiceSet
 
-			rec := h.AccountPayment().NewData(rs.Super().DefaultGet())
+			rec := rs.Super().DefaultGet()
 			invoices = rs.Invoices()
 			if invoices.IsNotEmpty() {
 				invoice = invoices.Records()[0]
@@ -475,7 +475,7 @@ set to draft and re-processed again." `},
 				rec.SetPartner(invoice.Partner())
 				rec.SetAmount(invoice.Residual())
 			}
-			return rec.Underlying()
+			return rec
 		})
 
 	h.AccountPayment().Methods().GetInvoices().Extend("",
@@ -667,7 +667,7 @@ set to draft and re-processed again." `},
 			// TODO Check that it works or create a MergeWith method for typed model data objects
 			counterpartAmlData = rs.GetSharedMoveLineVals(debit, credit, amountCurrency, move, h.AccountInvoice().NewSet(rs.Env()))
 			cpFM := counterpartAmlData.Underlying()
-			(&cpFM).MergeWith(rs.GetCounterpartMoveLineVals(rs.Invoices()).SetCurrency(currency).Underlying(), h.AccountMoveLine().Model)
+			cpFM.MergeWith(rs.GetCounterpartMoveLineVals(rs.Invoices()).SetCurrency(currency).Underlying().FieldMap, h.AccountMoveLine().Model)
 
 			// Reconcile with the invoices
 			if rs.PaymentDifferenceHandling() == "reconcile" && rs.PaymentDifference() != 0.0 {
@@ -718,7 +718,7 @@ set to draft and re-processed again." `},
 			}
 			liquidityAmlDict = rs.GetSharedMoveLineVals(credit, debit, -amountCurrency, move, h.AccountInvoice().NewSet(rs.Env()))
 			laFM := liquidityAmlDict.Underlying()
-			(&laFM).MergeWith(rs.GetLiquidityMoveLineVals(-amount).Underlying(), h.AccountMoveLine().Model)
+			laFM.MergeWith(rs.GetLiquidityMoveLineVals(-amount).Underlying().FieldMap, h.AccountMoveLine().Model)
 			amlObj.Create(liquidityAmlDict)
 
 			move.Post()

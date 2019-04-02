@@ -199,7 +199,7 @@ or if you click the "Done" button.`},
 	h.AccountAccount().Methods().DefaultGet().Extend(
 		`If we're creating a new account through a many2one, there are chances that we typed the account code
 	instead of its name. In that case, switch both fields values.`,
-		func(rs m.AccountAccountSet) models.FieldMap {
+		func(rs m.AccountAccountSet) m.AccountAccountData {
 			defaultName := rs.Env().Context().GetString("default_name")
 			defaultCode := rs.Env().Context().GetInteger("default_code") //int??
 
@@ -617,7 +617,7 @@ journalCompany holder: '%s' - ID_%d
 				}
 			}
 			// Create the relevant refund sequence
-			if _, ok := vals.Get("RefundSequence"); ok {
+			if val := vals.Get("RefundSequence"); val != nil {
 				for _, journal := range rs.Filtered(func(rs m.AccountJournalSet) bool {
 					return (rs.Type() == "sale" || rs.Type() == "purchase") && !rs.RefundEntrySequence().IsEmpty()
 				}).Records() {

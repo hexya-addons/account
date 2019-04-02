@@ -4,6 +4,7 @@
 package account
 
 import (
+	"github.com/hexya-addons/account/accounttypes"
 	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
@@ -43,19 +44,16 @@ func init() {
 	})
 	h.AccountMoveLineReconcile().Methods().DefaultGet().Extend(
 		`DefaultGet`,
-		func(rs m.AccountMoveLineReconcileSet) models.FieldMap {
+		func(rs m.AccountMoveLineReconcileSet) m.AccountMoveLineReconcileData {
 			res := rs.Super().DefaultGet()
 			data := rs.TransRecGet()
-			res["trans_nbr"] = data["trans_nbr"]
-			res["credit"] = data["credit"]
-			res["debit"] = data["debit"]
-			res["writeoff"] = data["writeoff"]
+			res.SetTransNbr(data.TransNbr).SetCredit(data.Credit).SetDebit(data.Debit).SetWriteoff(data.WriteOff)
 			return res
 		})
 
 	h.AccountMoveLineReconcile().Methods().TransRecGet().DeclareMethod(
 		`TransRecGet`,
-		func(rs m.AccountMoveLineReconcileSet) map[string]interface{} {
+		func(rs m.AccountMoveLineReconcileSet) accounttypes.TransRecGetStruct {
 			var credit float64
 			var debit float64
 
@@ -69,15 +67,11 @@ func init() {
 			precision := nbutils.Digits{
 				Scale: int8(h.User().NewSet(rs.Env()).CurrentUser().Company().Currency().DecimalPlaces()),
 			}.ToPrecision()
-			writeOff := nbutils.Round(debit-credit, precision)
-			credit = nbutils.Round(credit, precision)
-			debit = nbutils.Round(debit, precision)
-			return map[string]interface{}{
-				"trans_nbr": lines.Len(),
-				"credit":    credit,
-				"debit":     debit,
-				"writeoff":  writeOff,
-			}
+			return accounttypes.TransRecGetStruct{
+				TransNbr: int64(lines.Len()),
+				Credit:   nbutils.Round(credit, precision),
+				Debit:    nbutils.Round(debit, precision),
+				WriteOff: nbutils.Round(debit-credit, precision)}
 		})
 
 	h.AccountMoveLineReconcile().Methods().TransRecAddendumWriteoff().DeclareMethod(

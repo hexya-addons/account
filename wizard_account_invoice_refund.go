@@ -123,7 +123,7 @@ func init() {
 								SetDate(date)
 							for _, field := range h.AccountInvoice().NewSet(rs.Env()).GetRefundCommonFields() {
 								if h.AccountInvoice().NewSet(rs.Env()).FieldGet(field).Type == fieldtype.Many2One {
-									if val, ok := invoice.Get(field.String()); ok {
+									if val := invoice.Get(field.String()); val != nil {
 										invoice.Set(field.String(), val.(models.RecordSet).Collection().Records()[0])
 									}
 								}

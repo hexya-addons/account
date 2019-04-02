@@ -39,6 +39,13 @@ type AppliedTaxData struct {
 	Base            float64 `json:"base"`
 }
 
+type TransRecGetStruct struct {
+	TransNbr int64
+	Credit   float64
+	Debit    float64
+	WriteOff float64
+}
+
 // mapping invoice type to refund type
 var TYPE2REFUND = map[string]string{
 	`out_invoice`: `out_refund`,  // Customer Invoice
