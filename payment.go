@@ -660,7 +660,7 @@ set to draft and re-processed again." `},
 				invoiceCurrency = rs.Invoices().Currency()
 			}
 
-			debit, credit, amountCurrency, currency = amlObj.WithContext("date", rs.PaymentDate()).ComputeAmountFields(amount, rs.Currency(), rs.Company().Currency(), invoiceCurrency)
+			debit, credit, amountCurrency, currency = amlObj.WithContext("date", rs.PaymentDate().ToDateTime()).ComputeAmountFields(amount, rs.Currency(), rs.Company().Currency(), invoiceCurrency)
 			move = h.AccountMove().Create(rs.Env(), rs.GetMoveVals(h.AccountJournal().NewSet(rs.Env())))
 
 			// Write line corresponding to invoice payment

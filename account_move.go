@@ -193,10 +193,13 @@ will be created in 'Posted' status.'`},
 
 	h.AccountMove().Methods().Create().Extend("",
 		func(rs m.AccountMoveSet, data m.AccountMoveData) m.AccountMoveSet {
-			move := rs.Super().
-				WithContext("check_move_validity", false).
-				WithContext("partner_id", data.Partner().ID()).
-				Create(data)
+			var partnerID int64
+			if data.Partner().IsNotEmpty() {
+				partnerID = data.Partner().ID()
+			}
+			move := rs.WithContext("check_move_validity", false).
+				WithContext("partner_id", partnerID).
+				Super().Create(data)
 			move.AssertBalanced()
 			return move
 		})
@@ -214,7 +217,11 @@ will be created in 'Posted' status.'`},
 	h.AccountMove().Methods().Post().DeclareMethod(
 		`Post`,
 		func(rs m.AccountMoveSet) bool {
-			invoice := rs.Env().Context().Get("invoice").(m.AccountInvoiceSet)
+			invoice := h.AccountInvoice().NewSet(rs.Env())
+			invoiceInter := rs.Env().Context().Get("invoice")
+			if invoiceInter != nil {
+				invoice = invoiceInter.(m.AccountInvoiceSet)
+			}
 			rs.PostValidate()
 			for _, move := range rs.Records() {
 				move.Lines().CreateAnalyticLines()
@@ -325,9 +332,9 @@ will be created in 'Posted' status.'`},
 			rs.Env().Cr().Select(&moves, `
 					SELECT      move_id
 			      	FROM        account_move_line
-			      	WHERE       move_id in %s
+			      	WHERE       move_id in (?)
 			      	GROUP BY    move_id
-			      	HAVING      abs(sum(debit) - sum(credit)) > %s
+			      	HAVING      abs(sum(debit) - sum(credit)) > ?
 			      `, rs.Ids(), math.Pow10(-int(prec)))
 			if len(moves) != 0 {
 				panic(rs.T(`Cannot create unbalanced journal entry.`))

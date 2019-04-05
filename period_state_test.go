@@ -36,7 +36,7 @@ func initTestPeriodStateStruct(env models.Environment) TestPeriodStateStruct {
 	journals := h.AccountJournal().Search(env, q.AccountJournal().Type().Equals("sale"))
 	So(journals.IsNotEmpty(), ShouldBeTrue)
 	out.SaleJournal = journals.Records()[0]
-	accounts := h.AccountAccount().Search(env, q.AccountAccount().InternalType().Equals("receivable")).Records()[0]
+	accounts := h.AccountAccount().Search(env, q.AccountAccount().InternalType().Equals("receivable"))
 	So(accounts.IsNotEmpty(), ShouldBeTrue)
 	out.Account = accounts.Records()[0]
 	return out

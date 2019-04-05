@@ -180,78 +180,89 @@ func (self TestPaymentStruct) CheckJournalItems(amlRecs m.AccountMoveLineSet, am
 	}
 }
 
-func TestPayment(t *testing.T) {
-	Convey("Tests Payment", t, FailureContinues, func() {
+func TestFullPaymentProcess(t *testing.T) {
+	Convey("Test Full Payment Process", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
 			self := initTestPaymentStruct(env)
-			Convey("Test full payment process", func() {
-				inv1 := self.CreateInvoice(100, "", self.CurrencyEur)
-				inv2 := self.CreateInvoice(200, "", self.CurrencyEur)
 
-				ctx := types.NewContext().
-					WithKey("active_model", "account.invoice").
-					WithKey("active_ids", []int64{inv1.ID(), inv2.ID()})
-				registerPayments := h.AccountRegisterPayments().NewSet(env).WithNewContext(ctx).Create(
-					h.AccountRegisterPayments().NewData().
-						SetPaymentDate(dates.Today().SetMonth(7).SetDay(15)).
-						SetJournal(self.BankJournalEuro).
-						SetPaymentMethod(self.PaymentMethodManualIn))
-				registerPayments.CreatePayment()
-				payment := h.AccountPayment().Search(env, q.AccountPayment().ID().Greater(-1)).OrderBy("id desc").Limit(1)
+			inv1 := self.CreateInvoice(100, "", self.CurrencyEur)
+			inv2 := self.CreateInvoice(200, "", self.CurrencyEur)
 
-				So(payment.Amount(), ShouldEqual, 300)
-				So(payment.State(), ShouldEqual, "posted")
-				So(inv1, ShouldEqual, "paid")
-				So(inv2, ShouldEqual, "paid")
-				self.CheckJournalItems(payment.MoveLines(), []m.AccountMoveLineData{
-					h.AccountMoveLine().NewData().SetAccount(self.AccountEur).SetDebit(300),
-					h.AccountMoveLine().NewData().SetAccount(inv1.Account()).SetCredit(300),
-				})
+			ctx := types.NewContext().
+				WithKey("active_model", "account.invoice").
+				WithKey("active_ids", []int64{inv1.ID(), inv2.ID()})
+			registerPayments := h.AccountRegisterPayments().NewSet(env).WithNewContext(ctx).Create(
+				h.AccountRegisterPayments().NewData().
+					SetPaymentDate(dates.Today().SetMonth(7).SetDay(15)).
+					SetJournal(self.BankJournalEuro).
+					SetPaymentMethod(self.PaymentMethodManualIn))
+			registerPayments.CreatePayment()
+			payment := h.AccountPayment().Search(env, q.AccountPayment().ID().Greater(-1)).OrderBy("id desc").Limit(1)
 
-				liquidityAml := payment.MoveLines().Filtered(func(set m.AccountMoveLineSet) bool {
-					return set.Account().Equals(self.AccountEur)
-				})
-				bankStatement := self.Reconcile(liquidityAml, 200, 0, h.Currency().NewSet(env))
-
-				So(liquidityAml.Statement().Equals(bankStatement), ShouldBeTrue)
-				So(liquidityAml.Move().StatementLine().Equals(bankStatement.Lines().Records()[0]), ShouldBeTrue)
-				So(payment.State(), ShouldEqual, "reconciled")
+			So(payment.Amount(), ShouldEqual, 300)
+			So(payment.State(), ShouldEqual, "posted")
+			So(inv1, ShouldEqual, "paid")
+			So(inv2, ShouldEqual, "paid")
+			self.CheckJournalItems(payment.MoveLines(), []m.AccountMoveLineData{
+				h.AccountMoveLine().NewData().SetAccount(self.AccountEur).SetDebit(300),
+				h.AccountMoveLine().NewData().SetAccount(inv1.Account()).SetCredit(300),
 			})
-			Convey("Test transfer journal usd->eur", func() {
-				payment := h.AccountPayment().Create(env,
-					h.AccountPayment().NewData().
-						SetPaymentDate(dates.Today().SetMonth(7).SetDay(15)).
-						SetPaymentType("transfer").
-						SetAmount(50).
-						SetCurrency(self.CurrencyUsd).
-						SetJournal(self.BankJournalUsd).
-						SetDestinationJournal(self.BankJournalEuro).
-						SetPaymentMethod(self.PaymentMethodManualOut))
-				payment.Post()
-				self.CheckJournalItems(payment.MoveLines(), []m.AccountMoveLineData{
-					h.AccountMoveLine().NewData().SetAccount(self.TransferAccount).SetDebit(32.70).SetAmountCurrency(50).SetCurrency(self.CurrencyUsd),
-					h.AccountMoveLine().NewData().SetAccount(self.TransferAccount).SetCredit(32.70).SetAmountCurrency(-50).SetCurrency(self.CurrencyUsd),
-					h.AccountMoveLine().NewData().SetAccount(self.AccountEur).SetDebit(32.70),
-					h.AccountMoveLine().NewData().SetAccount(self.AccountUsd).SetCredit(32.70).SetAmountCurrency(-50).SetCurrency(self.CurrencyUsd),
-				})
-			})
-			Convey("Test payment chf journal usd", func() {
-				payment := h.AccountPayment().Create(env,
-					h.AccountPayment().NewData().
-						SetPaymentDate(dates.Today().SetMonth(7).SetDay(15)).
-						SetPaymentType("outbound").
-						SetAmount(50).
-						SetCurrency(self.CurrencyChf).
-						SetJournal(self.BankJournalUsd).
-						SetPartnerType("supplier").
-						SetPartner(self.PartnerAxelor).
-						SetPaymentMethod(self.PaymentMethodManualOut))
-				payment.Post()
 
-				self.CheckJournalItems(payment.MoveLines(), []m.AccountMoveLineData{
-					h.AccountMoveLine().NewData().SetAccount(self.AccountUsd).SetCredit(38.21),
-					h.AccountMoveLine().NewData().SetAccount(self.PartnerAxelor.PropertyAccountPayable()).SetDebit(38.21).SetAmountCurrency(50).SetCurrency(self.CurrencyChf),
-				})
+			liquidityAml := payment.MoveLines().Filtered(func(set m.AccountMoveLineSet) bool {
+				return set.Account().Equals(self.AccountEur)
+			})
+			bankStatement := self.Reconcile(liquidityAml, 200, 0, h.Currency().NewSet(env))
+
+			So(liquidityAml.Statement().Equals(bankStatement), ShouldBeTrue)
+			So(liquidityAml.Move().StatementLine().Equals(bankStatement.Lines().Records()[0]), ShouldBeTrue)
+			So(payment.State(), ShouldEqual, "reconciled")
+		}), ShouldBeNil)
+	})
+}
+
+func TestInternalTransferJournalUsdJournalEur(t *testing.T) {
+	Convey("Test transfer journal usd->eur", t, FailureContinues, func() {
+		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
+			self := initTestPaymentStruct(env)
+			payment := h.AccountPayment().Create(env,
+				h.AccountPayment().NewData().
+					SetPaymentDate(dates.Today().SetMonth(7).SetDay(15)).
+					SetPaymentType("transfer").
+					SetAmount(50).
+					SetCurrency(self.CurrencyUsd).
+					SetJournal(self.BankJournalUsd).
+					SetDestinationJournal(self.BankJournalEuro).
+					SetPaymentMethod(self.PaymentMethodManualOut))
+			payment.Post()
+			self.CheckJournalItems(payment.MoveLines(), []m.AccountMoveLineData{
+				h.AccountMoveLine().NewData().SetAccount(self.TransferAccount).SetDebit(32.70).SetAmountCurrency(50).SetCurrency(self.CurrencyUsd),
+				h.AccountMoveLine().NewData().SetAccount(self.TransferAccount).SetCredit(32.70).SetAmountCurrency(-50).SetCurrency(self.CurrencyUsd),
+				h.AccountMoveLine().NewData().SetAccount(self.AccountEur).SetDebit(32.70),
+				h.AccountMoveLine().NewData().SetAccount(self.AccountUsd).SetCredit(32.70).SetAmountCurrency(-50).SetCurrency(self.CurrencyUsd),
+			})
+		}), ShouldBeNil)
+	})
+}
+
+func TestPaymentChfJournalUsd(t *testing.T) {
+	Convey("Test payment chf journal usd", t, FailureContinues, func() {
+		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
+			self := initTestPaymentStruct(env)
+			payment := h.AccountPayment().Create(env,
+				h.AccountPayment().NewData().
+					SetPaymentDate(dates.Today().SetMonth(7).SetDay(15)).
+					SetPaymentType("outbound").
+					SetAmount(50).
+					SetCurrency(self.CurrencyChf).
+					SetJournal(self.BankJournalUsd).
+					SetPartnerType("supplier").
+					SetPartner(self.PartnerAxelor).
+					SetPaymentMethod(self.PaymentMethodManualOut))
+			payment.Post()
+
+			self.CheckJournalItems(payment.MoveLines(), []m.AccountMoveLineData{
+				h.AccountMoveLine().NewData().SetAccount(self.AccountUsd).SetCredit(38.21),
+				h.AccountMoveLine().NewData().SetAccount(self.PartnerAxelor.PropertyAccountPayable()).SetDebit(38.21).SetAmountCurrency(50).SetCurrency(self.CurrencyChf),
 			})
 		}), ShouldBeNil)
 	})

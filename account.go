@@ -148,6 +148,7 @@ from the fiscal year only. Account types that should be reset to zero at each ne
 legal reports, and set the rules to close a fiscal year and generate opening entries.`},
 		"InternalType": models.SelectionField{
 			Related:    "UserType.Type",
+			Stored:     true,
 			ReadOnly:   true,
 			Constraint: h.AccountAccount().Methods().CheckReconcile(),
 			OnChange:   h.AccountAccount().Methods().OnchangeInternalType()},
@@ -578,7 +579,7 @@ journalCompany holder: '%s' - ID_%d
 	h.AccountJournal().Methods().Write().Extend("",
 		func(rs m.AccountJournalSet, vals m.AccountJournalData) bool {
 			for _, journal := range rs.Records() {
-				if !vals.Company().IsEmpty() && journal.Company().ID() != vals.Company().ID() {
+				if !vals.Company().IsEmpty() && !journal.Company().Equals(vals.Company()) {
 					if !h.AccountMove().Search(rs.Env(), q.AccountMove().Journal().In(rs)).IsEmpty() {
 						panic(rs.T(`This journal already contains items, therefore you cannot modify its company.`))
 					}
@@ -690,7 +691,7 @@ journalCompany holder: '%s' - ID_%d
 				panic(rs.T("Cannot generate an unused account code."))
 			}
 			liquidityType := h.AccountAccountType().Search(rs.Env(),
-				q.AccountAccountType().HexyaExternalID().Equals("account.data_account_type_liquidity"))
+				q.AccountAccountType().HexyaExternalID().Equals("account_data_account_type_liquidity"))
 
 			return h.AccountAccount().NewData().
 				SetName(name).

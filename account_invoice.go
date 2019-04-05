@@ -541,31 +541,46 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().Create().Extend("",
 		func(rs m.AccountInvoiceSet, data m.AccountInvoiceData) m.AccountInvoiceSet {
-			//@api.model
-			/*def create(self, vals):
-			  onchanges = {
-			      '_onchange_partner_id': ['account_id', 'payment_term_id', 'fiscal_position_id', 'partner_bank_id'],  //tovalid what does this do??
-			      '_onchange_journal_id': ['currency_id'],
-			  }
-			  for onchange_method, changed_fields in onchanges.items():
-			      if any(f not in vals for f in changed_fields):
-			          invoice = self.new(vals)
-			          getattr(invoice, onchange_method)()
-			          for field in changed_fields:
-			              if field not in vals and invoice[field]:
-			                  vals[field] = invoice._fields[field].convert_to_write(invoice[field], invoice)
-			  if not vals.get('account_id',False):
-			      raise UserError(_('Configuration error!\nCould not find any account to create the invoice, are you sure you have a chart of account installed?'))
-
-			  invoice = super(AccountInvoice, self.with_context(mail_create_nolog=True)).create(vals)
-
-			  if any(line.invoice_line_tax_ids for line in invoice.invoice_line_ids) and not invoice.tax_line_ids:
-			      invoice.compute_taxes()
-
-			  return invoice
-
-			*/
-			return rs.Super().Create(data)
+			isAnyFieldChanging := func(fields []string) bool {
+				for _, field := range fields {
+					if data.Has(field) {
+						return true
+					}
+				}
+				return false
+			}
+			onchanges := map[string][]string{
+				"OnchangePartner": {"Account", "PaymentTerm", "FiscalPosition", "PartnerBank"},
+				"OnchangeJournal": {"Currency"},
+			}
+			for onchangeMethod, changedFields := range onchanges {
+				_ = onchangeMethod
+				if isAnyFieldChanging(changedFields) {
+					/*
+						invoice = self.new(vals)
+						getattr(invoice, onchange_method)()
+						for field in changed_fields:
+							if field not in vals and invoice[field]:
+									vals[field] = invoice._fields[field].convert_to_write(invoice[field], invoice)
+					*/
+				}
+			}
+			if !data.Has("Account") {
+				panic(rs.T(`Configuration error!\nCould not find any account to create the invoice, are you sure you have a chart of account installed?`))
+			}
+			invoice := rs.WithContext("mail_create_nolog", true).Super().Create(data)
+			if invoice.TaxLines().IsEmpty() {
+				hasLines := false
+				for _, line := range invoice.InvoiceLines().Records() {
+					if line.InvoiceLineTaxes().IsNotEmpty() {
+						hasLines = true
+					}
+				}
+				if hasLines {
+					invoice.ComputeTaxes()
+				}
+			}
+			return invoice
 		})
 
 	h.AccountInvoice().Methods().Write().Extend("",

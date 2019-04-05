@@ -4,10 +4,12 @@ import (
 	"testing"
 
 	"github.com/hexya-erp/hexya/src/models"
+	"github.com/hexya-erp/hexya/src/models/security"
 	"github.com/hexya-erp/hexya/src/tests"
 	"github.com/hexya-erp/pool/h"
 	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 func TestMain(m *testing.M) {
@@ -72,4 +74,13 @@ func initTestAccountBaseUserStruct(env models.Environment) TestAccountBaseUserSt
 				h.Group().NewSet(env).GetRecord("account_group_account_manager").Union(
 					h.Group().NewSet(env).GetRecord("base_group_partner_manager"))))
 	return out
+}
+
+func TestEmptyTest(t *testing.T) {
+	Convey("Tests Empty", t, FailureContinues, func() {
+		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
+			//init
+			//code
+		}), ShouldBeNil)
+	})
 }
