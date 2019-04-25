@@ -4,6 +4,7 @@
 package account
 
 import (
+	"github.com/hexya-erp/hexya/src/models/types/dates"
 	"github.com/hexya-erp/pool/h"
 	"github.com/hexya-erp/pool/m"
 )
@@ -13,12 +14,7 @@ func init() {
 	h.ReportAccountReportAgedpartnerbalance().DeclareTransientModel()
 	h.ReportAccountReportAgedpartnerbalance().Methods().GetPartnerMoveLines().DeclareMethod(
 		`GetPartnerMoveLines`,
-		func(rs m.ReportAccountReportAgedpartnerbalanceSet, args struct {
-			AccountType  interface{}
-			DateFrom     interface{}
-			TargetMove   interface{}
-			PeriodLength interface{}
-		}) {
+		func(rs m.ReportAccountReportAgedpartnerbalanceSet, accountType string, dateFrom dates.Date, targetMove string, periodLength int) (bool, bool, bool) {
 			/*def _get_partner_move_lines(self, account_type, date_from, target_move, period_length):
 			  periods = {}
 			  start = datetime.strptime(date_from, "%Y-%m-%d")
@@ -203,6 +199,7 @@ func init() {
 			  return res, total, lines
 
 			*/
+			return false, false, false
 		})
 	h.ReportAccountReportAgedpartnerbalance().Methods().RenderHtml().DeclareMethod(
 		`RenderHtml`,

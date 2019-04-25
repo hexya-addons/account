@@ -293,17 +293,17 @@ func init() {
 
 	h.AccountBankStatement().Methods().DefaultJournal().DeclareMethod(
 		`DefaultJournal`,
-		func(rs m.AccountBankStatementSet) m.AccountJournalData {
+		func(rs m.AccountBankStatementSet) m.AccountJournalSet {
 			journalType := rs.Env().Context().GetString("journal_type")
 			company := h.Company().NewSet(rs.Env()).CompanyDefaultGet()
 			if journalType != "" {
 				query := q.AccountJournal().Type().Equals(journalType).And().Company().Equals(company)
 				journals := h.AccountJournal().Search(rs.Env(), query)
 				if !journals.IsEmpty() {
-					return journals.First()
+					return journals.Records()[0]
 				}
-			} //tovalid is return value correct?
-			return h.AccountJournal().NewData()
+			}
+			return h.AccountJournal().NewSet(rs.Env())
 		})
 
 	h.AccountBankStatement().Methods().GetOpeningBalance().DeclareMethod(
