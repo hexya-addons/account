@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hexya-addons/account/accounttypes"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/security"
 	"github.com/hexya-erp/hexya/src/models/types"
@@ -119,10 +120,14 @@ func (self TestPaymentStruct) CreateInvoice(amount float64, typ string, currency
 }
 
 // Reconcile reconcile a journal entry corresponding to a payment with its bank statement line
-func (self TestPaymentStruct) Reconcile(liquidityAml m.AccountMoveLineSet, amount, amountCurrency float64, currency m.CurrencySet) m.AccountBankStatementSet {
+func (self TestPaymentStruct) Reconcile(liquidityAml []accounttypes.AmlStruct, amount, amountCurrency float64, currency m.CurrencySet) m.AccountBankStatementSet {
 	date := dates.Today().SetMonth(7).SetDay(15)
+	journal := h.AccountJournal().NewSet(self.Env)
+	if len(liquidityAml) > 0 {
+		journal = h.AccountJournal().BrowseOne(self.Env, liquidityAml[0].JournalID)
+	}
 	bankStmt := h.AccountBankStatement().Create(self.Env, h.AccountBankStatement().NewData().
-		SetJournal(liquidityAml.Journal()).
+		SetJournal(journal).
 		SetDate(date))
 	bankStmtLine := h.AccountBankStatementLine().Create(self.Env, h.AccountBankStatementLine().NewData().
 		SetName("payment").
@@ -132,7 +137,7 @@ func (self TestPaymentStruct) Reconcile(liquidityAml m.AccountMoveLineSet, amoun
 		SetAmountCurrency(amountCurrency).
 		SetCurrency(currency).
 		SetDate(date))
-	bankStmtLine.ProcessReconciliation(h.AccountMoveLine().NewSet(self.Env), liquidityAml.All(), h.AccountMoveLine().NewSet(self.Env).All())
+	bankStmtLine.ProcessReconciliation(h.AccountMoveLine().NewSet(self.Env), liquidityAml, nil)
 	return bankStmt
 }
 
@@ -211,7 +216,7 @@ func TestFullPaymentProcess(t *testing.T) {
 			liquidityAml := payment.MoveLines().Filtered(func(set m.AccountMoveLineSet) bool {
 				return set.Account().Equals(self.AccountEur)
 			})
-			bankStatement := self.Reconcile(liquidityAml, 200, 0, h.Currency().NewSet(env))
+			bankStatement := self.Reconcile(h.AccountBankStatementLine().NewSet(self.Env).ConvertSetToAmlStruct(liquidityAml), 200, 0, h.Currency().NewSet(env))
 
 			So(liquidityAml.Statement().Equals(bankStatement), ShouldBeTrue)
 			So(liquidityAml.Move().StatementLine().Equals(bankStatement.Lines().Records()[0]), ShouldBeTrue)

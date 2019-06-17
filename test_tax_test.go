@@ -204,7 +204,7 @@ func TestTaxCurrency(t *testing.T) {
 			self.DivisionTax.SetAmount(15)
 			_, _, totalIncl, _ := self.DivisionTax.ComputeAll(
 				200, h.Currency().NewSet(self.Env).GetRecord("base_VEF"), 1, h.ProductProduct().NewSet(self.Env), h.Partner().NewSet(self.Env))
-			So(totalIncl, ShouldEqual, 235, 2941)
+			So(totalIncl, ShouldAlmostEqual, 235.2941)
 		}), ShouldBeNil)
 	})
 }

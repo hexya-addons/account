@@ -71,10 +71,11 @@ func FormatLang(env models.Environment, value float64, currency models.RecordSet
 	if symPos == "before" {
 		symToLeft = true
 	}
+
 	//return strutils.FormatMonetary(value, digits, groupingLeft, groupingRight, separator, thSeparator, symbol, symToLeft)
 	// FIXME
 	fmt.Println(value, digits, groupingLeft, groupingRight, separator, thSeparator, symbol, symToLeft)
-	return "FIXME - Account/account.go - l.78"
+	return ""
 }
 
 func init() {
@@ -426,26 +427,30 @@ them from invoices.`},
 same sequence for invoices and refunds made from this journal`,
 			Default: models.DefaultValue(false)},
 		"InboundPaymentMethods": models.Many2ManyField{
-			String:        "Debit Methods",
-			RelationModel: h.AccountPaymentMethod(),
-			JSON:          "inbound_payment_method_ids",
-			Filter:        q.AccountPaymentMethod().PaymentType().Equals("inbound"),
+			String:           "Debit Methods",
+			RelationModel:    h.AccountPaymentMethod(),
+			M2MLinkModelName: "AccountJournalInboundPaymentMethodRel",
+			M2MOurField:      "Journal",
+			M2MTheirField:    "InboundPaymentMethod",
+			JSON:             "inbound_payment_method_ids",
+			Filter:           q.AccountPaymentMethod().PaymentType().Equals("inbound"),
 			Default: func(env models.Environment) interface{} {
-				return h.AccountPaymentMethod().Search(env,
-					q.AccountPaymentMethod().HexyaExternalID().Equals("account_account_payment_method_manual_in"))
+				return h.AccountPaymentMethod().NewSet(env).GetRecord("account_account_payment_method_manual_in")
 			},
 			Help: `Means of payment for collecting money.
 Hexya modules offer various payments handling facilities,
 but you can always use the 'Manual' payment method in order
 to manage payments outside of the software.`},
 		"OutboundPaymentMethods": models.Many2ManyField{
-			String:        "Payment Methods",
-			RelationModel: h.AccountPaymentMethod(),
-			JSON:          "outbound_payment_method_ids",
-			Filter:        q.AccountPaymentMethod().PaymentType().Equals("outbound"),
+			String:           "Payment Methods",
+			M2MLinkModelName: "AccountJournalOutboundPaymentMethodRel",
+			M2MOurField:      "Journal",
+			M2MTheirField:    "OutboundPaymentMethod",
+			RelationModel:    h.AccountPaymentMethod(),
+			JSON:             "outbound_payment_method_ids",
+			Filter:           q.AccountPaymentMethod().PaymentType().Equals("outbound"),
 			Default: func(env models.Environment) interface{} {
-				return h.AccountPaymentMethod().Search(env,
-					q.AccountPaymentMethod().HexyaExternalID().Equals("account_account_payment_method_manual_out"))
+				return h.AccountPaymentMethod().NewSet(env).GetRecord("account_account_payment_method_manual_out")
 			},
 			Help: `Means of payment for sending money.
 Hexya modules offer various payments handling facilities
@@ -810,11 +815,10 @@ journalCompany holder: '%s' - ID_%d
 		`BelongToCompany`,
 		func(rs m.AccountJournalSet) m.AccountJournalData {
 			r := h.AccountJournal().NewData()
-			cond := rs.Company().Equals(h.User().NewSet(rs.Env()).CurrentUser().Company())
-			if rs.BelongsToCompany() != cond {
-				r.SetBelongsToCompany(cond)
+			r.SetBelongsToCompany(false)
+			if rs.Company().Equals(h.User().NewSet(rs.Env()).CurrentUser().Company()) {
+				r.SetBelongsToCompany(true)
 			}
-
 			return r
 		})
 
@@ -1006,7 +1010,7 @@ to the same analytic account as the invoice line (if any)`},
 		func(rs m.AccountTaxSet) {
 			for _, child := range rs.ChildrenTaxes().Records() {
 				if !(child.TypeTaxUse() == "none" || child.TypeTaxUse() == rs.TypeTaxUse()) {
-					panic(rs.T(`The application scope of taxes in a group must be either the same as the group or "None".`))
+					panic(rs.T(`The application scope of taxes in a group must be either the same as the group or "none".`))
 				}
 			}
 		})

@@ -1,0 +1,2 @@
+ID,Name,CodeDigits,BankAccountCodePrefix,CashAccountCodePrefix,TransferAccount,Currency
+l10n_generic_coa_configurable_chart_template,Configurable Account Chart Template,6,1014,1015,l10n_generic_coa_transfer_account_id,base_USD

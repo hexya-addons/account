@@ -429,6 +429,9 @@ defined on this template is complete`},
 			}
 
 			// Generate taxes from templates.
+			for _, tax := range rs.TaxTemplates().Records() {
+				println("DEBB", tax.Name(), tax.HexyaExternalID(), tax.ChildrenTaxes().Ids(), "DEBB")
+			}
 			taxTemplateToTax, AccountDict = rs.TaxTemplates().GenerateTax(company)
 			for key, val := range taxTemplateToTax {
 				taxesRef[key] = val
@@ -640,6 +643,8 @@ defined on this template is complete`},
 
 	h.AccountTaxTemplate().DeclareModel()
 
+	h.AccountTaxTemplate().SetDefaultOrder("ID")
+
 	h.AccountTaxTemplate().AddFields(map[string]models.FieldDefinition{
 		"ChartTemplate": models.Many2OneField{
 			RelationModel: h.AccountChartTemplate(),
@@ -775,30 +780,25 @@ the same analytic account as the invoice line (if any)`},
 			AccountID       int64
 			RefundAccountID int64
 		}) {
-			var taxData m.AccountTaxData
-			var newTax m.AccountTaxSet
-			var childrenIds []int64
-			var taxTemplateToTax map[int64]int64
-			var todoDict map[int64]struct {
-				AccountID       int64
-				RefundAccountID int64
-			}
-
-			taxTemplateToTax = make(map[int64]int64)
-			todoDict = make(map[int64]struct {
+			//for _, tax := range rs.Records() {
+			//	fmt.Println("DEBB", tax.ID(), tax.Name(), tax.HexyaExternalID(), tax.ChildrenTaxes().Ids(), "DEBB")
+			//}
+			taxTemplateToTax := make(map[int64]int64)
+			todoDict := make(map[int64]struct {
 				AccountID       int64
 				RefundAccountID int64
 			})
 			for _, tax := range rs.Records() {
 				// Compute children tax ids
-				childrenIds = []int64{}
+				childrenIds := []int64{}
 				for _, childTax := range tax.ChildrenTaxes().Records() {
+					println(childTax.ID())
 					if val, ok := taxTemplateToTax[childTax.ID()]; ok && val != 0 {
 						childrenIds = append(childrenIds, val)
 					}
 				}
-				taxData = tax.GetTaxVals(company).SetChildrenTaxes(h.AccountTax().Browse(rs.Env(), childrenIds))
-				newTax = h.AccountTax().Create(rs.Env(), taxData.SetHexyaExternalID(fmt.Sprintf("%d_%s", company.ID(), tax.HexyaExternalID())))
+				taxData := tax.GetTaxVals(company).SetChildrenTaxes(h.AccountTax().Browse(rs.Env(), childrenIds))
+				newTax := h.AccountTax().Create(rs.Env(), taxData.SetHexyaExternalID(fmt.Sprintf("%d_%s", company.ID(), tax.HexyaExternalID())))
 				taxTemplateToTax[tax.ID()] = newTax.ID()
 				// Since the accounts have not been created yet, we have to wait before filling these fields
 				todoDict[newTax.ID()] = struct {
@@ -1187,9 +1187,10 @@ set of tax defined for the chosen template is complete`},
 			// When we install the CoA of first company, set the currency to price types and pricelists
 			if company.ID() == 1 {
 				for _, reference := range []string{"product_list_price", "product_standard_price", "product_list0"} {
-					h.ProductProduct().NewSet(rs.Env()).GetRecord(reference).
-						Write(h.ProductProduct().NewData().
-							SetCurrency(rs.Currency()))
+					set := h.ProductProduct().Search(rs.Env(), q.ProductProduct().HexyaExternalID().Equals(reference))
+					if set.IsNotEmpty() {
+						set.SetCurrency(rs.Currency())
+					}
 				}
 			}
 

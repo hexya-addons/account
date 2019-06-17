@@ -46,6 +46,22 @@ type TransRecGetStruct struct {
 	WriteOff float64
 }
 
+type AmlStruct struct {
+	Name             string
+	Debit            float64
+	Credit           float64
+	AmountCurrency   float64
+	MoveLineID       int64
+	AccountID        int64
+	CurrencyID       int64
+	MoveID           int64
+	PartnerID        int64
+	StatementID      int64
+	PaymentID        int64
+	CounterpartAmlID int64
+	JournalID        int64
+}
+
 // mapping invoice type to refund type
 var TYPE2REFUND = map[string]string{
 	`out_invoice`: `out_refund`,  // Customer Invoice

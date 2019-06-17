@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hexya-addons/account/accounttypes"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/security"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
@@ -52,6 +53,7 @@ func initTestReconciliationStruct(env models.Environment) TestReconciliationStru
 	var out TestReconciliationStruct
 	out.Env = env
 	out.Super = initTestAccountBaseStruct(env)
+	out.CurrencyFalse = h.Currency().NewSet(env)
 
 	out.PartnerAgrolait = h.Partner().NewSet(env).GetRecord("base_res_partner_2")
 	out.CurrencySwiss = h.Currency().NewSet(env).GetRecord("base_CHF")
@@ -77,17 +79,21 @@ func initTestReconciliationStruct(env models.Environment) TestReconciliationStru
 
 	out.Product = h.ProductProduct().NewSet(env).GetRecord("product_product_product_4")
 
-	out.BankJournalEuro = h.AccountJournal().Create(env,
-		h.AccountJournal().NewData().
-			SetName("Bank").
-			SetType("bank").
-			SetCode("BNK67"))
-	out.BankJournalUsd = h.AccountJournal().Create(env,
-		h.AccountJournal().NewData().
-			SetName("Bank US").
-			SetType("bank").
-			SetCode("BNK68").
-			SetCurrency(out.CurrencyUsd))
+	paymentMethodIn := h.AccountPaymentMethod().NewSet(env).GetRecord("account_account_payment_method_manual_in")
+	paymentMethodOut := h.AccountPaymentMethod().NewSet(env).GetRecord("account_account_payment_method_manual_out")
+
+	journalEuro := h.AccountJournal().NewData().
+		SetName("Bank").
+		SetType("bank").
+		SetCode("BNK67")
+	JournalUsd := h.AccountJournal().NewData().
+		SetName("Bank US").
+		SetType("bank").
+		SetCode("BNK68").
+		SetInboundPaymentMethods(paymentMethodIn).
+		SetOutboundPaymentMethods(paymentMethodOut)
+	out.BankJournalEuro = h.AccountJournal().Create(env, journalEuro)
+	out.BankJournalUsd = h.AccountJournal().Create(env, JournalUsd)
 	out.AccountEuro = out.BankJournalEuro.DefaultDebitAccount()
 	out.AccountUsd = out.BankJournalUsd.DefaultDebitAccount()
 
@@ -132,7 +138,6 @@ func (self TestReconciliationStruct) createInvoicePartner(typ string, amount flo
 			SetInvoice(invoice).
 			SetName(fmt.Sprintf("product that cost %f", amount)).
 			SetAccount(h.AccountAccount().Search(self.Env, q.AccountAccount().UserType().Equals(self.AccountTypeRevenue))))
-
 	// validate invoice
 	invoice.ActionInvoiceOpen()
 	return invoice
@@ -147,6 +152,7 @@ func (self TestReconciliationStruct) makePayment(invoice m.AccountInvoiceSet, ba
 			SetName("payment"+invoice.Number()))
 	bankStmtLine := h.AccountBankStatementLine().Create(self.Env,
 		h.AccountBankStatementLine().NewData().
+			SetName("payment").
 			SetStatement(bankStmt).
 			SetPartner(self.PartnerAgrolait).
 			SetAmount(amount).
@@ -155,7 +161,7 @@ func (self TestReconciliationStruct) makePayment(invoice m.AccountInvoiceSet, ba
 			SetDate(dates.Today().SetMonth(07).SetDay(15)))
 
 	// reconcile the payment with the invoice
-	var line m.AccountMoveLineSet
+	line := h.AccountMoveLine().NewSet(self.Env)
 	for _, l := range invoice.Move().Lines().Records() {
 		if l.Account().Equals(self.AccountRcv) {
 			line = l
@@ -166,17 +172,19 @@ func (self TestReconciliationStruct) makePayment(invoice m.AccountInvoiceSet, ba
 	if currency.IsNotEmpty() {
 		amountInWidget = amountCurrency
 	}
-	data := h.AccountMoveLine().NewData().
-		SetMove(h.AccountMove().Create(self.Env, h.AccountMove().NewData().SetLines(line))).
-		SetDebit(0.0).
-		SetCredit(0.0).
-		SetName(line.Name())
-	if amountInWidget < 0 {
-		data.SetDebit(-amountInWidget)
-	} else {
-		data.SetCredit(amountInWidget)
+
+	data := accounttypes.AmlStruct{
+		MoveLineID: line.ID(),
+		Debit:      0.0,
+		Credit:     0.0,
+		Name:       line.Name(),
 	}
-	bankStmtLine.ProcessReconciliation(h.AccountMoveLine().NewSet(self.Env), []m.AccountMoveLineData{data}, nil)
+	if amountInWidget < 0 {
+		data.Debit = -amountInWidget
+	} else {
+		data.Credit = amountInWidget
+	}
+	bankStmtLine.ProcessReconciliation(h.AccountMoveLine().NewSet(self.Env), []accounttypes.AmlStruct{data}, nil)
 	return bankStmt
 }
 
@@ -316,6 +324,7 @@ func TestStatementUsdInvoiceEurTransactionEur(t *testing.T) {
 	Convey("Test Statement Uset Invoice Eur Transaction Eur", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
 			self := initTestReconciliationStruct(env)
+			fmt.Println(self.BankJournalUsd.First().Underlying().FieldMap)
 			customerMoveLines, supplierMoveLines := self.makeCustomerAndSupplierFlows(self.CurrencyEuro, self.CurrencyEuro, self.BankJournalUsd, 30, 42, 30)
 			self.checkResults(customerMoveLines, amlMap{
 				self.AccountUsd.ID(): amlStruct{debit: 30, credit: 0, amountCurrency: 42, currency: self.CurrencyUsd},
@@ -431,7 +440,7 @@ func TestStatementEurInvoiceUsdTransactionChf(t *testing.T) {
 	})
 }
 
-func TestStatementEur0InvoiceUsdTransactionEuroFull(t *testing.T) {
+func TestStatementEurInvoiceUsdTransactionEuroFull(t *testing.T) {
 	Convey("test_statement_euro_invoice_usd_transaction_euro_full", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
 			self := initTestReconciliationStruct(env)
@@ -444,6 +453,7 @@ func TestStatementEur0InvoiceUsdTransactionEuroFull(t *testing.T) {
 					SetDate(dates.Today().SetMonth(01).SetDay(01)))
 			bankStmtLine := h.AccountBankStatementLine().Create(env,
 				h.AccountBankStatementLine().NewData().
+					SetName("payment").
 					SetStatement(bankStmt).
 					SetPartner(self.PartnerAgrolait).
 					SetAmount(40).
@@ -457,20 +467,19 @@ func TestStatementEur0InvoiceUsdTransactionEuroFull(t *testing.T) {
 					break
 				}
 			}
-			bankStmtLine.ProcessReconciliation(h.AccountMoveLine().NewSet(env), []m.AccountMoveLineData{
-				h.AccountMoveLine().NewData().
-					SetMove(h.AccountMove().Create(env,
-						h.AccountMove().NewData().SetLines(line))).
-					SetDebit(0).
-					SetCredit(32.7).
-					SetName(line.Name()),
-			}, []m.AccountMoveLineData{
-				h.AccountMoveLine().NewData().
-					SetDebit(0).
-					SetCredit(7.3).
-					SetName("exchange difference").
-					SetAccount(self.DiffIncomeAccount),
-			})
+			bankStmtLine.ProcessReconciliation(h.AccountMoveLine().NewSet(env),
+				[]accounttypes.AmlStruct{{
+					MoveLineID: line.ID(),
+					Debit:      0,
+					Credit:     32.7,
+					Name:       line.Name(),
+				}},
+				[]accounttypes.AmlStruct{{
+					Debit:     0,
+					Credit:    7.3,
+					Name:      "Exchange Difference",
+					AccountID: self.DiffIncomeAccount.ID(),
+				}})
 
 			self.checkResults(bankStmt.MoveLines(), amlMap{
 				self.AccountEuro.ID():       amlStruct{debit: 40, credit: 0, amountCurrency: 0, currency: self.CurrencyFalse},
@@ -691,13 +700,13 @@ func TestReconcileBankStatementWithPaymentAndWriteoff(t *testing.T) {
 					SetDate(dates.Today().SetMonth(07).SetDay(15)))
 
 			// reconcile the statement with invoice and put remaining in another account
-			bankStmtLine.ProcessReconciliation(bankMoveLine, nil, []m.AccountMoveLineData{
-				h.AccountMoveLine().NewData().
-					SetAccount(self.DiffIncomeAccount).
-					SetDebit(0).
-					SetCredit(5).
-					SetName("bank fees"),
-			})
+			bankStmtLine.ProcessReconciliation(bankMoveLine, nil,
+				[]accounttypes.AmlStruct{{
+					AccountID: self.DiffIncomeAccount.ID(),
+					Debit:     0,
+					Credit:    5,
+					Name:      "bank fees",
+				}})
 
 			// Check that move lines associated to bank_statement are correct
 			bankStmtAml := h.AccountMoveLine().Search(env, q.AccountMoveLine().Statement().Equals(bankStmt))
@@ -880,12 +889,14 @@ func TestPartialReconcileCurrencies(t *testing.T) {
 func TestUnreconcile(t *testing.T) {
 	Convey("Tests Unreconcile", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
+			// test fails because self.PartnerArgolait.PropertyAccountReceivable somehow can not be set with datas on startup.
+			// see file demo/1011-Partner_update.csv to see that data
 			self := initTestReconciliationStruct(env)
 
 			/*
-						# Use case:
-			        	# 2 invoices paid with a single payment. Unreconcile the payment with one invoice, the
-			        	# other invoice should remain reconciled.
+							# Use case:
+				        	# 2 invoices paid with a single payment. Unreconcile the payment with one invoice, the
+				        	# other invoice should remain reconciled.
 			*/
 
 			inv1 := self.createInvoice("out_invoice", 10, self.CurrencyUsd)

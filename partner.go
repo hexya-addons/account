@@ -513,8 +513,6 @@ credit or if you click the "Done" button.`},
 		func(rs m.PartnerSet) m.PartnerData {
 			var data m.PartnerData
 			var allPartnersAndChildren map[m.PartnerSet]m.PartnerSet
-			var allPartners m.PartnerSet
-			var currentUser m.UserSet
 			var sqlWhere string
 			var sqlParams []interface{}
 			var dest struct {
@@ -527,9 +525,9 @@ credit or if you click the "Done" button.`},
 				return data.SetTotalInvoiced(0.0)
 			}
 
-			currentUser = h.User().NewSet(rs.Env()).CurrentUser()
+			currentUser := h.User().NewSet(rs.Env()).CurrentUser()
 			allPartnersAndChildren = make(map[m.PartnerSet]m.PartnerSet)
-			allPartners = h.Partner().NewSet(rs.Env())
+			allPartners := h.Partner().NewSet(rs.Env())
 
 			for _, partner := range rs.Records() {
 				// price_total is in the company currency
@@ -703,7 +701,7 @@ credit or if you click the "Done" button.`},
 	h.Partner().Methods().FindAccountingPartner().DeclareMethod(
 		`FindAccountingPartner finds the partner for which the accounting entries will be created`,
 		func(rs m.PartnerSet, partner m.PartnerSet) m.PartnerSet {
-			return rs.CommercialPartner()
+			return partner.CommercialPartner()
 		})
 
 	h.Partner().Methods().CommercialFields().Extend("",
@@ -723,5 +721,4 @@ credit or if you click the "Done" button.`},
 			//action.Domain = domains.Domain(cond.Serialize()).String()
 			return action
 		})
-
 }

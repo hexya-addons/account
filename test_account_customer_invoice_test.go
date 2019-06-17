@@ -17,12 +17,12 @@ func TestCustomerInvoice(t *testing.T) {
 			self := initTestAccountBaseUserStruct(env)
 			// I will create bank detail with using manager access rights
 			// because account manager can only create bank details.
+			println(h.BankAccount().Search(env, q.BankAccount().SanitizedAccountNumber().Equals("123456789")).HexyaExternalID())
 			h.BankAccount().NewSet(env).Sudo(self.AccountManager.ID()).Create(
 				h.BankAccount().NewData().
-					SetAccountType("bank").
 					SetCompany(self.MainCompany).
 					SetPartner(self.MainPartner).
-					SetSanitizedAccountNumber("123456789").
+					SetName("123456789").
 					SetBank(self.MainBank))
 
 			// Test with that user which have rights to make Invoicing and payment and who is accountant.

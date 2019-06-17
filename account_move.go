@@ -193,12 +193,8 @@ will be created in 'Posted' status.'`},
 
 	h.AccountMove().Methods().Create().Extend("",
 		func(rs m.AccountMoveSet, data m.AccountMoveData) m.AccountMoveSet {
-			var partnerID int64
-			if data.Partner().IsNotEmpty() {
-				partnerID = data.Partner().ID()
-			}
 			move := rs.WithContext("check_move_validity", false).
-				WithContext("partner_id", partnerID).
+				WithContext("partner_id", data.Partner().ID()).
 				Super().Create(data)
 			move.AssertBalanced()
 			return move
@@ -217,11 +213,7 @@ will be created in 'Posted' status.'`},
 	h.AccountMove().Methods().Post().DeclareMethod(
 		`Post`,
 		func(rs m.AccountMoveSet) bool {
-			invoice := h.AccountInvoice().NewSet(rs.Env())
-			invoiceInter := rs.Env().Context().Get("invoice")
-			if invoiceInter != nil {
-				invoice = invoiceInter.(m.AccountInvoiceSet)
-			}
+			invoice := h.AccountInvoice().BrowseOne(rs.Env(), rs.Env().Context().GetInteger("invoice_id"))
 			rs.PostValidate()
 			for _, move := range rs.Records() {
 				move.Lines().CreateAnalyticLines()
@@ -640,7 +632,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 							if partialLine.DebitMove().Equals(rs) {
 								date = partialLine.CreditMove().Date()
 							}
-							rs.Currency().WithContext("date", date).Rate()
+							rs.Currency().WithContext("date", date.ToDateTime()).Rate()
 						}
 						amountResidualCurrency += signPartialLine * rs.Currency().Round(partialLine.Amount()*rate)
 					}
@@ -1665,7 +1657,6 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			var newLine m.AccountMoveLineSet
 			var account m.AccountAccountSet
 			var journal m.AccountJournalSet
-			var move m.AccountMoveSet
 			var ctx *types.Context
 			var amount float64
 			var ok bool
@@ -1675,7 +1666,10 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			if id := ctx.GetInteger("partner_id"); !data.HasPartner() && id != 0 {
 				data.SetPartner(h.Partner().BrowseOne(rs.Env(), id))
 			}
-			move = data.Move()
+			move := data.Move()
+			if move.IsEmpty() {
+				move = h.AccountMove().NewSet(rs.Env())
+			}
 			account = data.Account()
 			if account.Deprecated() {
 				panic(rs.T(`You cannot use deprecated account.`))
@@ -1822,6 +1816,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 					taxLinesData = append(taxLinesData, temp)
 				}
 			}
+			// account missing at this point
 			newLine = rs.Super().Create(data)
 			for _, line := range taxLinesData {
 				// TODO: remove .with_context(context) once this context nonsense is solved
@@ -2368,14 +2363,9 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			var fullToUnlink m.AccountFullReconcileSet
 
 			fullToUnlink = h.AccountFullReconcile().NewSet(rs.Env())
-			toUnlink = rs.Copy(nil)
+			toUnlink = rs
 			if !rs.Env().Context().HasKey("full_rec_lookup") || rs.Env().Context().GetBool("full_rec_lookup") {
 				for _, rec := range rs.Records() {
-					// exclude partial reconciliations related to an exchange rate entry, because the unlink of the full reconciliation will already do it
-					if h.AccountFullReconcile().Search(rs.Env(), q.AccountFullReconcile().ExchangePartialRecFilteredOn(q.AccountPartialReconcile().ID().Equals(rec.ID()))).IsNotEmpty() {
-						toUnlink = toUnlink.Subtract(rec)
-					}
-					// without the deleted partial reconciliations, the full reconciliation won't be full anymore
 					if rec.FullReconcile().IsNotEmpty() {
 						fullToUnlink = fullToUnlink.Union(rec.FullReconcile())
 					}

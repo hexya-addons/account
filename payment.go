@@ -334,7 +334,9 @@ line is reconciled then stored to set the same number again if the line is cance
 set to draft and re-processed again." `},
 		"DestinationAccount": models.Many2OneField{
 			RelationModel: h.AccountAccount(),
-			Compute:       h.AccountPayment().Methods().ComputeDestinationAccount()},
+			Compute:       h.AccountPayment().Methods().ComputeDestinationAccount(),
+			Depends:       []string{"Invoices", "PaymentType", "PartnerType", "Partner"},
+		},
 		"DestinationJournal": models.Many2OneField{
 			String:        "Transfer To",
 			RelationModel: h.AccountJournal(),
@@ -343,7 +345,8 @@ set to draft and re-processed again." `},
 			RelationModel: h.AccountInvoice(),
 			JSON:          "invoice_ids",
 			NoCopy:        true,
-			ReadOnly:      true},
+			ReadOnly:      true,
+			OnChange:      h.AccountPayment().Methods().ComputeDestinationAccount()},
 		"HasInvoice": models.BooleanField{
 			Compute: h.AccountPayment().Methods().ComputeHasInvoice(),
 			Help:    "Technical field used for usability purposes"},
@@ -401,9 +404,7 @@ set to draft and re-processed again." `},
 	h.AccountPayment().Methods().ComputeDestinationAccount().DeclareMethod(
 		`ComputeDestinationAccountId`,
 		func(rs m.AccountPaymentSet) m.AccountPaymentData {
-			var data m.AccountPaymentData
-
-			data = h.AccountPayment().NewData()
+			data := h.AccountPayment().NewData()
 			switch {
 			case rs.Invoices().IsNotEmpty():
 				data.SetDestinationAccount(rs.Invoices().Account())
@@ -414,9 +415,9 @@ set to draft and re-processed again." `},
 				data.SetDestinationAccount(rs.Company().TransferAccount())
 			case rs.Partner().IsNotEmpty():
 				if rs.PartnerType() == "customer" {
-					rs.SetDestinationAccount(rs.Partner().PropertyAccountReceivable())
+					data.SetDestinationAccount(rs.Partner().PropertyAccountReceivable())
 				} else {
-					rs.SetDestinationAccount(rs.Partner().PropertyAccountPayable())
+					data.SetDestinationAccount(rs.Partner().PropertyAccountPayable())
 				}
 			}
 			return data
@@ -627,100 +628,85 @@ set to draft and re-processed again." `},
 		`Create a journal entry corresponding to a payment, if the payment references invoice(s) they are reconciled.
 			      Return the journal entry.`,
 		func(rs m.AccountPaymentSet, amount float64) m.AccountMoveSet {
-			var all bool
-			var debit float64
-			var credit float64
-			var debitWo float64
-			var amountWo float64
-			var creditWo float64
-			var move m.AccountMoveSet
-			var amountCurrency float64
-			var currency m.CurrencySet
-			var amountCurrencyWo float64
-			var invoiceCurrency m.CurrencySet
-			var totalPaymentCompanySigned float64
-			var totalResidualCompanySigned float64
-			var amlObj m.AccountMoveLineSet
-			var counterpartAml m.AccountMoveLineSet
-			var counterpartAmlData m.AccountMoveLineData
-			var liquidityAmlDict m.AccountMoveLineData
-			var writeoffLine m.AccountMoveLineData
-
-			amlObj = h.AccountMoveLine().NewSet(rs.Env()).WithContext("check_move_validity", false)
-
-			all = rs.Invoices().IsNotEmpty()
-			for _, x := range rs.Invoices().Records() {
-				if !x.Currency().Equals(rs.Invoices().Currency()) {
-					all = false
-					break
+			env := rs.Env()
+			amlObj := h.AccountMoveLine().NewSet(env).WithContext("check_move_validity", false)
+			invoiceCurrency := h.Currency().NewSet(env)
+			if rs.Invoices().IsNotEmpty() {
+				targetCur := rs.Invoices().Records()[0].Currency()
+				all := true
+				for _, x := range rs.Invoices().Records() {
+					if !x.Currency().Equals(targetCur) {
+						all = false
+						break
+					}
+				}
+				if all {
+					invoiceCurrency = targetCur
 				}
 			}
-			if all {
-				// if all the invoices selected share the same currency, record the paiement in that currency too
-				invoiceCurrency = rs.Invoices().Currency()
-			}
+			debit, credit, amountCurrency, currency := amlObj.WithContext("date", rs.PaymentDate().ToDateTime()).ComputeAmountFields(amount, rs.Currency(), rs.Company().Currency(), invoiceCurrency)
 
-			debit, credit, amountCurrency, currency = amlObj.WithContext("date", rs.PaymentDate().ToDateTime()).ComputeAmountFields(amount, rs.Currency(), rs.Company().Currency(), invoiceCurrency)
-			move = h.AccountMove().Create(rs.Env(), rs.GetMoveVals(h.AccountJournal().NewSet(rs.Env())))
+			move := h.AccountMove().Create(env, rs.GetMoveVals(h.AccountJournal().NewSet(env)))
 
 			// Write line corresponding to invoice payment
-			// TODO Check that it works or create a MergeWith method for typed model data objects
-			counterpartAmlData = rs.GetSharedMoveLineVals(debit, credit, amountCurrency, move, h.AccountInvoice().NewSet(rs.Env()))
-			cpFM := counterpartAmlData.Underlying()
-			cpFM.MergeWith(rs.GetCounterpartMoveLineVals(rs.Invoices()).SetCurrency(currency).Underlying().FieldMap, h.AccountMoveLine().Model)
+
+			counterpartAmlDict := rs.GetSharedMoveLineVals(debit, credit, amountCurrency, move, h.AccountInvoice().NewSet(env))
+			counterpartAmlDict.SetCurrency(currency)
+			undrlyng := counterpartAmlDict.Underlying()
+			undrlyng.MergeWith(rs.GetCounterpartMoveLineVals(rs.Invoices()).Underlying().FieldMap, h.AccountMoveLine().Model)
+			counterpartAml := amlObj.Create(counterpartAmlDict)
 
 			// Reconcile with the invoices
 			if rs.PaymentDifferenceHandling() == "reconcile" && rs.PaymentDifference() != 0.0 {
-				writeoffLine = rs.GetSharedMoveLineVals(0, 0, 0, move, h.AccountInvoice().NewSet(rs.Env()))
-				_, _, amountCurrencyWo, currency = amlObj.WithContext("date", rs.PaymentDate()).ComputeAmountFields(rs.PaymentDifference(), rs.Currency(), rs.Company().Currency(), invoiceCurrency)
+				writeoffLine := rs.GetSharedMoveLineVals(0, 0, 0, move, h.AccountInvoice().NewSet(env))
+				_, _, amountCurrencyWo, currency := amlObj.WithContext("date", rs.PaymentDate().ToDateTime()).ComputeAmountFields(rs.PaymentDifference(), rs.Currency(), rs.Company().Currency(), invoiceCurrency)
 				// the writeoff debit and credit must be computed from the invoice residual in company currency
 				// minus the payment amount in company currency, and not from the payment difference in the payment currency
 				// to avoid loss of precision during the currency rate computations. See revision 20935462a0cabeb45480ce70114ff2f4e91eaf79 for a detailed example.
-				for _, inv := range rs.Invoices().Records() {
-					totalResidualCompanySigned += inv.ResidualCompanySigned()
+				totalResidualCompanySigned := 0.0
+				for _, invoice := range rs.Invoices().Records() {
+					totalResidualCompanySigned += invoice.ResidualCompanySigned()
 				}
-				totalPaymentCompanySigned = rs.Currency().WithContext("date", rs.PaymentDate()).Compute(rs.Amount(), rs.Company().Currency(), true)
-				if strutils.IsIn(rs.Invoices().Type(), "in_invoice", "out_refund") {
+				totalPaymentCompanySigned := rs.Currency().WithContext("date", rs.PaymentDate().ToDateTime()).Compute(rs.Amount(), rs.Company().Currency(), true)
+				amountWo := totalResidualCompanySigned - totalPaymentCompanySigned
+				if strutils.IsIn(rs.Invoices().Records()[0].Type(), "in_invoice", "out_refund") {
 					amountWo = totalPaymentCompanySigned - totalResidualCompanySigned
-				} else {
-					amountWo = totalResidualCompanySigned - totalPaymentCompanySigned
 				}
 				// Align the sign of the secondary currency writeoff amount with the sign of the writeoff
 				// amount in the company currency
+				debitWo := 0.0
+				creditWo := -amountWo
+				amountCurrencyWo = -math.Abs(amountCurrencyWo)
 				if amountWo > 0 {
 					debitWo = amountWo
+					creditWo = 0.0
 					amountCurrencyWo = math.Abs(amountCurrencyWo)
-				} else {
-					creditWo = -amountWo
-					amountCurrencyWo = -math.Abs(amountCurrencyWo)
 				}
-				writeoffLine.SetName(rs.T(`Counterpart`)).
+				writeoffLine.
+					SetName(rs.T("Counterpart")).
 					SetAccount(rs.WriteoffAccount()).
 					SetDebit(debitWo).
 					SetCredit(creditWo).
 					SetAmountCurrency(amountCurrencyWo).
 					SetCurrency(currency)
 				amlObj.Create(writeoffLine)
-				if val := counterpartAmlData.Debit(); val != 0.0 {
-					counterpartAmlData.SetDebit(val + (creditWo - debitWo))
+				if counterpartAml.Debit() != 0.0 {
+					counterpartAml.SetDebit(counterpartAml.Debit() + (creditWo - debitWo))
 				}
-				if val := counterpartAmlData.Credit(); val != 0.0 {
-					counterpartAmlData.SetCredit(val + (debitWo - creditWo))
+				if counterpartAml.Credit() != 0.0 {
+					counterpartAml.SetCredit(counterpartAml.Credit() + (debitWo - creditWo))
 				}
-				counterpartAmlData.SetAmountCurrency(counterpartAmlData.AmountCurrency() - amountCurrencyWo)
+				counterpartAml.SetAmountCurrency(counterpartAml.AmountCurrency() - amountCurrencyWo)
 			}
-			counterpartAml = amlObj.Create(counterpartAmlData)
-			rs.Invoices().RegisterPayment(counterpartAml, h.AccountAccount().NewSet(rs.Env()), h.AccountJournal().NewSet(rs.Env()))
+			rs.Invoices().RegisterPayment(counterpartAml, h.AccountAccount().NewSet(env), h.AccountJournal().NewSet(env))
 
 			// Write counterpart lines
 			if !rs.Currency().Equals(rs.Company().Currency()) {
-				amountCurrency = 0.0
+				amountCurrency = 0
 			}
-			liquidityAmlDict = rs.GetSharedMoveLineVals(credit, debit, -amountCurrency, move, h.AccountInvoice().NewSet(rs.Env()))
-			laFM := liquidityAmlDict.Underlying()
-			laFM.MergeWith(rs.GetLiquidityMoveLineVals(-amount).Underlying().FieldMap, h.AccountMoveLine().Model)
+			liquidityAmlDict := rs.GetSharedMoveLineVals(credit, debit, -amountCurrency, move, h.AccountInvoice().NewSet(env))
+			liquidityAmlDict.Underlying().MergeWith(rs.GetLiquidityMoveLineVals(-amount).Underlying().FieldMap, h.AccountMoveLine().Model)
 			amlObj.Create(liquidityAmlDict)
-
 			move.Post()
 			return move
 		})
@@ -839,13 +825,13 @@ set to draft and re-processed again." `},
 			if !rs.Currency().Equals(rs.Company().Currency()) {
 				CurrencyVal = rs.Currency()
 			}
-
-			return h.AccountMoveLine().NewData().
+			ret := h.AccountMoveLine().NewData().
 				SetName(name).
-				SetAccount(rs.DestinationAccount()).
 				SetJournal(rs.Journal()).
 				SetCurrency(CurrencyVal).
 				SetPayment(rs)
+			ret.SetAccount(rs.DestinationAccount())
+			return ret
 		})
 
 	h.AccountPayment().Methods().GetLiquidityMoveLineVals().DeclareMethod(
@@ -857,15 +843,15 @@ set to draft and re-processed again." `},
 			if rs.PaymentType() == "transfer" {
 				name = rs.T(`Transfer to %s`, rs.DestinationJournal().Name())
 			}
+			account := rs.Journal().DefaultCreditAccount()
+			if strutils.IsIn(rs.PaymentType(), "outbound", "transfer") {
+				account = rs.Journal().DefaultDebitAccount()
+			}
 			vals = h.AccountMoveLine().NewData().
 				SetName(name).
-				SetAccount(rs.Journal().DefaultCreditAccount()).
+				SetAccount(account).
 				SetPayment(rs).
 				SetJournal(rs.Journal())
-
-			if strutils.IsIn(rs.PaymentType(), "outbound", "transfer") {
-				vals.SetAccount(rs.Journal().DefaultDebitAccount())
-			}
 			if !rs.Currency().Equals(rs.Company().Currency()) {
 				vals.SetCurrency(rs.Currency())
 			}

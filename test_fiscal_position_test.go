@@ -34,6 +34,8 @@ func initTestFiscalPositionStruct(env models.Environment) TestFiscalPositionStru
 	h.AccountFiscalPosition().Search(env, q.AccountFiscalPosition().ID().Greater(-1)).Write(
 		h.AccountFiscalPosition().NewData().SetAutoApply(false))
 
+	out.Env = env
+
 	out.Be = h.Country().NewSet(env).GetRecord("base_be")
 	out.Fr = h.Country().NewSet(env).GetRecord("base_fr")
 	out.Mx = h.Country().NewSet(env).GetRecord("base_mx")
@@ -74,7 +76,7 @@ func initTestFiscalPositionStruct(env models.Environment) TestFiscalPositionStru
 			SetCountry(out.Fr).
 			SetVatRequired(false).
 			SetSequence(40))
-	out.BeNat = h.AccountFiscalPosition().Create(env,
+	out.FrB2B = h.AccountFiscalPosition().Create(env,
 		h.AccountFiscalPosition().NewData().
 			SetName("EU-VAT-FR-B2B").
 			SetAutoApply(true).
@@ -96,7 +98,7 @@ func Test10FpCountry(t *testing.T) {
 			self := initTestFiscalPositionStruct(env)
 
 			// B2B has precedence over B2C for same country even when sequence gives lower precedence
-			So(self.FrB2B.SetSequence, ShouldBeGreaterThan, self.FrB2C.Sequence())
+			So(self.FrB2B.Sequence(), ShouldBeGreaterThan, self.FrB2C.Sequence())
 			self.assertFP(self.George, self.FrB2B)
 			self.FrB2B.SetAutoApply(false)
 			self.assertFP(self.George, self.FrB2C)

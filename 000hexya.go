@@ -4,11 +4,9 @@
 package account
 
 import (
-	// Import dependencies
 	_ "github.com/hexya-addons/analytic"
-	"github.com/hexya-addons/base"
+	// Import dependencies
 	"github.com/hexya-addons/web/controllers"
-	"github.com/hexya-erp/hexya/src/models/security"
 	"github.com/hexya-erp/hexya/src/server"
 	"github.com/hexya-erp/hexya/src/tools/logging"
 )
@@ -24,10 +22,6 @@ func init() {
 	})
 
 	log = logging.GetLogger("account")
-
-	GroupAccountInvoice = security.Registry.NewGroup("account_group_account_invoice", "Billing", base.GroupUser)
-	GroupAccountUser = security.Registry.NewGroup("account_group_account_user", "Accountant", GroupAccountInvoice)
-	GroupAccountManager = security.Registry.NewGroup("account_group_account_manager", "Adviser", GroupAccountUser)
 
 	controllers.BackendCSS = append(controllers.BackendCSS,
 		"/static/account/src/css/account_bank_and_cash.css",

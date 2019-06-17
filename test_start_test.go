@@ -14,7 +14,16 @@ import (
 
 func TestMain(m *testing.M) {
 
-	tests.RunTests(m, "account")
+	tests.RunTests(m, "account", func() {
+		err := models.ExecuteInNewEnvironment(security.SuperUserID, func(env models.Environment) {
+			chart := h.AccountChartTemplate().NewSet(env).GetRecord("l10n_generic_coa_configurable_chart_template")
+			println(chart.ID())
+			chart.TryLoadingForCurrentCompany()
+		})
+		if err != nil {
+			panic(err)
+		}
+	})
 }
 
 type TestAccountBaseStruct struct {
@@ -22,6 +31,7 @@ type TestAccountBaseStruct struct {
 
 func initTestAccountBaseStruct(env models.Environment) TestAccountBaseStruct {
 	var out TestAccountBaseStruct
+	println(h.AccountChartTemplate().NewSet(env).GetRecord("l10n_generic_coa_configurable_chart_template").ID())
 	err := models.ExecuteInNewEnvironment(1, func(env models.Environment) {
 		gr := h.Group().Search(env, q.Group().GroupID().Equals("account_group_account_user"))
 		demoUser := h.User().NewSet(env).GetRecord("base_user_demo")
@@ -55,32 +65,34 @@ func initTestAccountBaseUserStruct(env models.Environment) TestAccountBaseUserSt
 	out.MainPartner = h.Partner().NewSet(env).GetRecord("base_main_partner")
 	out.MainBank = h.Bank().NewSet(env).GetRecord("base_res_bank_1")
 	out.CurrencyEuro = h.Currency().NewSet(env).GetRecord("base_EUR")
+	groupsUser := h.Group().Search(env, q.Group().GroupID().Equals("account_group_account_user")).Union(
+		h.Group().Search(env, q.Group().GroupID().Equals("base_group_partner_manager")))
+	groupsManager := h.Group().Search(env, q.Group().GroupID().Equals("account_group_account_manager")).Union(
+		h.Group().Search(env, q.Group().GroupID().Equals("base_group_partner_manager")))
 	out.AccountUser = h.User().NewSet(env).WithContext("no_reset_password", true).Create(
 		h.User().NewData().
 			SetName("Accountant").
 			SetCompany(out.MainCompany).
 			SetLogin("acc").
 			SetEmail("accountuser@yourcompany.com").
-			SetGroups(
-				h.Group().NewSet(env).GetRecord("account_group_account_user").Union(
-					h.Group().NewSet(env).GetRecord("base_group_partner_manager"))))
+			SetGroups(groupsUser))
 	out.AccountManager = h.User().NewSet(env).WithContext("no_reset_password", true).Create(
 		h.User().NewData().
 			SetName("Adiser").
 			SetCompany(out.MainCompany).
 			SetLogin("fm").
 			SetEmail("accountmanager@yourcompany.com").
-			SetGroups(
-				h.Group().NewSet(env).GetRecord("account_group_account_manager").Union(
-					h.Group().NewSet(env).GetRecord("base_group_partner_manager"))))
+			SetGroups(groupsManager))
+	out.AccountUser.SyncMemberships()
+	out.AccountManager.SyncMemberships()
 	return out
 }
 
 func TestEmptyTest(t *testing.T) {
 	Convey("Tests Empty", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
-			//init
-			//code
+			partner := h.AccountMove().NewData().Partner()
+			partner.ID()
 		}), ShouldBeNil)
 	})
 }

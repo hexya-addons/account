@@ -70,6 +70,8 @@ github.com/hexya-addons/decimalPrecision v0.0.7 h1:5lbXxis4kUxl1d2ikZ61u9Kck5j4Q
 github.com/hexya-addons/decimalPrecision v0.0.7/go.mod h1:2wZFxjsGjSfmGR4xDofbz4Y0Obhgt0Pabrbtv8lkC/s=
 github.com/hexya-addons/decimalPrecision v0.0.14 h1:dkqPcx0UHRyYKRQhbJYDUqpdycpfEAlFDRJADtdpqOA=
 github.com/hexya-addons/decimalPrecision v0.0.14/go.mod h1:owyvkJLnciYKC5TYlNCCXpVWZPmuGoGd00V291X56xc=
+github.com/hexya-addons/l10nGenericCoa v0.0.0-20190522133058-48d243c07b3f h1:0/Masb64lZDbXadRUh0APKKArOANnasoq79uv883Jg0=
+github.com/hexya-addons/l10nGenericCoa v0.0.0-20190522133058-48d243c07b3f/go.mod h1:btaJnCN7Q/a6wfZFYT8nAfe9Q9nE8U2BwPribybvjak=
 github.com/hexya-addons/product v0.0.2/go.mod h1:Joim7UCgIo8uslCn/WyUvrZs8NvAPCWpMaWsz3RWD2I=
 github.com/hexya-addons/product v0.0.8 h1:ls3H35QhJ6h4x+KSR5VhuzmzaoHxZy5+tpOhvwQsnC4=
 github.com/hexya-addons/product v0.0.8/go.mod h1:2ia+tJj8xmn5mOcGLALuav80g40euwkQ41t1efRL4wM=

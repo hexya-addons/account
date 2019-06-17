@@ -1,0 +1,3 @@
+ID,ChartTemplate,Name,Amount,TypeTaxUse,Account,RefundAccount
+l10n_generic_coa_sale_tax_template,l10n_generic_coa_configurable_chart_template,Tax 15%,15,sale,l10n_generic_coa_conf_iva,l10n_generic_coa_conf_iva
+l10n_generic_coa_purchase_tax_template,l10n_generic_coa_configurable_chart_template,Purchase Tax 15%,15,purchase,l10n_generic_coa_conf_ova,l10n_generic_coa_conf_ova

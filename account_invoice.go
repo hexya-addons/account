@@ -309,7 +309,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			valueTotal := valueUntaxed + valueTax
 			data.SetAmountTotal(valueTotal)
 			if rs.Currency().IsNotEmpty() && rs.Company().IsNotEmpty() && !rs.Currency().Equals(rs.Company().Currency()) {
-				currency := rs.Currency().WithContext("date", rs.DateInvoice())
+				currency := rs.Currency().WithContext("date", rs.DateInvoice().ToDateTime())
 				valueTotal = currency.Compute(valueTotal, rs.Company().Currency(), true)
 				valueUntaxed = currency.Compute(valueUntaxed, rs.Company().Currency(), true)
 			}
@@ -539,8 +539,13 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			return data
 		})
 
+	var prevent_recursion_with_onchange_fields bool
+
 	h.AccountInvoice().Methods().Create().Extend("",
 		func(rs m.AccountInvoiceSet, data m.AccountInvoiceData) m.AccountInvoiceSet {
+			if prevent_recursion_with_onchange_fields {
+				return rs.Super().Create(data)
+			}
 			isAnyFieldChanging := func(fields []string) bool {
 				for _, field := range fields {
 					if data.Has(field) {
@@ -556,16 +561,19 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			for onchangeMethod, changedFields := range onchanges {
 				_ = onchangeMethod
 				if isAnyFieldChanging(changedFields) {
-					/*
-						invoice = self.new(vals)
-						getattr(invoice, onchange_method)()
-						for field in changed_fields:
-							if field not in vals and invoice[field]:
-									vals[field] = invoice._fields[field].convert_to_write(invoice[field], invoice)
-					*/
+					prevent_recursion_with_onchange_fields = true
+					invoice := h.AccountInvoice().Create(rs.Env(), data)
+					invoice.Call(onchangeMethod)
+					for _, field := range changedFields {
+						if data.Get(field) == nil && invoice.Get(field) != nil {
+							data.Set(field, invoice.Get(field))
+						}
+					}
+					invoice.Unlink()
+					prevent_recursion_with_onchange_fields = false
 				}
 			}
-			if !data.Has("Account") {
+			if data.Account().IsEmpty() {
 				panic(rs.T(`Configuration error!\nCould not find any account to create the invoice, are you sure you have a chart of account installed?`))
 			}
 			invoice := rs.WithContext("mail_create_nolog", true).Super().Create(data)
@@ -848,7 +856,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		func(rs m.AccountInvoiceSet) bool {
 			// lots of duplicate calls to action_invoice_open, so we remove those already open
 			toOpenInvoices := rs.Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() != "open" })
-			if toOpenInvoices.Filtered(func(rs m.AccountInvoiceSet) bool { return strutils.IsIn(rs.State(), "proforma2", "draft") }).IsNotEmpty() {
+			if toOpenInvoices.Filtered(func(rs m.AccountInvoiceSet) bool { return !strutils.IsIn(rs.State(), "proforma2", "draft") }).IsNotEmpty() {
 				panic(rs.T(`Invoice must be in draft or Pro-forma state in order to validate it.`))
 			}
 			toOpenInvoices.ActionDateAssign()
@@ -867,7 +875,10 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			if toPayInvoices.Filtered(func(rs m.AccountInvoiceSet) bool { return !rs.Reconciled() }).IsNotEmpty() {
 				panic(rs.T(`You cannot pay an invoice which is partially paid. You need to reconcile payment entries first.`))
 			}
-			return toPayInvoices.Write(h.AccountInvoice().NewData().SetState("paid"))
+			if toPayInvoices.IsNotEmpty() {
+				toPayInvoices.SetState("paid")
+			}
+			return true
 		})
 
 	h.AccountInvoice().Methods().ActionInvoiceReOpen().DeclareMethod(
@@ -876,7 +887,10 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			if rs.Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() != "paid" }).IsNotEmpty() {
 				panic(rs.T(`Invoice must be paid in order to set it to register payment.`))
 			}
-			return rs.Write(h.AccountInvoice().NewData().SetState("open"))
+			if rs.IsNotEmpty() {
+				rs.SetState("open")
+			}
+			return true
 		})
 
 	h.AccountInvoice().Methods().ActionInvoiceCancel().DeclareMethod(
@@ -1270,9 +1284,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 					SetJournal(journal).
 					SetDate(date).
 					SetNarration(inv.Comment())
-				ctx = ctx.WithKey("company_id", inv.Company().ID()).WithKey("invoice", inv)
-				ctxNolang := ctx.Copy()
-				//ctx_nolang.pop('lang', None) //tovalid pop NYI
+				ctx = ctx.WithKey("company_id", inv.Company().ID()).WithKey("invoice_id", inv.ID())
+				ctxNolang := ctx.Copy().WithKey("lang", "")
 				move := h.AccountMove().NewSet(rs.Env()).WithNewContext(ctxNolang).Create(data)
 				// Pass invoice in context in method post: used if you want to get the same
 				// account move reference when creating the same invoice after a cancelled one:
@@ -1702,7 +1715,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 	h.AccountInvoiceLine().Methods().ComputePrice().DeclareMethod(
 		`ComputePrice`,
 		func(rs m.AccountInvoiceLineSet) m.AccountInvoiceLineData {
-			var currency m.CurrencySet
+			currency := h.Currency().NewSet(rs.Env())
 			if rs.Invoice().IsNotEmpty() {
 				currency = rs.Invoice().Currency()
 			}
@@ -1718,7 +1731,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			}
 			data.SetPriceSubtotal(priceSubtotalSigned)
 			if rs.Invoice().Currency().IsNotEmpty() && rs.Invoice().Company().IsNotEmpty() && !rs.Invoice().Currency().Equals(rs.Invoice().Company().Currency()) {
-				priceSubtotalSigned = rs.Invoice().Currency().WithContext("date", rs.Invoice().DateInvoice()).Compute(priceSubtotalSigned, rs.Invoice().Company().Currency(), true)
+				priceSubtotalSigned = rs.Invoice().Currency().WithContext("date", rs.Invoice().DateInvoice().ToDateTime()).Compute(priceSubtotalSigned, rs.Invoice().Company().Currency(), true)
 			}
 			sign := 1.0
 			if strutils.IsIn(rs.Invoice().Type(), "in_refund", "out_refund") {
@@ -1991,14 +2004,14 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			ReverseFK:     "Payment",
 			JSON:          "line_ids",
 			String:        "Terms",
-			Default: func(env models.Environment) interface{} {
-				return h.AccountPaymentTermLine().Create(env, h.AccountPaymentTermLine().NewData().
-					SetValue("balance").
-					SetValueAmount(0).
-					SetSequence(9).
-					SetDays(0).
-					SetOption("day_after_invoice_date"))
-			},
+			//Default: func(env models.Environment) interface{} {
+			//	return h.AccountPaymentTermLine().Create(env, h.AccountPaymentTermLine().NewData().
+			//		SetValue("balance").
+			//		SetValueAmount(0).
+			//		SetSequence(9).
+			//		SetDays(0).
+			//		SetOption("day_after_invoice_date"))
+			//},
 			Constraint: h.AccountPaymentTerm().Methods().CheckLines()},
 		"Company": models.Many2OneField{
 			RelationModel: h.Company(),

@@ -3,6 +3,7 @@ package account
 import (
 	"testing"
 
+	"github.com/hexya-addons/account/accounttypes"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/security"
 	"github.com/hexya-erp/pool/h"
@@ -97,12 +98,12 @@ func TestFullReconcile(t *testing.T) {
 			stLine := self.createStatementLine(100)
 
 			// reconcile
-			counterpartAmlDicts := []m.AccountMoveLineData{
-				h.AccountMoveLine().NewData().
-					SetMove(rcvMvLine.Move()).
-					SetDebit(0).
-					SetCredit(100).
-					SetName(rcvMvLine.Name())}
+			counterpartAmlDicts := []accounttypes.AmlStruct{{
+				MoveID: rcvMvLine.ID(),
+				Debit:  0,
+				Credit: 100,
+				Name:   rcvMvLine.Name(),
+			}}
 			stLine.ProcessReconciliation(h.AccountMoveLine().NewSet(env), counterpartAmlDicts, nil)
 
 			// check everything went as expected

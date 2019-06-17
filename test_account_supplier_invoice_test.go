@@ -116,6 +116,12 @@ func TestSupplierInvoice2(t *testing.T) {
 					SetAccountAnalytic(analyticAccount))
 			invoice.ComputeTaxes()
 
+			// check that Initially supplier bill state is "Draft"
+			So(invoice.State(), ShouldEqual, "draft")
+
+			// change the state of invoice to open by clicking Validate button
+			invoice.ActionInvoiceOpen()
+
 			// Check if amount and corresponded base is correct for all tax scenarios given on a computational base
 			// Keep in mind that tax amount can be changed by the user at any time before validating (based on the invoice and tax laws applicable)
 			invoiceTax := invoice.TaxLines().Sorted(func(set m.AccountInvoiceTaxSet, set2 m.AccountInvoiceTaxSet) bool {
@@ -133,6 +139,8 @@ func TestSupplierInvoice2(t *testing.T) {
 					bases = append(bases, val)
 				}
 			}
+			So(amounts, ShouldEqual, []float64{50.0, 550.0, 220.0})
+			So(bases, ShouldEqual, []float64{500.0, 500.0, 1100.0})
 
 			// I cancel the account move which is in posted state and verifies that it gives warning message
 			So(func() { invoice.Move().ButtonCancel() }, ShouldPanic)

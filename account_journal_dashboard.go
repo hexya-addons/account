@@ -91,9 +91,9 @@ func init() {
 					FROM account_bank_statement AS a,
 						(SELECT c.date, max(c.id) AS stmt_id
 							FROM account_bank_statement AS c
-							WHERE c.journal_id = %s
-			                	AND c.date > %s
-			                 	AND c.date <= %s
+							WHERE c.journal_id = ?
+			                	AND c.date > ?
+			                 	AND c.date <= ?
 			                GROUP BY date, id
 			                ORDER BY date, id) AS b
 			        WHERE a.id = b.stmt_id;`
@@ -244,21 +244,21 @@ func init() {
 				lastBankStmt := h.AccountBankStatement().Search(rs.Env(), q.AccountBankStatement().Journal().In(rs)).OrderBy("date desc", "id desc").Limit(1)
 				lastBalance = lastBankStmt.BalanceEnd()
 				// Get the number of items to reconcile for that bank journal
-				var sqlReturn []struct{ Count int64 }
+				var sqlReturn int64
 				rs.Env().Cr().Get(&sqlReturn, `SELECT COUNT(DISTINCT(statement_line_id))
 							FROM account_move where statement_line_id
 							IN (SELECT line.id
 								FROM account_bank_statement_line AS line
 								LEFT JOIN account_bank_statement AS st
 								ON line.statement_id = st.id
-								WHERE st.journal_id IN %s and st.state = 'open')`, rs.Ids())
-				alreadyReconciled := sqlReturn[0].Count
+								WHERE st.journal_id IN (?) and st.state = 'open')`, rs.Ids())
+				alreadyReconciled := sqlReturn
 				rs.Env().Cr().Get(&sqlReturn, `SELECT COUNT(line.id)
 								FROM account_bank_statement_line AS line
 								LEFT JOIN account_bank_statement AS st
 								ON line.statement_id = st.id
-								WHERE st.journal_id IN %s and st.state = 'open'`, rs.Ids())
-				allLines := sqlReturn[0].Count
+								WHERE st.journal_id IN (?) and st.state = 'open'`, rs.Ids())
+				allLines := sqlReturn
 				numberToReconcile = allLines - alreadyReconciled
 				// optimization to read sum of balance from account_move_line
 				accountIds := rs.DefaultDebitAccount().Union(rs.DefaultCreditAccount())
@@ -267,11 +267,15 @@ func init() {
 					if rs.Currency().IsEmpty() || rs.Currency().Equals(rs.Company().Currency()) {
 						amountField = "balance"
 					}
-					query := fmt.Sprintf(`SELECT sum(%s) FROM account_move_line WHERE account_id in %%s AND date <= %%s;`, amountField)
-					var sqlSum []struct{ Sum int64 }
-					rs.Env().Cr().Select(&sqlSum, query, accountIds, dates.Today())
-					if len(sqlSum) > 0 && sqlSum[0].Sum != 0 {
-						accountSum = float64(sqlSum[0].Sum)
+					query := fmt.Sprintf(`	SELECT coalesce(sum(aml.%s), 0) 
+													FROM account_move_line AS aml 
+    												LEFT JOIN account_move am ON aml.move_id = am.id 
+													WHERE aml.account_id IN (?) AND am.date <= ?
+													LIMIT 1;`, amountField)
+					var sqlSum int64
+					rs.Env().Cr().Get(&sqlSum, query, accountIds.Ids(), dates.Today())
+					if sqlSum != 0 {
+						accountSum = float64(sqlSum)
 					}
 				}
 			//TODO need to check if all invoices are in the same currency than the journal!!!!
