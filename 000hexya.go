@@ -5,6 +5,9 @@ package account
 
 import (
 	_ "github.com/hexya-addons/analytic"
+	"github.com/hexya-erp/hexya/src/models"
+	"github.com/hexya-erp/hexya/src/models/security"
+
 	// Import dependencies
 	"github.com/hexya-addons/web/controllers"
 	"github.com/hexya-erp/hexya/src/server"
@@ -17,8 +20,13 @@ var log logging.Logger
 
 func init() {
 	server.RegisterModule(&server.Module{
-		Name:     MODULE_NAME,
-		PostInit: func() {},
+		Name: MODULE_NAME,
+		PostInit: func() {
+			models.ExecuteInNewEnvironment(security.SuperUserID, func(env models.Environment) {
+				env.Cr().Execute(`ALTER TABLE "partner" ALTER COLUMN property_account_payable SET NOT NULL`)
+				env.Cr().Execute(`ALTER TABLE "partner" ALTER COLUMN property_account_receivable SET NOT NULL`)
+			})
+		},
 	})
 
 	log = logging.GetLogger("account")

@@ -98,7 +98,7 @@ func TestFullReconcile(t *testing.T) {
 			stLine := self.createStatementLine(100)
 
 			// reconcile
-			counterpartAmlDicts := []accounttypes.AmlStruct{{
+			counterpartAmlDicts := []accounttypes.BankStatementAMLStruct{{
 				MoveID: rcvMvLine.ID(),
 				Debit:  0,
 				Credit: 100,

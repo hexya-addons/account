@@ -120,7 +120,7 @@ func (self TestPaymentStruct) CreateInvoice(amount float64, typ string, currency
 }
 
 // Reconcile reconcile a journal entry corresponding to a payment with its bank statement line
-func (self TestPaymentStruct) Reconcile(liquidityAml []accounttypes.AmlStruct, amount, amountCurrency float64, currency m.CurrencySet) m.AccountBankStatementSet {
+func (self TestPaymentStruct) Reconcile(liquidityAml []accounttypes.BankStatementAMLStruct, amount, amountCurrency float64, currency m.CurrencySet) m.AccountBankStatementSet {
 	date := dates.Today().SetMonth(7).SetDay(15)
 	journal := h.AccountJournal().NewSet(self.Env)
 	if len(liquidityAml) > 0 {

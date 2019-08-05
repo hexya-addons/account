@@ -1,7 +1,6 @@
 package account
 
 import (
-	"fmt"
 	"strconv"
 
 	"github.com/hexya-addons/base"
@@ -360,30 +359,42 @@ func init() {
 			Compute: h.Partner().Methods().ComputeIssuedTotal()},
 		"PropertyAccountPayable": models.Many2OneField{
 			String:        "Account Payable",
-			RelationModel: h.AccountAccount(), /*, CompanyDependent : true*/
+			RelationModel: h.AccountAccount(),
 			Filter:        q.AccountAccount().InternalType().Equals("payable").And().Deprecated().Equals(false),
 			Help:          "This account will be used instead of the default one as the payable account for the current partner",
-			//Required:      true,
+			Contexts:      base.CompanyDependent,
+			Default: func(env models.Environment) interface{} {
+				return h.AccountAccount().NewSet(env).GetDefaultAccountFromChart("PropertyAccountPayable")
+			},
 		},
 		"PropertyAccountReceivable": models.Many2OneField{
 			String:        "Account Receivable",
-			RelationModel: h.AccountAccount(), /*, CompanyDependent : true*/
+			RelationModel: h.AccountAccount(),
 			Filter:        q.AccountAccount().InternalType().Equals("receivable").And().Deprecated().Equals(false),
 			Help:          "This account will be used instead of the default one as the receivable account for the current partner",
-			//Required:      true,
+			Contexts:      base.CompanyDependent,
+			Default: func(env models.Environment) interface{} {
+				return h.AccountAccount().NewSet(env).GetDefaultAccountFromChart("PropertyAccountReceivable")
+			},
 		},
 		"PropertyAccountPosition": models.Many2OneField{
 			String:        "Fiscal Position",
-			RelationModel: h.AccountFiscalPosition(), /*, CompanyDependent : true*/
-			Help:          "The fiscal position will determine taxes and accounts used for the partner."},
+			RelationModel: h.AccountFiscalPosition(),
+			Help:          "The fiscal position will determine taxes and accounts used for the partner.",
+			Contexts:      base.CompanyDependent,
+		},
 		"PropertyPaymentTerm": models.Many2OneField{
 			String:        "Customer Payment Terms",
-			RelationModel: h.AccountPaymentTerm(), /*, CompanyDependent : true*/
-			Help:          "This payment term will be used instead of the default one for sale orders and customer invoices"},
+			RelationModel: h.AccountPaymentTerm(),
+			Help:          "This payment term will be used instead of the default one for sale orders and customer invoices",
+			Contexts:      base.CompanyDependent,
+		},
 		"PropertySupplierPaymentTerm": models.Many2OneField{
 			String:        "Vendor Payment Terms",
-			RelationModel: h.AccountPaymentTerm(), /*, CompanyDependent : true*/
-			Help:          "This payment term will be used instead of the default one for purchase orders and vendor bills"},
+			RelationModel: h.AccountPaymentTerm(),
+			Help:          "This payment term will be used instead of the default one for purchase orders and vendor bills",
+			Contexts:      base.CompanyDependent,
+		},
 		"RefCompanies": models.One2ManyField{
 			String:        "Companies that refers to partner",
 			RelationModel: h.Company(),
@@ -418,7 +429,8 @@ credit or if you click the "Done" button.`},
 				"good":   "Good Debtor",
 				"normal": "Normal Debtor",
 				"bad":    "Bad Debtor"},
-			Default: models.DefaultValue("normal") /*[ company_dependent True]*/},
+			Default:  models.DefaultValue("normal"),
+			Contexts: base.CompanyDependent},
 		"InvoiceWarn": models.SelectionField{
 			Selection: base.WarningMessage,
 			String:    "Invoice",
@@ -511,62 +523,27 @@ credit or if you click the "Done" button.`},
 	h.Partner().Methods().ComputeTotalInvoiced().DeclareMethod(
 		`InvoiceTotal`,
 		func(rs m.PartnerSet) m.PartnerData {
-			var data m.PartnerData
-			var allPartnersAndChildren map[m.PartnerSet]m.PartnerSet
-			var sqlWhere string
-			var sqlParams []interface{}
-			var dest struct {
-				total     float64
-				partnerID int64
-			}
-
-			data = h.Partner().NewData()
+			data := h.Partner().NewData()
 			if rs.IsEmpty() {
 				return data.SetTotalInvoiced(0.0)
 			}
 
 			currentUser := h.User().NewSet(rs.Env()).CurrentUser()
-			allPartnersAndChildren = make(map[m.PartnerSet]m.PartnerSet)
-			allPartners := h.Partner().NewSet(rs.Env())
+			allPartners := h.Partner().NewSet(rs.Env()).WithContext("active_test", false).Search(q.Partner().ID().ChildOf(rs.ID()))
 
-			for _, partner := range rs.Records() {
-				// price_total is in the company currency
-				allPartnersAndChildren[partner] = rs.Search(q.Partner().ID().ChildOf(partner.ID()))
-				allPartners = allPartners.Union(allPartnersAndChildren[partner])
-			}
-
-			// searching account.invoice.report via the orm is comparatively expensive
-			// (generates queries "id in []" forcing to build the full table).
-			// In simple cases where all invoices are in the same currency than the user's company
-			// access directly these elements
-
-			// generate where clause to include multicompany rules
 			condition := q.AccountInvoiceReport().Partner().In(allPartners).
 				And().State().NotIn([]string{"draft", "cancel"}).
 				And().Company().Equals(currentUser.Company()).
 				And().Type().In([]string{"out_invoice", "out_refund"})
-			/*
-				tovalid are those needed?
-				where_query = account_invoice_report._where_calc(condition)
-				  account_invoice_report._apply_ir_rules(where_query, 'read')
-			*/
-			// FIXME
-			fmt.Println(condition)
-			//sqlWhere, sqlParams = rs.SqlFromCondition(condition)
 
-			//price_total is in the company currency
-			rs.Env().Cr().Get(&dest, `
-			            SELECT SUM(price_total) as total, partner_id
-			              FROM account_invoice_report account_invoice_report
-			             WHERE `+sqlWhere+`
-			             GROUP BY partner_id
-			          `, sqlParams)
-
-			data.SetTotalInvoiced(dest.total)
-			/* tovalid all this method will clearly not work as intended
-			odoo makes a sum of with all partners found,
-			hexya, with its singleton recordsets given to comupte funcs, dont
-			*/
+			aggs := h.AccountInvoiceReport().Search(rs.Env(), condition).
+				GroupBy(h.AccountInvoiceReport().Fields().Partner()).
+				Aggregates(
+					h.AccountInvoiceReport().Fields().Partner(),
+					h.AccountInvoiceReport().Fields().PriceTotal())
+			if len(aggs) > 0 {
+				data.SetTotalInvoiced(aggs[0].Values().PriceTotal())
+			}
 			return data
 		})
 

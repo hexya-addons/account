@@ -4,6 +4,10 @@
 package account
 
 import (
+	"math"
+
+	"github.com/hexya-addons/account/accounttypes"
+	"github.com/hexya-addons/base"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/pool/h"
 	"github.com/hexya-erp/pool/m"
@@ -15,14 +19,22 @@ func init() {
 	h.ProductCategory().AddFields(map[string]models.FieldDefinition{
 		"PropertyAccountIncomeCateg": models.Many2OneField{
 			String:        "Income Account",
-			RelationModel: h.AccountAccount(), /*, CompanyDependent : true*/
+			RelationModel: h.AccountAccount(),
 			Filter:        q.AccountAccount().Deprecated().Equals(false),
-			Help:          "This account will be used for invoices to value sales."},
+			Help:          "This account will be used for invoices to value sales.",
+			Contexts:      base.CompanyDependent,
+			Default: func(env models.Environment) interface{} {
+				return h.AccountAccount().NewSet(env).GetDefaultAccountFromChart("PropertyAccountIncomeCateg")
+			}},
 		"PropertyAccountExpenseCateg": models.Many2OneField{
 			String:        "Expense Account",
 			RelationModel: h.AccountAccount(), /*, CompanyDependent : true*/
 			Filter:        q.AccountAccount().Deprecated().Equals(false),
-			Help:          "This account will be used for invoices to value expenses."},
+			Help:          "This account will be used for invoices to value expenses.",
+			Contexts:      base.CompanyDependent,
+			Default: func(env models.Environment) interface{} {
+				return h.AccountAccount().NewSet(env).GetDefaultAccountFromChart("PropertyAccountExpenseCateg")
+			}},
 	})
 
 	h.ProductTemplate().AddFields(map[string]models.FieldDefinition{
@@ -38,16 +50,22 @@ func init() {
 			Filter:        q.AccountTax().TypeTaxUse().Equals("purchase")},
 		"PropertyAccountIncome": models.Many2OneField{
 			String: "Income Account", RelationModel: h.AccountAccount(),
-			/*, CompanyDependent : true*/
 			Filter: q.AccountAccount().Deprecated().Equals(false),
 			Help: `This account will be used for invoices instead of the default one
-to value sales for the current product.`},
+to value sales for the current product.`,
+			Contexts: base.CompanyDependent,
+			Default: func(env models.Environment) interface{} {
+				return h.AccountAccount().NewSet(env).GetDefaultAccountFromChart("PropertyAccountIncome")
+			}},
 		"PropertyAccountExpense": models.Many2OneField{
 			String: "Expense Account", RelationModel: h.AccountAccount(),
-			/*, CompanyDependent : true*/
 			Filter: q.AccountAccount().Deprecated().Equals(false),
 			Help: `This account will be used for invoices instead of the default one
-to value expenses for the current product.`},
+to value expenses for the current product.`,
+			Contexts: base.CompanyDependent,
+			Default: func(env models.Environment) interface{} {
+				return h.AccountAccount().NewSet(env).GetDefaultAccountFromChart("PropertyAccountExpense")
+			}},
 	})
 
 	h.ProductTemplate().Methods().Write().Extend("",
@@ -94,6 +112,43 @@ to value expenses for the current product.`},
 			}
 			m = fiscalPos.MapAccounts(m)
 			return m["income"], m["expense"]
+		})
+
+	h.ProductProduct().Methods().ConvertPreparedAnglosaxonLine().DeclareMethod(
+		`ConvertPreparedAnglosaxonLine transforms the given accounttype.InvoiceLineAMLStruct 
+		into a m.AccountInvoiceLineData valid for move creation.`,
+		func(rs m.ProductProductSet, line accounttypes.InvoiceLineAMLStruct, partner m.PartnerSet) m.AccountMoveLineData {
+			res := h.AccountMoveLine().NewData()
+			var credit, debit, aCurrency float64
+			if line.Price > 0 {
+				debit = line.Price
+				aCurrency = math.Abs(line.AmountCurrency)
+			} else {
+				credit = -line.Price
+				aCurrency = -math.Abs(line.AmountCurrency)
+			}
+			qty := line.Quantity
+			if qty == 0 {
+				qty = 1
+			}
+			res.SetDateMaturity(line.DateMaturity).
+				SetPartner(partner).
+				SetName(line.Name).
+				SetCredit(credit).
+				SetDebit(debit).
+				SetAccount(h.AccountAccount().BrowseOne(rs.Env(), line.AccountID)).
+				SetAnalyticLines(h.AccountAnalyticLine().Browse(rs.Env(), line.AnalyticLinesIDs)).
+				SetAmountCurrency(aCurrency).
+				SetCurrency(h.Currency().BrowseOne(rs.Env(), line.CurrencyID)).
+				SetQuantity(qty).
+				SetProduct(h.ProductProduct().BrowseOne(rs.Env(), line.ProductID)).
+				SetProductUom(h.ProductUom().BrowseOne(rs.Env(), line.UomID)).
+				SetAnalyticAccount(h.AccountAnalyticAccount().BrowseOne(rs.Env(), line.AccountAnalyticID)).
+				SetInvoice(h.AccountInvoice().BrowseOne(rs.Env(), line.InvoiceID)).
+				SetTaxes(h.AccountTax().Browse(rs.Env(), line.TaxIDs)).
+				SetTaxLine(h.AccountTax().BrowseOne(rs.Env(), line.TaxLineID)).
+				SetAnalyticTags(h.AccountAnalyticTag().Browse(rs.Env(), line.AnalyticTagsIDs))
+			return res
 		})
 
 }

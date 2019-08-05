@@ -17,7 +17,6 @@ func TestMain(m *testing.M) {
 	tests.RunTests(m, "account", func() {
 		err := models.ExecuteInNewEnvironment(security.SuperUserID, func(env models.Environment) {
 			chart := h.AccountChartTemplate().NewSet(env).GetRecord("l10n_generic_coa_configurable_chart_template")
-			println(chart.ID())
 			chart.TryLoadingForCurrentCompany()
 		})
 		if err != nil {
@@ -31,7 +30,6 @@ type TestAccountBaseStruct struct {
 
 func initTestAccountBaseStruct(env models.Environment) TestAccountBaseStruct {
 	var out TestAccountBaseStruct
-	println(h.AccountChartTemplate().NewSet(env).GetRecord("l10n_generic_coa_configurable_chart_template").ID())
 	err := models.ExecuteInNewEnvironment(1, func(env models.Environment) {
 		gr := h.Group().Search(env, q.Group().GroupID().Equals("account_group_account_user"))
 		demoUser := h.User().NewSet(env).GetRecord("base_user_demo")
@@ -66,7 +64,8 @@ func initTestAccountBaseUserStruct(env models.Environment) TestAccountBaseUserSt
 	out.MainBank = h.Bank().NewSet(env).GetRecord("base_res_bank_1")
 	out.CurrencyEuro = h.Currency().NewSet(env).GetRecord("base_EUR")
 	groupsUser := h.Group().Search(env, q.Group().GroupID().Equals("account_group_account_user")).Union(
-		h.Group().Search(env, q.Group().GroupID().Equals("base_group_partner_manager")))
+		h.Group().Search(env, q.Group().GroupID().Equals("base_group_partner_manager"))).Union(
+		h.Group().Search(env, q.Group().GroupID().Equals("analytic_group_analytic_accounting")))
 	groupsManager := h.Group().Search(env, q.Group().GroupID().Equals("account_group_account_manager")).Union(
 		h.Group().Search(env, q.Group().GroupID().Equals("base_group_partner_manager")))
 	out.AccountUser = h.User().NewSet(env).WithContext("no_reset_password", true).Create(

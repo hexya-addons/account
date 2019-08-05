@@ -8,7 +8,6 @@ import (
 	"math"
 	"strings"
 
-	"github.com/hexya-addons/account/accounttypes"
 	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types"
@@ -248,12 +247,12 @@ has only one available which is 'manual'`},
 					panic(rs.T(`You can only register payments for open invoices`))
 				case !inv.CommercialPartner().Equals(invoices.CommercialPartner()):
 					panic(rs.T(`In order to pay multiple invoices at once, they must belong to the same commercial partner.`))
-				case accounttypes.MapInvoiceType_PartnerType[inv.Type()] != accounttypes.MapInvoiceType_PartnerType[invoices.Type()]:
+				case Type2PartnerType[inv.Type()] != Type2PartnerType[invoices.Type()]:
 					panic(rs.T(`You cannot mix customer invoices and vendor bills in a single payment.`))
 				case !inv.Currency().Equals(invoices.Currency()):
 					panic(rs.T(`In order to pay multiple invoices at once, they must use the same currency.`))
 				}
-				totalAmount += inv.Residual() * accounttypes.MapInvoiceType_PaymentSign[inv.Type()]
+				totalAmount += inv.Residual() * Type2PaymentType[inv.Type()]
 				if inv.Reference() != "" {
 					communication = communication + " " + inv.Reference()
 				}
@@ -268,7 +267,7 @@ has only one available which is 'manual'`},
 				rec.SetPaymentType("outbound")
 			}
 			rec.SetPartner(invoices.CommercialPartner())
-			rec.SetPartnerType(accounttypes.MapInvoiceType_PartnerType[invoices.Type()])
+			rec.SetPartnerType(Type2PartnerType[invoices.Type()])
 			rec.SetCommunication(communication)
 			return rec
 		})
@@ -370,11 +369,11 @@ set to draft and re-processed again." `},
 			ReadOnly:      true},
 	})
 
-	//h.AccountPayment().Fields().PaymentType().
-	//	UpdateSelection(types.Selection{"transfer": "Internal Transfer"}).
-	//	SetOnchange(h.AccountPayment().Methods().OnchangePaymentType())
-	//
-	//h.AccountPayment().Fields().PartnerType().SetOnchange(h.AccountPayment().Methods().OnchangePartnerType())
+	h.AccountPayment().Fields().PaymentType().
+		UpdateSelection(types.Selection{"transfer": "Internal Transfer"}).
+		SetOnchange(h.AccountPayment().Methods().OnchangePaymentType())
+	h.AccountPayment().Fields().PartnerType().
+		SetOnchange(h.AccountPayment().Methods().OnchangePartnerType())
 
 	h.AccountPayment().Methods().ComputeHasInvoice().DeclareMethod(
 		`ComputeHasInvoice`,
@@ -472,7 +471,7 @@ set to draft and re-processed again." `},
 				} else {
 					rec.SetPaymentType("outbound")
 				}
-				rec.SetPartnerType(accounttypes.MapInvoiceType_PartnerType[invoice.Type()])
+				rec.SetPartnerType(Type2PartnerType[invoice.Type()])
 				rec.SetPartner(invoice.Partner())
 				rec.SetAmount(invoice.Residual())
 			}
@@ -599,7 +598,11 @@ set to draft and re-processed again." `},
 				default:
 					sequenceCode = ""
 				}
-				data.SetName(h.Sequence().NewSet(rs.Env()).WithContext("ir_sequence_date", rec.PaymentDate()).NextByCode(sequenceCode))
+				name := h.Sequence().NewSet(rs.Env()).WithContext("ir_sequence_date", rec.PaymentDate()).NextByCode(sequenceCode)
+				if name == "" && rec.PaymentType() != "transfer" {
+					panic(rs.T("You have to define a sequence for %s in your company.", sequenceCode))
+				}
+				data.SetName(name)
 
 				// Create the journal entry
 				sign = -1
@@ -698,7 +701,7 @@ set to draft and re-processed again." `},
 				}
 				counterpartAml.SetAmountCurrency(counterpartAml.AmountCurrency() - amountCurrencyWo)
 			}
-			rs.Invoices().RegisterPayment(counterpartAml, h.AccountAccount().NewSet(env), h.AccountJournal().NewSet(env))
+			rs.Invoices().WithContext("check_move_validity", false).RegisterPayment(counterpartAml, h.AccountAccount().NewSet(env), h.AccountJournal().NewSet(env))
 
 			// Write counterpart lines
 			if !rs.Currency().Equals(rs.Company().Currency()) {
@@ -769,7 +772,6 @@ set to draft and re-processed again." `},
 				SetName(name).
 				SetDate(rs.PaymentDate()).
 				SetRef(rs.Communication()).
-				SetCompany(rs.Company()).
 				SetJournal(journal)
 		})
 
@@ -818,7 +820,7 @@ set to draft and re-processed again." `},
 							name += inv.Number() + ", "
 						}
 					}
-					name = string([]byte(name)[:len(name)-2])
+					name = name[:len(name)-2]
 				}
 			}
 
@@ -829,8 +831,8 @@ set to draft and re-processed again." `},
 				SetName(name).
 				SetJournal(rs.Journal()).
 				SetCurrency(CurrencyVal).
-				SetPayment(rs)
-			ret.SetAccount(rs.DestinationAccount())
+				SetPayment(rs).
+				SetAccount(rs.DestinationAccount())
 			return ret
 		})
 

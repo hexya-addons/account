@@ -21,7 +21,7 @@ func init() {
 	GroupPartnerManager = security.Registry.GetGroup("base_group_partner_manager")
 	GroupAccountInvoice = security.Registry.NewGroup("account_group_account_invoice", "Billing", GroupUser)
 	GroupAccountUser = security.Registry.NewGroup("account_group_account_user", "Accountant", GroupAccountInvoice)
-	GroupAccountUser = security.Registry.NewGroup("account_group_account_manager", "Adviser", GroupAccountUser)
+	GroupAccountManager = security.Registry.NewGroup("account_group_account_manager", "Adviser", GroupAccountUser)
 
 	h.ProductProduct().Methods().Load().AllowGroup(GroupAccountUser)
 	h.ProductProduct().Methods().AllowAllToGroup(GroupAccountManager)
@@ -103,5 +103,4 @@ func init() {
 	h.AccountTaxGroup().Methods().Load().AllowGroup(GroupUser)
 	h.AccountTaxGroup().Methods().Load().AllowGroup(GroupAccountInvoice)
 	h.AccountTaxGroup().Methods().AllowAllToGroup(GroupAccountManager)
-	h.BankAccount()
 }

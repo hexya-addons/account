@@ -149,7 +149,6 @@ from the fiscal year only. Account types that should be reset to zero at each ne
 legal reports, and set the rules to close a fiscal year and generate opening entries.`},
 		"InternalType": models.SelectionField{
 			Related:    "UserType.Type",
-			Stored:     true,
 			ReadOnly:   true,
 			Constraint: h.AccountAccount().Methods().CheckReconcile(),
 			OnChange:   h.AccountAccount().Methods().OnchangeInternalType()},
@@ -187,6 +186,25 @@ or if you click the "Done" button.`},
 		"code_company_uniq",
 		"unique (code,company_id)",
 		"The code of the account must be unique per company !")
+
+	h.AccountAccount().Methods().GetDefaultAccountFromChart().DeclareMethod(
+		`GetDefaultAccountFromChart returns the default account with the given name from the installed chart of account. 
+		If there is no chart of account installed, then a dummy account is returned (and created if necessary)`,
+		func(rs m.AccountAccountSet, name string) m.AccountAccountSet {
+			company := h.Company().BrowseOne(rs.Env(), rs.Env().Context().GetInteger("force_company"))
+			if company.IsEmpty() {
+				company = h.User().NewSet(rs.Env()).CurrentUser().Company()
+				if company.IsEmpty() {
+					return nil
+				}
+			}
+			tmplExternalID := company.ChartTemplate().Get(name).(models.RecordSet).Collection().Wrap().(m.AccountAccountTemplateSet).HexyaExternalID()
+			if tmplExternalID == "" {
+				return nil
+			}
+			return h.AccountAccount().NewSet(rs.Env()).GetRecord(fmt.Sprintf("%d_%s", company.ID(), tmplExternalID))
+
+		})
 
 	h.AccountAccount().Methods().CheckReconcile().DeclareMethod(
 		`CheckReconcile`,
@@ -644,7 +662,7 @@ journalCompany holder: '%s' - ID_%d
 			if refund {
 				prefix = "R" + prefix
 			}
-			return prefix + "/%(range_year)%/"
+			return prefix + "/%(range_year)s/"
 		})
 
 	h.AccountJournal().Methods().CreateSequence().DeclareMethod(

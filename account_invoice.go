@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/hexya-addons/account/accounttypes"
 	"github.com/hexya-addons/decimalPrecision"
@@ -14,7 +15,6 @@ import (
 	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/operator"
-	"github.com/hexya-erp/hexya/src/models/security"
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
 	"github.com/hexya-erp/hexya/src/tools/nbutils"
@@ -25,15 +25,42 @@ import (
 	"github.com/hexya-erp/pool/q"
 )
 
+// ReferenceType for a move
 var ReferenceType = types.Selection{
 	"none": "Free Reference",
 }
 
+// Type2Journal is mapping from invoice type to journal type
 var Type2Journal = map[string]string{
 	"out_invoice": "sale",
 	"in_invoice":  "purchase",
 	"out_refund":  "sale",
 	"in_refund":   "purchase",
+}
+
+// Type2Refund is a mapping from invoice type to refund type
+var Type2Refund = map[string]string{
+	`out_invoice`: `out_refund`,  // Customer Invoice
+	`in_invoice`:  `in_refund`,   // Vendor Bill
+	`out_refund`:  `out_invoice`, // Customer Refund
+	`in_refund`:   `in_invoice`,  // Vendor Refund
+}
+
+// Type2PartnerType is a mapping from invoice type to partner type
+var Type2PartnerType = map[string]string{
+	`out_invoice`: `customer`,
+	`out_refund`:  `customer`,
+	`in_invoice`:  `supplier`,
+	`in_refund`:   `supplier`,
+}
+
+// Type2PaymentType is a mapping from invoice type to 1 or -1.
+// Since invoice amounts are unsigned, this is how we know if money comes in or goes out
+var Type2PaymentType = map[string]float64{
+	`out_invoice`: 1.0,
+	`in_refund`:   1.0,
+	`in_invoice`:  -1.0,
+	`out_refund`:  -1.0,
 }
 
 func init() {
@@ -349,31 +376,33 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			residual := 0.0
 			residualCompanySigned := 0.0
 			sign := 1.0
-			if rs.Type() == "in_refund" || rs.Type() == "out_refund" {
+			if strutils.IsIn(rs.Type(), "in_refund", "out_refund") {
 				sign = -1.0
 			}
-			for _, line := range rs.Sudo(security.SuperUserID).Move().Lines().Records() {
-				if internType := line.Account().InternalType(); internType == "receivable" || internType == "payable" {
-					residualCompanySigned += line.AmountResidual()
-					if line.Currency().Equals(rs.Currency()) {
-						if line.Currency().IsNotEmpty() {
-							residual += line.AmountResidualCurrency()
-						} else {
-							residual += line.AmountResidual()
-						}
+			for _, line := range rs.Sudo().Move().Lines().Records() {
+				if !strutils.IsIn(line.Account().InternalType(), "receivable", "payable") {
+					continue
+				}
+				residualCompanySigned += line.AmountResidual()
+				if line.Currency().Equals(rs.Currency()) {
+					if line.Currency().IsNotEmpty() {
+						residual += line.AmountResidualCurrency()
 					} else {
-						fromCurrency := line.Company().Currency().WithContext("date", line.Date())
-						if line.Currency().IsNotEmpty() {
-							fromCurrency = line.Currency().WithContext("date", line.Date())
-						}
-						residual += fromCurrency.Compute(line.AmountResidual(), rs.Currency(), true)
+						residual += line.AmountResidual()
 					}
+				} else {
+					fromCurrency := line.Company().Currency().WithContext("date", line.Date())
+					if line.Currency().IsNotEmpty() {
+						fromCurrency = line.Currency().WithContext("date", line.Date())
+					}
+					residual += fromCurrency.Compute(line.AmountResidual(), rs.Currency(), true)
 				}
 			}
 			data := h.AccountInvoice().NewData()
 			data.SetResidualCompanySigned(math.Abs(residualCompanySigned) * sign)
 			data.SetResidualSigned(math.Abs(residual) * sign)
 			data.SetResidual(math.Abs(residual))
+			data.SetReconciled(false)
 			if nbutils.IsZero(data.Residual(), rs.Currency().Rounding()) {
 				data.SetReconciled(true)
 			}
@@ -521,8 +550,11 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 	h.AccountInvoice().Methods().ComputePayments().DeclareMethod(
 		`ComputePayments`,
 		func(rs m.AccountInvoiceSet) m.AccountInvoiceData {
-			var paymentLines m.AccountMoveLineSet
+			paymentLines := h.AccountMoveLine().NewSet(rs.Env())
 			for _, line := range rs.Move().Lines().Records() {
+				if !line.Account().Equals(rs.Account()) {
+					continue
+				}
 				for _, rp := range line.MatchedCredits().Records() {
 					if rp.CreditMove().IsNotEmpty() {
 						paymentLines = paymentLines.Union(rp.CreditMove())
@@ -534,43 +566,39 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 					}
 				}
 			}
-			data := h.AccountInvoice().NewData()
-			data.SetPaymentMoveLines(paymentLines)
+			data := h.AccountInvoice().NewData().
+				SetPaymentMoveLines(paymentLines)
 			return data
 		})
 
-	var prevent_recursion_with_onchange_fields bool
-
 	h.AccountInvoice().Methods().Create().Extend("",
 		func(rs m.AccountInvoiceSet, data m.AccountInvoiceData) m.AccountInvoiceSet {
-			if prevent_recursion_with_onchange_fields {
-				return rs.Super().Create(data)
-			}
-			isAnyFieldChanging := func(fields []string) bool {
-				for _, field := range fields {
-					if data.Has(field) {
-						return true
-					}
+			if !rs.Env().Context().HasKey("account_account_create_no_recursion") {
+				partnerFields := map[string]bool{
+					"Account":        true,
+					"PaymentTerm":    true,
+					"FiscalPosition": true,
+					"PartnerBank":    true,
 				}
-				return false
-			}
-			onchanges := map[string][]string{
-				"OnchangePartner": {"Account", "PaymentTerm", "FiscalPosition", "PartnerBank"},
-				"OnchangeJournal": {"Currency"},
-			}
-			for onchangeMethod, changedFields := range onchanges {
-				_ = onchangeMethod
-				if isAnyFieldChanging(changedFields) {
-					prevent_recursion_with_onchange_fields = true
-					invoice := h.AccountInvoice().Create(rs.Env(), data)
-					invoice.Call(onchangeMethod)
-					for _, field := range changedFields {
-						if data.Get(field) == nil && invoice.Get(field) != nil {
-							data.Set(field, invoice.Get(field))
+				journalFields := map[string]bool{
+					"Currency": true,
+				}
+
+				isMissing := func(fields []models.FieldNamer, refFields map[string]bool) bool {
+					for _, f := range fields {
+						if !refFields[f.String()] {
+							return true
 						}
 					}
-					invoice.Unlink()
-					prevent_recursion_with_onchange_fields = false
+					return false
+				}
+
+				if isMissing(data.FieldNames(), partnerFields) {
+					data = rs.UpdateDataForPartner(data.Partner(), data)
+				}
+				if isMissing(data.FieldNames(), journalFields) {
+					data = rs.UpdateDataForJournal(data.Journal(), data)
+
 				}
 			}
 			if data.Account().IsEmpty() {
@@ -582,6 +610,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				for _, line := range invoice.InvoiceLines().Records() {
 					if line.InvoiceLineTaxes().IsNotEmpty() {
 						hasLines = true
+						break
 					}
 				}
 				if hasLines {
@@ -593,13 +622,13 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().Write().Extend("",
 		func(rs m.AccountInvoiceSet, vals m.AccountInvoiceData) bool {
-			preNotReconciled := rs.Filtered(func(rs m.AccountInvoiceSet) bool { return !rs.Reconciled() })
+			preNotReconciled := rs.Filtered(func(r m.AccountInvoiceSet) bool { return !r.Reconciled() })
 			preReconciled := rs.Subtract(preNotReconciled)
 			res := rs.Super().Write(vals)
-			reconciled := rs.Filtered(func(rs m.AccountInvoiceSet) bool { return rs.Reconciled() })
+			reconciled := rs.Filtered(func(r m.AccountInvoiceSet) bool { return r.Reconciled() })
 			notReconciled := rs.Subtract(reconciled)
-			reconciled.Intersect(preReconciled).Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() == "open" }).ActionInvoicePaid()
-			notReconciled.Intersect(preNotReconciled).Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() == "paid" }).ActionInvoiceReOpen()
+			reconciled.Intersect(preReconciled).Filtered(func(r m.AccountInvoiceSet) bool { return r.State() == "open" }).ActionInvoicePaid()
+			notReconciled.Intersect(preNotReconciled).Filtered(func(r m.AccountInvoiceSet) bool { return r.State() == "paid" }).ActionInvoiceReOpen()
 			return res
 		})
 
@@ -711,16 +740,22 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		func(rs m.AccountInvoiceSet) m.AccountInvoiceData {
 			p := rs.Partner()
 			if rs.Company().IsNotEmpty() {
-				p = rs.Partner().WithContext("force_company", rs.Company())
+				p = rs.Partner().WithContext("force_company", rs.Company().ID())
 			}
 			data := h.AccountInvoice().NewData()
+			data = rs.UpdateDataForPartner(p, data)
+			return data
+		})
+
+	h.AccountInvoice().Methods().UpdateDataForPartner().DeclareMethod(
+		`UpdateDataForPartner updates the missing fields in the given data considering the given Partner.`,
+		func(rs m.AccountInvoiceSet, p m.PartnerSet, data m.AccountInvoiceData) m.AccountInvoiceData {
 			if p.IsNotEmpty() {
 				recAccount := p.PropertyAccountReceivable()
 				payAccount := p.PropertyAccountPayable()
 				if recAccount.IsEmpty() && payAccount.IsEmpty() {
-					//action = self.env.ref('account.action_account_config')
-					//msg = _('Cannot find a chart of accounts for this company, You should configure it. \nPlease go to Account Configuration.')
-					//raise RedirectWarning(msg, action.id, _('Go to the configuration panel'))  //tovalid hexya RedirectWarning
+					panic("Cannot find a chart of accounts for this company, " +
+						"You should configure it. \nPlease go to Account Configuration.")
 				}
 				if strutils.IsIn(rs.Type(), "out_invoice", "out_refund") {
 					data.SetAccount(recAccount)
@@ -729,8 +764,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 					data.SetAccount(payAccount)
 					data.SetPaymentTerm(p.PropertySupplierPaymentTerm())
 				}
-				deliveryPartner := rs.GetDeliveryPartner()
-				data.SetFiscalPosition(h.AccountFiscalPosition().NewSet(rs.Env()).GetFiscalPosition(rs.Partner(), deliveryPartner))
+				deliveryPartner := rs.GetDeliveryPartner(p)
+				data.SetFiscalPosition(h.AccountFiscalPosition().NewSet(rs.Env()).GetFiscalPosition(p, deliveryPartner))
 				// If partner has no warning, check its company
 				if p.InvoiceWarn() == "no-message" && p.Parent().IsNotEmpty() {
 					p = p.Parent()
@@ -774,17 +809,23 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().GetDeliveryPartner().DeclareMethod(
 		`GetDeliveryPartner`,
-		func(rs m.AccountInvoiceSet) m.PartnerSet {
-			rs.EnsureOne()
-			return rs.Partner().AddressGet([]string{"delivery"})["delivery"]
+		func(rs m.AccountInvoiceSet, p m.PartnerSet) m.PartnerSet {
+			return p.AddressGet([]string{"delivery"})["delivery"]
 		})
 
 	h.AccountInvoice().Methods().OnchangeJournal().DeclareMethod(
 		`OnchangeJournal`,
 		func(rs m.AccountInvoiceSet) m.AccountInvoiceData {
 			data := h.AccountInvoice().NewData()
-			if rs.Journal().IsNotEmpty() {
-				data.SetCurrency(h.Currency().Coalesce(rs.Journal().Currency(), rs.Journal().Company().Currency()))
+			data = rs.UpdateDataForJournal(data.Journal(), data)
+			return data
+		})
+
+	h.AccountInvoice().Methods().UpdateDataForJournal().DeclareMethod(
+		`UpdateDataForJournal updates the missing fields in the given data considering the given journal`,
+		func(rs m.AccountInvoiceSet, j m.AccountJournalSet, data m.AccountInvoiceData) m.AccountInvoiceData {
+			if j.IsNotEmpty() {
+				data.SetCurrency(h.Currency().Coalesce(j.Currency(), j.Company().Currency()))
 			}
 			return data
 		})
@@ -805,7 +846,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				}
 			} else {
 				pTerm := rs.PaymentTerm()
-				pTermList := pTerm.WithContext("currency_id", rs.Company().Currency()).Compute(1, dateInvoice)
+				pTermList := pTerm.WithContext("currency_id", rs.Company().Currency().ID()).Compute(1, dateInvoice)
 				max := pTermList[0].Date
 				for _, line := range pTermList {
 					if max.Lower(line.Date) {
@@ -855,8 +896,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		`ActionInvoiceOpen`,
 		func(rs m.AccountInvoiceSet) bool {
 			// lots of duplicate calls to action_invoice_open, so we remove those already open
-			toOpenInvoices := rs.Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() != "open" })
-			if toOpenInvoices.Filtered(func(rs m.AccountInvoiceSet) bool { return !strutils.IsIn(rs.State(), "proforma2", "draft") }).IsNotEmpty() {
+			toOpenInvoices := rs.Filtered(func(r m.AccountInvoiceSet) bool { return r.State() != "open" })
+			if toOpenInvoices.Filtered(func(r m.AccountInvoiceSet) bool { return !strutils.IsIn(r.State(), "proforma2", "draft") }).IsNotEmpty() {
 				panic(rs.T(`Invoice must be in draft or Pro-forma state in order to validate it.`))
 			}
 			toOpenInvoices.ActionDateAssign()
@@ -970,8 +1011,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			writeOffJournal m.AccountJournalSet) m.AccountMoveLineSet {
 			lineToReconcile := h.AccountMoveLine().NewSet(rs.Env())
 			for _, inv := range rs.Records() {
-				lineToReconcile = lineToReconcile.Union(inv.Move().Lines().Filtered(func(rs m.AccountMoveLineSet) bool {
-					return !rs.Reconciled() && strutils.IsIn(rs.Account().InternalType(), "payable", "receivable")
+				lineToReconcile = lineToReconcile.Union(inv.Move().Lines().Filtered(func(r m.AccountMoveLineSet) bool {
+					return !r.Reconciled() && strutils.IsIn(r.Account().InternalType(), "payable", "receivable")
 				}))
 			}
 			return lineToReconcile.Union(paymentLine).Reconcile(writeOffAccount, writeOffJournal)
@@ -996,8 +1037,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		`ActionDateAssign`,
 		func(rs m.AccountInvoiceSet) bool {
 			for _, inv := range rs.Records() {
-				//Here the onchange will automatically write to the database
-				inv.OnchangePaymentTermDateInvoice()
+				inv.Write(inv.OnchangePaymentTermDateInvoice())
 			}
 			return true
 		})
@@ -1020,129 +1060,129 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().ComputeInvoiceTotals().DeclareMethod(
 		`ComputeInvoiceTotals`,
-		func(rs m.AccountInvoiceSet, companyCurrency m.CurrencySet, invoiceMoveLines []m.AccountInvoiceLineData) (float64, float64, []m.AccountInvoiceLineData) {
-			//@api.multi
-			/*def compute_invoice_totals(self, company_currency, invoice_move_lines):
-						for line in invoice_move_lines:
-							if self.currency_id != company_currency:
-								currency = self.currency_id.with_context(date=self._get_currency_rate_date() or fields.Date.context_today(self))
-								if not (line.get('currency_id') and line.get('amount_currency')):
-									line['currency_id'] = currency.id
-									line['amount_currency'] = currency.round(line['price'])
-									line['price'] = currency.compute(line['price'], company_currency)
-							else:
-								line['currency_id'] = False
-								line['amount_currency'] = False
-								line['price'] = self.currency_id.round(line['price'])
-							if self.type in ('out_invoice', 'in_refund'):
-								total += line['price']
-								total_currency += line['amount_currency'] or line['price']
-								line['price'] = - line['price']
-							else:
-								total -= line['price']
-								total_currency -= line['amount_currency'] or line['price']
-			        	return total, total_currency, invoice_move_lines*/
-			//total := 0.0
-			//totalCurrency := 0.0
-			//for _, line := range invoiceMoveLines {
-			//	if !rs.Currency().Equals(companyCurrency) {
-			//		lineData := h.AccountMoveLine().NewData()
-			//		var dateVal dates.Date
-			//		if dateVal = rs.GetCurrencyRateDate(); dateVal.IsZero() {
-			//			dateVal = dates.Now().ToDate()
-			//		}
-			//		currency := rs.Currency().WithContext("date", dateVal)
-			//		if !(line.Currency().IsEmpty() && line.AmountCurrency() == 0.0) {
-			//			lineData.SetCurrency(currency).SetAmountCurrency(currency.Round(line.Price())) //tovalid field Price missing
-			//		}
-			//	}
-			//}
-			return 0, 0, nil
+		func(rs m.AccountInvoiceSet, companyCurrency m.CurrencySet, invoiceMoveLines []accounttypes.InvoiceLineAMLStruct) (float64, float64, []accounttypes.InvoiceLineAMLStruct) {
+			total := 0.0
+			totalCurrency := 0.0
+			for i, line := range invoiceMoveLines {
+				switch {
+				case !rs.Currency().Equals(companyCurrency):
+					dateVal := rs.GetCurrencyRateDate()
+					if dateVal.IsZero() {
+						dateVal = dates.Now().ToDate()
+					}
+					currency := rs.Currency().WithContext("date", dateVal)
+					if line.CurrencyID == 0 || line.AmountCurrency == 0 {
+						line.CurrencyID = currency.ID()
+						line.AmountCurrency = currency.Round(line.Price)
+						line.Price = currency.Compute(line.Price, companyCurrency, true)
+					}
+				default:
+					line.CurrencyID = 0
+					line.AmountCurrency = 0
+					line.Price = rs.Currency().Round(line.Price)
+				}
+
+				priceCurrency := line.AmountCurrency
+				if priceCurrency == 0 {
+					priceCurrency = line.Price
+				}
+				switch {
+				case strutils.IsIn(rs.Type(), "out_invoice", "in_refund"):
+					total += line.Price
+					totalCurrency += priceCurrency
+					line.Price = -line.Price
+				default:
+					total -= line.Price
+					totalCurrency -= priceCurrency
+				}
+				invoiceMoveLines[i] = line
+			}
+			return total, totalCurrency, invoiceMoveLines
 		})
 
 	h.AccountInvoice().Methods().InvoiceLineMoveLineGet().DeclareMethod(
 		`InvoiceLineMoveLineGet`,
-		func(rs m.AccountInvoiceSet) []m.AccountInvoiceLineData {
-			//@api.model
-			/*def invoice_line_move_line_get(self):
-			  res = []
-			  for line in self.invoice_line_ids:
-			      if line.quantity==0:
-			          continue
-			      tax_ids = []
-			      for tax in line.invoice_line_tax_ids:
-			          tax_ids.append((4, tax.id, None))
-			          for child in tax.children_tax_ids:
-			              if child.type_tax_use != 'none':
-			                  tax_ids.append((4, child.id, None))
-			      analytic_tag_ids = [(4, analytic_tag.id, None) for analytic_tag in line.analytic_tag_ids]
+		func(rs m.AccountInvoiceSet) []accounttypes.InvoiceLineAMLStruct {
+			var res []accounttypes.InvoiceLineAMLStruct
+			for _, line := range rs.InvoiceLines().Records() {
+				if line.Quantity() == 0 {
+					continue
+				}
+				taxes := h.AccountTax().NewSet(rs.Env())
+				for _, tax := range line.InvoiceLineTaxes().Records() {
+					taxes = taxes.Union(tax)
+					for _, child := range tax.ChildrenTaxes().Records() {
+						if child.TypeTaxUse() != "none" {
+							taxes = taxes.Union(child)
+						}
+					}
+				}
 
-			      move_line_dict = {  // tovalid data type?
-			          'invl_id': line.id,
-			          'type': 'src',
-			          'name': line.name.split('\n')[0][:64],
-			          'price_unit': line.price_unit,
-			          'quantity': line.quantity,
-			          'price': line.price_subtotal,
-			          'account_id': line.account_id.id,
-			          'product_id': line.product_id.id,
-			          'uom_id': line.uom_id.id,
-			          'account_analytic_id': line.account_analytic_id.id,
-			          'tax_ids': tax_ids,
-			          'invoice_id': self.id,
-			          'analytic_tag_ids': analytic_tag_ids
-			      }
-			      if line['account_analytic_id']:
-			          move_line_dict['analytic_line_ids'] = [(0, 0, line._get_analytic_line())]
-			      res.append(move_line_dict)
-			  return res
-
-			*/
-			var res []m.AccountInvoiceLineData
-			//for _, line := range rs.InvoiceLines().Records() {
-			//	data := h.AccountTax().NewData()
-			//	if line.Quantity() == 0.0 {
-			//		continue
-			//	}
-			//	for _, tax := range line.InvoiceLineTaxes().Records() {
-			//	}
-			//}
+				name := strings.Split(line.Name(), "\n")[0]
+				if len(name) > 64 {
+					name = name[:64]
+				}
+				moveLineData := accounttypes.InvoiceLineAMLStruct{
+					InvoiceLineID:     line.ID(),
+					Type:              "src",
+					Name:              name,
+					PriceUnit:         line.PriceUnit(),
+					Quantity:          line.Quantity(),
+					Price:             line.PriceSubtotal(),
+					AccountID:         line.Account().ID(),
+					ProductID:         line.Product().ID(),
+					UomID:             line.Uom().ID(),
+					AccountAnalyticID: line.AccountAnalytic().ID(),
+					TaxIDs:            taxes.Ids(),
+					InvoiceID:         rs.ID(),
+					AnalyticTagsIDs:   line.AnalyticTags().Ids(),
+				}
+				res = append(res, moveLineData)
+			}
 			return res
 		})
 
 	h.AccountInvoice().Methods().TaxLineMoveLineGet().DeclareMethod(
 		`TaxLineMoveLineGet`,
-		func(rs m.AccountInvoiceSet) []m.AccountInvoiceLineData {
-			//@api.model
-			/*def tax_line_move_line_get(self):
-			  res = []
-			  # keep track of taxes already processed
-			  done_taxes = []
-			  # loop the invoice.tax.line in reversal sequence
-			  for tax_line in sorted(self.tax_line_ids, key=lambda x: -x.sequence):
-			      if tax_line.amount:
-			          tax = tax_line.tax_id
-			          if tax.amount_type == "group":
-			              for child_tax in tax.children_tax_ids:
-			                  done_taxes.append(child_tax.id)
-			          res.append({ //tovalid data type?
-			              'invoice_tax_line_id': tax_line.id,
-			              'tax_line_id': tax_line.tax_id.id,
-			              'type': 'tax',
-			              'name': tax_line.name,
-			              'price_unit': tax_line.amount,
-			              'quantity': 1,
-			              'price': tax_line.amount,
-			              'account_id': tax_line.account_id.id,
-			              'account_analytic_id': tax_line.account_analytic_id.id,
-			              'invoice_id': self.id,
-			              'tax_ids': [(6, 0, list(done_taxes))] if tax_line.tax_id.include_base_amount else []
-			          })
-			          done_taxes.append(tax.id)
-			  return res
+		func(rs m.AccountInvoiceSet) []accounttypes.InvoiceLineAMLStruct {
+			var res []accounttypes.InvoiceLineAMLStruct
+			// keep track of taxes already processed
+			doneTaxes := make(map[int64]bool)
+			// loop the invoice.tax.line in reversal sequence
+			taxLines := rs.TaxLines().Sorted(func(r1 m.AccountInvoiceTaxSet, r2 m.AccountInvoiceTaxSet) bool {
+				return r1.Sequence() > r2.Sequence()
+			})
+			for _, taxLine := range taxLines.Records() {
+				if taxLine.Amount() == 0 {
+					continue
+				}
+				if taxLine.Tax().AmountType() == "group" {
+					for _, childTax := range taxLine.Tax().ChildrenTaxes().Records() {
+						doneTaxes[childTax.ID()] = true
+					}
+				}
+				var taxeIDS []int64
+				if taxLine.Tax().IncludeBaseAmount() {
+					for t := range doneTaxes {
+						taxeIDS = append(taxeIDS, t)
+					}
+				}
 
-			*/
-			return []m.AccountInvoiceLineData{}
+				res = append(res, accounttypes.InvoiceLineAMLStruct{
+					InvoiceLineTaxID:  taxLine.ID(),
+					TaxLineID:         taxLine.Tax().ID(),
+					Type:              "tax",
+					Name:              taxLine.Name(),
+					PriceUnit:         taxLine.Amount(),
+					Quantity:          1,
+					Price:             taxLine.Amount(),
+					AccountID:         taxLine.Account().ID(),
+					AccountAnalyticID: taxLine.AccountAnalytic().ID(),
+					InvoiceID:         rs.ID(),
+					TaxIDs:            taxeIDS,
+				})
+			}
+			return res
 		})
 
 	h.AccountInvoice().Methods().InvLineCharacteristicHashcode().DeclareMethod(
@@ -1163,31 +1203,32 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().GroupLines().DeclareMethod(
 		`GroupLines Merge account move lines (and hence analytic lines) if invoice line hashcodes are equals`,
-		func(rs m.AccountInvoiceSet, iml []m.AccountInvoiceLineData, lines []m.AccountMoveLineData) []m.AccountMoveLineData {
+		func(rs m.AccountInvoiceSet, lines []m.AccountMoveLineData) []m.AccountMoveLineData {
 			var datas []m.AccountMoveLineData
-			if rs.Journal().GroupInvoiceLines() {
-				line2 := make(map[string]m.AccountMoveLineData)
-				for _, line := range lines {
-					tmp := rs.InvLineCharacteristicHashcode(line)
-					if data, ok := line2[tmp]; ok {
-						am := data.Debit() - data.Credit() + (line.Debit() - line.Credit())
-						if am > 0 {
-							data.SetDebit(am)
-						} else if am < 0 {
-							data.SetCredit(am)
-						}
-						data.SetAmountCurrency(data.AmountCurrency() + line.AmountCurrency())
-						data.SetAnalyticLines(data.AnalyticLines().Union(line.AnalyticLines()))
-						if qty := line.Quantity(); qty != 0.0 {
-							data.SetQuantity(data.Quantity() + qty)
-						}
-					} else {
-						line2[tmp] = line
+			if !rs.Journal().GroupInvoiceLines() {
+				return lines
+			}
+			line2 := make(map[string]m.AccountMoveLineData)
+			for _, l := range lines {
+				tmp := rs.InvLineCharacteristicHashcode(l)
+				if _, ok := line2[tmp]; ok {
+					am := line2[tmp].Debit() - line2[tmp].Credit() + (l.Debit() - l.Credit())
+					if am > 0 {
+						line2[tmp].SetDebit(am)
+					} else if am < 0 {
+						line2[tmp].SetCredit(-am)
 					}
+					line2[tmp].SetAmountCurrency(line2[tmp].AmountCurrency() + l.AmountCurrency())
+					line2[tmp].SetAnalyticLines(line2[tmp].AnalyticLines().Union(l.AnalyticLines()))
+					if qty := l.Quantity(); qty != 0.0 {
+						line2[tmp].SetQuantity(line2[tmp].Quantity() + qty)
+					}
+				} else {
+					line2[tmp] = l
 				}
-				for _, val := range line2 {
-					datas = append(datas, val)
-				}
+			}
+			for _, val := range line2 {
+				datas = append(datas, val)
 			}
 			return datas
 		})
@@ -1220,70 +1261,84 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				if inv.Name() != "" {
 					name = inv.Name()
 				}
-				// FIXME
-				fmt.Println(diffCurrency, total, totalCurrency, name)
+
 				if inv.PaymentTerm().IsNotEmpty() {
-					/*
-						totlines = inv.with_context(ctx).payment_term_id.with_context(currency_id=company_currency.id).compute(total, inv.date_invoice)[0]
-						res_amount_currency = total_currency
-						ctx['date'] = inv._get_currency_rate_date()
-						for i, t in enumerate(totlines):
-							if inv.currency_id != company_currency:
-								amount_currency = company_currency.with_context(ctx).compute(t[1], inv.currency_id)
-							else:
-								amount_currency = False
+					totLines := inv.WithNewContext(ctx).PaymentTerm().WithContext("currency_id", companyCurrency.ID()).Compute(total, inv.DateInvoice())
+					resAmountCurrency := totalCurrency
+					ctx.WithKey("data", inv.GetCurrencyRateDate())
+					var amountCurrency float64
+					for i, t := range totLines {
+						if !inv.Currency().Equals(companyCurrency) {
+							amountCurrency = companyCurrency.WithNewContext(ctx).Compute(t.Amount, inv.Currency(), true)
+						}
 
-							# last line: add the diff
-							res_amount_currency -= amount_currency or 0
-							if i + 1 == len(totlines):
-								amount_currency += res_amount_currency
-
-							iml.append({ //tovalid fields missing
-								'type': 'dest',
-								'name': name,
-								'price': t[1],
-								'account_id': inv.account_id.id,
-								'date_maturity': t[0],
-								'amount_currency': diff_currency and amount_currency,
-								'currency_id': diff_currency and inv.currency_id.id,
-								'invoice_id': inv.id
-							})
-					*/
-				} else {
-					/*
-						iml.append({ //tovalid fields missing
-							'type': 'dest',
-							'name': name,
-							'price': total,
-							'account_id': inv.account_id.id,
-							'date_maturity': inv.date_due,
-							'amount_currency': diff_currency and total_currency,
-							'currency_id': diff_currency and inv.currency_id.id,
-							'invoice_id': inv.id
+						// last line: add the diff
+						resAmountCurrency -= amountCurrency
+						if i == len(totLines)-1 {
+							amountCurrency += resAmountCurrency
+						}
+						var (
+							ac  float64
+							cid int64
+						)
+						if diffCurrency {
+							ac = amountCurrency
+							cid = inv.Currency().ID()
+						}
+						iml = append(iml, accounttypes.InvoiceLineAMLStruct{
+							Type:           "dest",
+							Name:           name,
+							Price:          t.Amount,
+							AccountID:      inv.Account().ID(),
+							DateMaturity:   t.Date,
+							AmountCurrency: ac,
+							CurrencyID:     cid,
+							InvoiceID:      inv.ID(),
 						})
-					*/
+					}
+				} else {
+					var (
+						ac  float64
+						cid int64
+					)
+					if diffCurrency {
+						ac = totalCurrency
+						cid = inv.Currency().ID()
+					}
+					iml = append(iml, accounttypes.InvoiceLineAMLStruct{
+						Type:           "dest",
+						Name:           name,
+						Price:          total,
+						AccountID:      inv.Account().ID(),
+						DateMaturity:   inv.DateDue(),
+						AmountCurrency: ac,
+						CurrencyID:     cid,
+						InvoiceID:      inv.ID(),
+					})
 				}
-				part := rs.Partner().FindAccountingPartner(inv.Partner())
-				var line []m.AccountMoveLineData
+
+				part := h.Partner().NewSet(rs.Env()).FindAccountingPartner(inv.Partner())
+				var lines []m.AccountMoveLineData
 				for _, l := range iml {
-					line = append(line, rs.LineGetConvert(l, part))
+					lines = append(lines, rs.LineGetConvert(l, part))
 				}
-				line = inv.FinalizeInvoiceMoveLines(inv.GroupLines(iml, line))
+				lines = inv.GroupLines(lines)
+				lines = inv.FinalizeInvoiceMoveLines(lines)
+
 				journal := inv.Journal().WithNewContext(ctx)
 				date := inv.DateInvoice()
 				if val := inv.Date(); !val.IsZero() {
 					date = val
 				}
-				lines := h.AccountMoveLine().NewSet(rs.Env())
-				for _, l := range line {
-					lines = lines.Union(h.AccountMoveLine().Create(rs.Env(), l))
-				}
 				data := h.AccountMove().NewData().
 					SetRef(inv.Reference()).
-					SetLines(lines).
 					SetJournal(journal).
 					SetDate(date).
 					SetNarration(inv.Comment())
+				for _, l := range lines {
+					data = data.CreateLines(l)
+				}
+
 				ctx = ctx.WithKey("company_id", inv.Company().ID()).WithKey("invoice_id", inv.ID())
 				ctxNolang := ctx.Copy().WithKey("lang", "")
 				move := h.AccountMove().NewSet(rs.Env()).WithNewContext(ctxNolang).Create(data)
@@ -1315,35 +1370,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().LineGetConvert().DeclareMethod(
 		`LineGetConvert`,
-		func(rs m.AccountInvoiceSet, line m.AccountInvoiceLineData, partner m.PartnerSet) m.AccountMoveLineData {
-			//@api.model
-			data := h.AccountMoveLine().NewData()
-			//data.SetDateMaturity(line.DateMaturity()) //tovalid line.DateMaturity missing
-			data.SetPartner(partner)
-			data.SetName(line.Name())
-			//if line.Price() > 0 {  //tovalid line.Price missing
-			//	data.SetDebit(line.Price)
-			//} else {
-			//	data.SetCredit(line.Price())
-			//}
-			/*def line_get_convert(self, line, part):
-			  return {
-			      'account_id': line['account_id'],
-			      'analytic_line_ids': line.get('analytic_line_ids', []),
-			      'amount_currency': line['price'] > 0 and abs(line.get('amount_currency', False)) or -abs(line.get('amount_currency', False)),
-			      'currency_id': line.get('currency_id', False),
-			      'quantity': line.get('quantity', 1.00),
-			      'product_id': line.get('product_id', False),
-			      'product_uom_id': line.get('uom_id', False),
-			      'analytic_account_id': line.get('account_analytic_id', False),
-			      'invoice_id': line.get('invoice_id', False),
-			      'tax_ids': line.get('tax_ids', False),
-			      'tax_line_id': line.get('tax_line_id', False),
-			      'analytic_tag_ids': line.get('analytic_tag_ids', False),
-			  }
-
-			*/
-			return h.AccountMoveLine().NewData()
+		func(rs m.AccountInvoiceSet, line accounttypes.InvoiceLineAMLStruct, partner m.PartnerSet) m.AccountMoveLineData {
+			return h.ProductProduct().NewSet(rs.Env()).ConvertPreparedAnglosaxonLine(line, partner)
 		})
 
 	h.AccountInvoice().Methods().ActionCancel().DeclareMethod(
@@ -1471,7 +1499,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				journ = h.AccountJournal().Search(rs.Env(), q.AccountJournal().Type().Equals("sale")).Limit(1)
 			}
 			values.SetJournal(journ).
-				SetType(accounttypes.TYPE2REFUND[invoice.Type()]).
+				SetType(Type2Refund[invoice.Type()]).
 				SetType("draft").
 				SetNumber("").
 				SetOrigin(invoice.Number()).
@@ -1516,31 +1544,35 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		})
 
 	h.AccountInvoice().Methods().PayAndReconcile().DeclareMethod(
-		`PayAndReconcileCreate and post an account.payment for the invoice self, which creates a journal entry that reconciles the invoice.
+		`PayAndReconcile creates and posts an account.payment for the invoice rs, which creates a journal entry that reconciles the invoice.
 
-			      :param pay_journal: journal in which the payment entry will be created
-			      :param pay_amount: amount of the payment to register, defaults to the residual of the invoice
-			      :param date: payment date, defaults to fields.Date.context_today(self)
-			      :param writeoff_acc: account in which to create a writeoff if pay_amount < self.residual, so that the invoice is fully paid`,
+				 - payJournal: journal in which the payment entry will be created
+				 - payAmount: amount of the payment to register, defaults to the residual of the invoice
+				 - date: payment date, defaults to today
+				 - writeoffAcc: account in which to create a writeoff if pay_amount < rs.Residual(), so that the invoice is fully paid`,
 		func(rs m.AccountInvoiceSet, payJournal m.AccountJournalSet, payAmount float64,
 			date dates.Date, writeoffAcc m.AccountAccountSet) bool {
-			//@api.multi
+
 			if rs.Len() != 1 {
 				panic(rs.T("Can only pay one invoice at a time"))
 			}
-			paymentType := "outbound"
-			var paymentMethod m.AccountPaymentMethodSet
-			var journalPaymentMethods m.AccountPaymentMethodSet
-			if strutils.IsIn(rs.Type(), "out_invoice", "in_refund") {
+			var (
+				paymentType           string
+				paymentMethod         = h.AccountPaymentMethod().NewSet(rs.Env())
+				journalPaymentMethods = h.AccountPaymentMethod().NewSet(rs.Env())
+			)
+			switch {
+			case strutils.IsIn(rs.Type(), "out_invoice", "in_refund"):
 				paymentType = "inbound"
-				paymentMethod = h.AccountPaymentMethod().NewSet(rs.Env()).GetRecord(`account_account_payment_method_manual_in`) //tovalid ??? recordModel not found??? wtf
+				paymentMethod = h.AccountPaymentMethod().NewSet(rs.Env()).GetRecord(`account_account_payment_method_manual_in`)
 				journalPaymentMethods = payJournal.InboundPaymentMethods()
-			} else {
-				paymentMethod = h.AccountPaymentMethod().NewSet(rs.Env()).GetRecord(`account_account_payment_method_manual_out`) //tovalid ??? recordModel not found??? wtf
+			case strutils.IsIn(rs.Type(), "in_invoice", "out_refund"):
+				paymentType = "outbound"
+				paymentMethod = h.AccountPaymentMethod().NewSet(rs.Env()).GetRecord(`account_account_payment_method_manual_out`)
 				journalPaymentMethods = payJournal.OutboundPaymentMethods()
 			}
-			if paymentMethod.Intersect(journalPaymentMethods).Len() == 0 {
-				panic(rs.T(`No appropriate payment method enabled on journal %s`, payJournal.Name()))
+			if paymentMethod.Intersect(journalPaymentMethods).IsEmpty() {
+				panic(rs.T(`No appropriate payment method enabled on journal '%s'`, payJournal.Name()))
 			}
 			communication := rs.Number()
 			if strutils.IsIn(rs.Type(), "in_invoice", "in_refund") {
@@ -1574,6 +1606,13 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				data.SetPaymentDifferenceHandling("reconcile")
 				data.SetWriteoffAccount(writeoffAcc)
 			}
+			if rs.Env().Context().HasKey("tx_currency_id") {
+				data.SetCurrency(h.Currency().BrowseOne(rs.Env(), rs.Env().Context().GetInteger("tx_currency_id")))
+			}
+
+			payment := h.AccountPayment().Create(rs.Env(), data)
+			payment.Post()
+
 			return true
 		})
 

@@ -12,12 +12,11 @@ import (
 )
 
 func TestCustomerInvoice(t *testing.T) {
-	Convey("Test Customer Invoice", t, FailureContinues, func() {
+	Convey("Test Customer Invoice", t, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
 			self := initTestAccountBaseUserStruct(env)
 			// I will create bank detail with using manager access rights
 			// because account manager can only create bank details.
-			println(h.BankAccount().Search(env, q.BankAccount().SanitizedAccountNumber().Equals("123456789")).HexyaExternalID())
 			h.BankAccount().NewSet(env).Sudo(self.AccountManager.ID()).Create(
 				h.BankAccount().NewData().
 					SetCompany(self.MainCompany).
@@ -43,13 +42,6 @@ func TestCustomerInvoice(t *testing.T) {
 					SetUserType(accountUserType).
 					SetReconcile(true))
 
-			invoiceLine := h.AccountInvoiceLine().Create(env, h.AccountInvoiceLine().NewData().
-				SetProduct(h.ProductProduct().NewSet(env).GetRecord("product_product_product_5")).
-				SetQuantity(10).
-				SetAccount(h.AccountAccount().Search(env, q.AccountAccount().UserType().Equals(accountUserTypeRevenue)).Limit(1)).
-				SetName("product test 5").
-				SetPriceUnit(100))
-
 			accountInvoiceCustomer0 := h.AccountInvoice().NewSet(env).Sudo(self.AccountUser.ID()).Create(
 				h.AccountInvoice().NewData().
 					SetName("Test Customer Invoice").
@@ -58,7 +50,12 @@ func TestCustomerInvoice(t *testing.T) {
 					SetJournal(journalRec).
 					SetPartner(partner3).
 					SetAccount(accountRec1).
-					SetInvoiceLines(invoiceLine))
+					CreateInvoiceLines(h.AccountInvoiceLine().NewData().
+						SetProduct(h.ProductProduct().NewSet(env).GetRecord("product_product_product_5")).
+						SetQuantity(10).
+						SetAccount(h.AccountAccount().Search(env, q.AccountAccount().UserType().Equals(accountUserTypeRevenue)).Limit(1)).
+						SetName("product test 5").
+						SetPriceUnit(100)))
 
 			// I manually assign tax on invoice
 			tax := h.AccountInvoiceTax().Create(env,
@@ -87,14 +84,21 @@ func TestCustomerInvoice(t *testing.T) {
 			// I validate invoice by creating on
 			accountInvoiceCustomer0.ActionInvoiceOpen()
 
+			// I check that the invoice is valid
+			So(accountInvoiceCustomer0.Move().IsNotEmpty(), ShouldBeTrue)
+			So(accountInvoiceCustomer0.Type(), ShouldEqual, "out_invoice")
+			So(accountInvoiceCustomer0.AmountTotal(), ShouldEqual, 10050)
+			So(accountInvoiceCustomer0.AmountTotalSigned(), ShouldEqual, 10050)
+			So(accountInvoiceCustomer0.AmountTotalCompanySigned(), ShouldEqual, 10050)
+
 			// I check that the invoice state is "Open"
 			So(accountInvoiceCustomer0.State(), ShouldEqual, "open")
-
-			// I check that now there is a move attached to the invoice
-			So(accountInvoiceCustomer0.Move().IsNotEmpty(), ShouldBeTrue)
+			So(accountInvoiceCustomer0.Residual(), ShouldEqual, 10050)
 
 			// I totally pay the Invoice
-			accountInvoiceCustomer0.PayAndReconcile(h.AccountJournal().Search(env, q.AccountJournal().Type().Equals("bank")).Limit(1), 10050, dates.Date{}, h.AccountAccount().NewSet(env))
+			accountInvoiceCustomer0.PayAndReconcile(
+				h.AccountJournal().Search(env, q.AccountJournal().Type().Equals("bank")).Limit(1),
+				10050, dates.Date{}, h.AccountAccount().NewSet(env))
 
 			// I verify that invoice is now in Paid state
 			So(accountInvoiceCustomer0.State(), ShouldEqual, "paid")
@@ -116,7 +120,7 @@ func TestCustomerInvoice(t *testing.T) {
 }
 
 func TestCustomerInvoiceTax(t *testing.T) {
-	Convey("Test Customer Invoice Tax", t, FailureContinues, func() {
+	Convey("Test Customer Invoice Tax", t, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
 			h.User().NewSet(env).CurrentUser().Company().SetTaxCalculationRoundingMethod("round_globally")
 
@@ -176,7 +180,7 @@ func TestCustomerInvoiceTax(t *testing.T) {
 }
 
 func TestCustomerInvoiceTaxRefund(t *testing.T) {
-	Convey("Test Customer Invoice Tax Refund", t, FailureContinues, func() {
+	Convey("Test Customer Invoice Tax Refund", t, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
 			company := h.User().NewSet(env).CurrentUser().Company()
 			accTypeCurAssets := h.AccountAccountType().NewSet(env).GetRecord("account_data_account_type_current_assets")

@@ -173,7 +173,7 @@ func (self TestReconciliationStruct) makePayment(invoice m.AccountInvoiceSet, ba
 		amountInWidget = amountCurrency
 	}
 
-	data := accounttypes.AmlStruct{
+	data := accounttypes.BankStatementAMLStruct{
 		MoveLineID: line.ID(),
 		Debit:      0.0,
 		Credit:     0.0,
@@ -184,7 +184,7 @@ func (self TestReconciliationStruct) makePayment(invoice m.AccountInvoiceSet, ba
 	} else {
 		data.Credit = amountInWidget
 	}
-	bankStmtLine.ProcessReconciliation(h.AccountMoveLine().NewSet(self.Env), []accounttypes.AmlStruct{data}, nil)
+	bankStmtLine.ProcessReconciliation(h.AccountMoveLine().NewSet(self.Env), []accounttypes.BankStatementAMLStruct{data}, nil)
 	return bankStmt
 }
 
@@ -468,13 +468,13 @@ func TestStatementEurInvoiceUsdTransactionEuroFull(t *testing.T) {
 				}
 			}
 			bankStmtLine.ProcessReconciliation(h.AccountMoveLine().NewSet(env),
-				[]accounttypes.AmlStruct{{
+				[]accounttypes.BankStatementAMLStruct{{
 					MoveLineID: line.ID(),
 					Debit:      0,
 					Credit:     32.7,
 					Name:       line.Name(),
 				}},
-				[]accounttypes.AmlStruct{{
+				[]accounttypes.BankStatementAMLStruct{{
 					Debit:     0,
 					Credit:    7.3,
 					Name:      "Exchange Difference",
@@ -701,7 +701,7 @@ func TestReconcileBankStatementWithPaymentAndWriteoff(t *testing.T) {
 
 			// reconcile the statement with invoice and put remaining in another account
 			bankStmtLine.ProcessReconciliation(bankMoveLine, nil,
-				[]accounttypes.AmlStruct{{
+				[]accounttypes.BankStatementAMLStruct{{
 					AccountID: self.DiffIncomeAccount.ID(),
 					Debit:     0,
 					Credit:    5,

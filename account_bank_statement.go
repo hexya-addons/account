@@ -1181,21 +1181,21 @@ set to draft and re-processed again.`},
 		func(rs m.AccountBankStatementLineSet, data []map[string]interface{}) {
 			type Datum struct {
 				PaymentAml          m.AccountMoveLineSet
-				CounterpartAmlDatas []accounttypes.AmlStruct
-				NewAmlDatas         []accounttypes.AmlStruct
+				CounterpartAmlDatas []accounttypes.BankStatementAMLStruct
+				NewAmlDatas         []accounttypes.BankStatementAMLStruct
 			}
 			safifyData := func(data map[string]interface{}) Datum {
-				out := Datum{h.AccountMoveLine().NewSet(rs.Env()), []accounttypes.AmlStruct{}, []accounttypes.AmlStruct{}}
+				out := Datum{h.AccountMoveLine().NewSet(rs.Env()), []accounttypes.BankStatementAMLStruct{}, []accounttypes.BankStatementAMLStruct{}}
 				if valPaymentAmlIds, ok := data["payment_aml_ids"]; ok {
 					out.PaymentAml = h.AccountMoveLine().Browse(rs.Env(), valPaymentAmlIds.([]int64))
 				}
 				if valCounterpartAmlDicts, ok := data["counterpart_aml"]; ok {
-					for _, val := range valCounterpartAmlDicts.([]accounttypes.AmlStruct) {
+					for _, val := range valCounterpartAmlDicts.([]accounttypes.BankStatementAMLStruct) {
 						out.CounterpartAmlDatas = append(out.CounterpartAmlDatas, val)
 					}
 				}
 				if valNewAmlDicts, ok := data["new_aml_dicts"]; ok {
-					for _, val := range valNewAmlDicts.([]accounttypes.AmlStruct) {
+					for _, val := range valNewAmlDicts.([]accounttypes.BankStatementAMLStruct) {
 						out.NewAmlDatas = append(out.CounterpartAmlDatas, val)
 					}
 				}
@@ -1216,13 +1216,13 @@ set to draft and re-processed again.`},
 		`FastCounterpartCreation`,
 		func(rs m.AccountBankStatementLineSet) {
 			for _, stl := range rs.Records() {
-				data := accounttypes.AmlStruct{Name: stl.Name(), AccountID: stl.Account().ID()}
+				data := accounttypes.BankStatementAMLStruct{Name: stl.Name(), AccountID: stl.Account().ID()}
 				if stl.Amount() < 0 {
 					data.Debit = -stl.Amount()
 				} else {
 					data.Credit = stl.Amount()
 				}
-				stl.ProcessReconciliation(h.AccountMoveLine().NewSet(rs.Env()), nil, []accounttypes.AmlStruct{data})
+				stl.ProcessReconciliation(h.AccountMoveLine().NewSet(rs.Env()), nil, []accounttypes.BankStatementAMLStruct{data})
 			}
 		})
 
@@ -1233,8 +1233,8 @@ set to draft and re-processed again.`},
 		})
 
 	h.AccountBankStatementLine().Methods().ConvertAmlStructToData().DeclareMethod(
-		`ConvertAmlStructToData converts the given AmlStruct to m.AccountMoveLineData`,
-		func(rs m.AccountBankStatementLineSet, strc accounttypes.AmlStruct) m.AccountMoveLineData {
+		`ConvertAmlStructToData converts the given BankStatementAMLStruct to m.AccountMoveLineData`,
+		func(rs m.AccountBankStatementLineSet, strc accounttypes.BankStatementAMLStruct) m.AccountMoveLineData {
 			return h.AccountMoveLine().NewData().
 				SetName(strc.Name).
 				SetCredit(strc.Credit).
@@ -1250,10 +1250,10 @@ set to draft and re-processed again.`},
 
 	h.AccountBankStatementLine().Methods().ConvertSetToAmlStruct().DeclareMethod(
 		``,
-		func(rs m.AccountBankStatementLineSet, set m.AccountMoveLineSet) []accounttypes.AmlStruct {
-			var out []accounttypes.AmlStruct
+		func(rs m.AccountBankStatementLineSet, set m.AccountMoveLineSet) []accounttypes.BankStatementAMLStruct {
+			var out []accounttypes.BankStatementAMLStruct
 			for _, s := range set.Records() {
-				out = append(out, accounttypes.AmlStruct{
+				out = append(out, accounttypes.BankStatementAMLStruct{
 					Name:           s.Name(),
 					Credit:         s.Credit(),
 					Debit:          s.Debit(),
@@ -1297,7 +1297,7 @@ set to draft and re-processed again.`},
 			      :returns: The journal entries with which the transaction was matched. If there was at least an entry in counterpart_aml_dicts or new_aml_dicts, this list contains
 			          the move created by the reconciliation, containing entries for the statement.line (1), the counterpart move lines (0..*) and the new move lines (0..*).
 			  `,
-		func(rs m.AccountBankStatementLineSet, PaymentAmlRec m.AccountMoveLineSet, CounterpartAmlDicts, NewAmlDicts []accounttypes.AmlStruct) m.AccountMoveSet {
+		func(rs m.AccountBankStatementLineSet, PaymentAmlRec m.AccountMoveLineSet, CounterpartAmlDicts, NewAmlDicts []accounttypes.BankStatementAMLStruct) m.AccountMoveSet {
 			// Check and prepare recieved data
 			if rs.MoveName() != "" {
 				panic(rs.T(`Operation not allowed. Since your statement line already received a number, you cannot reconcile it entirely with existing journal entries otherwise it would make a gap in the numbering. You should book an entry and make a regular revert of it in case you want to cancel it.`))

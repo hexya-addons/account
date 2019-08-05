@@ -46,7 +46,9 @@ type TransRecGetStruct struct {
 	WriteOff float64
 }
 
-type AmlStruct struct {
+// BankStatementAMLStruct is a temporary struct for holding AccountMoveLine
+// data during bank statement import
+type BankStatementAMLStruct struct {
 	Name             string
 	Debit            float64
 	Credit           float64
@@ -62,25 +64,26 @@ type AmlStruct struct {
 	JournalID        int64
 }
 
-// mapping invoice type to refund type
-var TYPE2REFUND = map[string]string{
-	`out_invoice`: `out_refund`,  // Customer Invoice
-	`in_invoice`:  `in_refund`,   // Vendor Bill
-	`out_refund`:  `out_invoice`, // Customer Refund
-	`in_refund`:   `in_invoice`,  // Vendor Refund
-}
-
-var MapInvoiceType_PartnerType = map[string]string{
-	`out_invoice`: `customer`,
-	`out_refund`:  `customer`,
-	`in_invoice`:  `supplier`,
-	`in_refund`:   `supplier`,
-}
-
-// Since invoice amounts are unsigned, this is how we know if money comes in or goes out
-var MapInvoiceType_PaymentSign = map[string]float64{
-	`out_invoice`: 1.0,
-	`in_refund`:   1.0,
-	`in_invoice`:  -1.0,
-	`out_refund`:  -1.0,
+// InvoiceLineAMLStruct is a temporary struct for holding AccountMoveLine
+// data during invoice validation.
+type InvoiceLineAMLStruct struct {
+	InvoiceLineID     int64
+	InvoiceLineTaxID  int64
+	TaxLineID         int64
+	Type              string
+	Name              string
+	PriceUnit         float64
+	Quantity          float64
+	Price             float64
+	AmountCurrency    float64
+	AccountID         int64
+	ProductID         int64
+	UomID             int64
+	AccountAnalyticID int64
+	CurrencyID        int64
+	TaxIDs            []int64
+	InvoiceID         int64
+	AnalyticTagsIDs   []int64
+	AnalyticLinesIDs  []int64
+	DateMaturity      dates.Date
 }

@@ -180,15 +180,16 @@ defined on this template is complete`},
 			company = h.User().NewSet(rs.Env()).CurrentUser().Company()
 			// If we don't have any chart of account on this company, install this chart of account
 			if company.ChartTemplate().IsEmpty() {
-				wizard = h.WizardMultiChartsAccounts().Create(rs.Env(), h.WizardMultiChartsAccounts().NewData().
-					SetCompany(company).
+				data := h.WizardMultiChartsAccounts().NewSet(rs.Env()).DefaultGet()
+				data.SetCompany(company).
 					SetChartTemplate(rs).
 					SetCodeDigits(rs.CodeDigits()).
 					SetTransferAccount(rs.TransferAccount()).
 					SetCurrency(rs.Currency()).
 					SetBankAccountCodePrefix(rs.BankAccountCodePrefix()).
-					SetCashAccountCodePrefix(rs.CashAccountCodePrefix()))
-				wizard.OnchangeChartTemplate()
+					SetCashAccountCodePrefix(rs.CashAccountCodePrefix())
+				wizard = h.WizardMultiChartsAccounts().Create(rs.Env(), data)
+				wizard.Write(wizard.OnchangeChartTemplate())
 				wizard.Execute()
 			}
 			return &actions.Action{
@@ -310,50 +311,27 @@ defined on this template is complete`},
 			  :returns: True`,
 		func(rs m.AccountChartTemplateSet, accTemplateRef map[int64]int64, company m.CompanySet) bool {
 
-			// tovalid missing self.env['ir.property']
-			// tovalid missing self.env['ir.model.fields']
+			getAccount := h.AccountAccount().NewSet(rs.Env()).WithContext("force_company", company.ID()).GetDefaultAccountFromChart
 
-			/*def generate_properties(self, acc_template_ref, company):
-			  PropertyObj = self.env['ir.property']
-			  todo_list = [
-			      ('property_account_receivable_id', 'res.partner', 'account.account'),
-			      ('property_account_payable_id', 'res.partner', 'account.account'),
-			      ('property_account_expense_categ_id', 'product.category', 'account.account'),
-			      ('property_account_income_categ_id', 'product.category', 'account.account'),
-			      ('property_account_expense_id', 'product.template', 'account.account'),
-			      ('property_account_income_id', 'product.template', 'account.account'),
-			  ]
-			  for record in todo_list:
-			      account = getattr(self, record[0])
-			      value = account and 'account.account,' + str(acc_template_ref[account.id]) or False
-			      if value:
-			          field = self.env['ir.model.fields'].search([('name', '=', record[0]), ('model', '=', record[1]), ('relation', '=', record[2])], limit=1)
-			          vals = {
-			              'name': record[0],
-			              'company_id': company.id,
-			              'fields_id': field.id,
-			              'value': value,
-			          }
-			          properties = PropertyObj.search([('name', '=', record[0]), ('company_id', '=', company.id)])
-			          if properties:
-			              #the property exist: modify it
-			              properties.write(vals)
-			          else:
-			              #create the property
-			              PropertyObj.create(vals)
-			  stock_properties = [
-			      'property_stock_account_input_categ_id',
-			      'property_stock_account_output_categ_id',
-			      'property_stock_valuation_account_id',
-			  ]
-			  for stock_property in stock_properties:
-			      account = getattr(self, stock_property)
-			      value = account and acc_template_ref[account.id] or False
-			      if value:
-			          company.write({stock_property: value})
-			  return True
+			partners := h.Partner().NewSet(rs.Env()).SearchAll()
+			partners.Write(h.Partner().NewData().
+				SetPropertyAccountPayable(getAccount("PropertyAccountPayable")).
+				SetPropertyAccountReceivable(getAccount("PropertyAccountReceivable")))
 
-			*/
+			categories := h.ProductCategory().NewSet(rs.Env()).SearchAll()
+			categories.Write(h.ProductCategory().NewData().
+				SetPropertyAccountExpenseCateg(getAccount("PropertyAccountExpenseCateg")).
+				SetPropertyAccountIncomeCateg(getAccount("PropertyAccountIncomeCateg")))
+
+			templates := h.ProductTemplate().NewSet(rs.Env()).SearchAll()
+			templates.Write(h.ProductTemplate().NewData().
+				SetPropertyAccountExpense(getAccount("PropertyAccountExpense")).
+				SetPropertyAccountIncome(getAccount("PropertyAccountIncome")))
+
+			company.Write(h.Company().NewData().
+				SetPropertyStockAccountInputCateg(getAccount("PropertyStockAccountInputCateg")).
+				SetPropertyStockAccountOutputCateg(getAccount("PropertyStockAccountOutputCateg")).
+				SetPropertyStockValuationAccount(getAccount("PropertyStockValuationAccount")))
 			return true
 		})
 
@@ -429,9 +407,6 @@ defined on this template is complete`},
 			}
 
 			// Generate taxes from templates.
-			for _, tax := range rs.TaxTemplates().Records() {
-				println("DEBB", tax.Name(), tax.HexyaExternalID(), tax.ChildrenTaxes().Ids(), "DEBB")
-			}
 			taxTemplateToTax, AccountDict = rs.TaxTemplates().GenerateTax(company)
 			for key, val := range taxTemplateToTax {
 				taxesRef[key] = val
@@ -518,7 +493,7 @@ defined on this template is complete`},
 		func(rs m.AccountChartTemplateSet, taxTemplateRef, accTemplateRef map[int64]int64, codeDigits int,
 			company m.CompanySet) map[int64]int64 {
 
-			var accTemplate m.AccountAccountTemplateSet
+			var accTemplates m.AccountAccountTemplateSet
 			var query q.AccountAccountTemplateCondition
 			var code string
 			var data m.AccountAccountData
@@ -528,16 +503,16 @@ defined on this template is complete`},
 			query = q.AccountAccountTemplate().
 				Nocreate().NotEquals(true).
 				And().ChartTemplate().Equals(rs)
-			accTemplate = h.AccountAccountTemplate().Search(rs.Env(), query).OrderBy("id")
+			accTemplates = h.AccountAccountTemplate().Search(rs.Env(), query).OrderBy("id")
 
-			for _, accountTemplate := range accTemplate.Records() {
-				code = accountTemplate.Code()
+			for _, accTemplate := range accTemplates.Records() {
+				code = accTemplate.Code()
 				if len(code) > 0 && len(code) < codeDigits {
 					code = code + strings.Repeat("0", codeDigits-len(code))
 				}
-				data = rs.GetAccountVals(company, accountTemplate, code, taxTemplateRef)
+				data = rs.GetAccountVals(company, accTemplate, code, taxTemplateRef)
 				newAccount = h.AccountAccount().Create(rs.Env(), data.SetHexyaExternalID(fmt.Sprintf("%d_%s", company.ID(), accTemplate.HexyaExternalID())))
-				accTemplateRef[accountTemplate.ID()] = newAccount.ID()
+				accTemplateRef[accTemplate.ID()] = newAccount.ID()
 			}
 			return accTemplateRef
 		})
@@ -780,9 +755,6 @@ the same analytic account as the invoice line (if any)`},
 			AccountID       int64
 			RefundAccountID int64
 		}) {
-			//for _, tax := range rs.Records() {
-			//	fmt.Println("DEBB", tax.ID(), tax.Name(), tax.HexyaExternalID(), tax.ChildrenTaxes().Ids(), "DEBB")
-			//}
 			taxTemplateToTax := make(map[int64]int64)
 			todoDict := make(map[int64]struct {
 				AccountID       int64
@@ -790,7 +762,7 @@ the same analytic account as the invoice line (if any)`},
 			})
 			for _, tax := range rs.Records() {
 				// Compute children tax ids
-				childrenIds := []int64{}
+				var childrenIds []int64
 				for _, childTax := range tax.ChildrenTaxes().Records() {
 					println(childTax.ID())
 					if val, ok := taxTemplateToTax[childTax.ID()]; ok && val != 0 {
@@ -1020,70 +992,56 @@ set of tax defined for the chosen template is complete`},
 			return data
 		})
 
-	h.WizardMultiChartsAccounts().Methods().GetDefaultBankAccountIds().DeclareMethod(
-		`GetDefaultBankAccountIds`,
-		func(rs m.WizardMultiChartsAccountsSet) m.AccountBankAccountsWizardSet {
-			//@api.model
-			/*def _get_default_bank_account_ids(self):
-			  return [{'acc_name': _('Cash'), 'account_type': 'cash'}, {'acc_name': _('Bank'), 'account_type': 'bank'}]
-				tovalid shall we return a set (hence adding data to database) or slice of data?
-			*/
-			return h.AccountBankAccountsWizard().NewSet(rs.Env())
+	h.WizardMultiChartsAccounts().Methods().GetDefaultBankAccountData().DeclareMethod(
+		`GetDefaultBankAccountData returns the data to create the default bank accounts for this chart.`,
+		func(rs m.WizardMultiChartsAccountsSet) []m.AccountBankAccountsWizardData {
+			res := []m.AccountBankAccountsWizardData{
+				h.AccountBankAccountsWizard().NewData().
+					SetAccName(rs.T("Cash")).
+					SetAccountType("cash"),
+				h.AccountBankAccountsWizard().NewData().
+					SetAccName(rs.T("Bank")).
+					SetAccountType("bank"),
+			}
+			return res
 		})
 
 	h.WizardMultiChartsAccounts().Methods().DefaultGet().Extend("",
 		func(rs m.WizardMultiChartsAccountsSet) m.WizardMultiChartsAccountsData {
-			var chartTemplates m.AccountChartTemplateSet
-			var chartID int64
-			var chart m.AccountChartTemplateSet
-			var chartHierarchies m.AccountChartTemplateSet
-			var baseTaxCondition q.AccountTaxTemplateCondition
-			var saleTax m.AccountTaxTemplateSet
-			var purchaseTax m.AccountTaxTemplateSet
 
 			res := rs.Super().DefaultGet()
-			if res.HasBankAccounts() {
-				res.SetBankAccounts(rs.GetDefaultBankAccountIds())
+			for _, ba := range rs.GetDefaultBankAccountData() {
+				res.CreateBankAccounts(ba)
 			}
-			if res.HasCompany() {
-				res.SetCompany(h.User().NewSet(rs.Env()).CurrentUser().Company())
-			}
-			if res.HasCurrency() {
-				if res.Company().IsNotEmpty() {
-					currency := res.Company().OnChangeCountry().Currency()
-					res.SetCurrency(currency)
-				}
+			res.SetCompany(h.User().NewSet(rs.Env()).CurrentUser().Company())
+			if res.Company().IsNotEmpty() {
+				currency := res.Company().OnChangeCountry().Currency()
+				res.SetCurrency(currency)
 			}
 
-			chartTemplates = h.AccountChartTemplate().Search(rs.Env(), q.AccountChartTemplate().Visible().Equals(true))
+			chartTemplates := h.AccountChartTemplate().Search(rs.Env(), q.AccountChartTemplate().Visible().Equals(true))
 			if chartTemplates.IsNotEmpty() {
 				// in order to set default chart which was last created set max of ids.
+				var chartID int64
 				for _, id := range chartTemplates.Ids() {
 					if id > chartID {
 						chartID = id
 					}
 				}
-				/*
-					if context.get("default_charts"):
-					   model_data = self.env['ir.model.data'].search_read([('model', '=', 'account.chart.template'), ('module', '=', context.get("default_charts"))], ['res_id'])
-					   if model_data:    //tovalid  ^^^ ir.model.data hexya?
-					      chart_id = model_data[0]['res_id']
-				*/
-				chart = h.AccountChartTemplate().BrowseOne(rs.Env(), chartID)
-				chartHierarchies = rs.GetChartParents(chart)
+				chart := h.AccountChartTemplate().BrowseOne(rs.Env(), chartID)
+				if extID := rs.Env().Context().GetString("default_charts"); extID != "" {
+					chart = h.AccountChartTemplate().NewSet(rs.Env()).GetRecord(extID)
+				}
+				chartHierarchies := rs.GetChartParents(chart)
 				res.SetOnlyOneChartTemplate(chartTemplates.Len() == 1)
 				res.SetChartTemplate(chart)
-				baseTaxCondition = q.AccountTaxTemplate().ChartTemplate().In(chartHierarchies)
-				saleTax = h.AccountTaxTemplate().Search(rs.Env(), baseTaxCondition.And().TypeTaxUse().Equals("sale")).
+				baseTaxCondition := q.AccountTaxTemplate().ChartTemplate().In(chartHierarchies)
+				saleTax := h.AccountTaxTemplate().Search(rs.Env(), baseTaxCondition.And().TypeTaxUse().Equals("sale")).
 					Limit(1).OrderBy("sequence")
-				if saleTax.IsNotEmpty() {
-					res.SetSaleTax(saleTax)
-				}
-				purchaseTax = h.AccountTaxTemplate().Search(rs.Env(), baseTaxCondition.And().TypeTaxUse().Equals("purchase")).
+				res.SetSaleTax(saleTax)
+				purchaseTax := h.AccountTaxTemplate().Search(rs.Env(), baseTaxCondition.And().TypeTaxUse().Equals("purchase")).
 					Limit(1).OrderBy("sequence")
-				if purchaseTax.IsNotEmpty() {
-					res.SetPurchaseTax(purchaseTax)
-				}
+				res.SetPurchaseTax(purchaseTax)
 			}
 			res.SetPurchaseTaxRate(15.0)
 			res.SetSaleTaxRate(15.0)
@@ -1198,7 +1156,9 @@ set of tax defined for the chosen template is complete`},
 			rs.CreateTaxTemplatesFromRates(company)
 
 			// Install all the templates objects and generate the real objects
-			accTemplateRef, _ := rs.ChartTemplate().InstallTemplate(company, rs.CodeDigits(), rs.TransferAccount(), h.WizardMultiChartsAccounts().NewSet(rs.Env()), nil, nil)
+			accRef := make(map[int64]int64)
+			taxesRef := make(map[int64]int64)
+			accTemplateRef, _ := rs.ChartTemplate().InstallTemplate(company, rs.CodeDigits(), rs.TransferAccount(), h.WizardMultiChartsAccounts().NewSet(rs.Env()), accRef, taxesRef)
 
 			// write values of default taxes for product as super user
 			/*
