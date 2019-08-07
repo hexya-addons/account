@@ -125,7 +125,7 @@ func TestCustomerInvoiceTax(t *testing.T) {
 			h.User().NewSet(env).CurrentUser().Company().SetTaxCalculationRoundingMethod("round_globally")
 
 			paymentTerm := h.AccountPaymentTerm().NewSet(env).GetRecord("account_account_payment_term_advance")
-			journalRec := h.AccountJournal().Search(env, q.AccountJournal().Type().Equals("sale")).Records()[0]
+			journalRec := h.AccountJournal().Search(env, q.AccountJournal().Type().Equals("sale")).Limit(1)
 			partner := h.Partner().NewSet(env).GetRecord("base_res_partner_3")
 			accountTypeRevenue := h.AccountAccountType().NewSet(env).GetRecord("account_data_account_type_revenue")
 			account := h.AccountAccount().Search(env, q.AccountAccount().UserType().Equals(accountTypeRevenue)).Limit(1)
@@ -143,32 +143,27 @@ func TestCustomerInvoiceTax(t *testing.T) {
 				SetPriceUnit(2.77).
 				SetInvoiceLineTaxes(tax)
 
-			invoiceLine1 := h.AccountInvoiceLine().Create(env,
-				invoiceLineBaseData.Copy().
+			invoiceData := h.AccountInvoice().NewData().
+				SetName("Test Customer Invoice").
+				SetReferenceType("none").
+				SetPaymentTerm(paymentTerm).
+				SetJournal(journalRec).
+				SetPartner(partner).
+				CreateInvoiceLines(invoiceLineBaseData.Copy().
 					SetProduct(h.ProductProduct().NewSet(env).GetRecord("product_product_product_1")).
 					SetName("product test 1").
-					SetQuantity(40))
-			invoiceLine2 := h.AccountInvoiceLine().Create(env,
-				invoiceLineBaseData.Copy().
+					SetQuantity(40).
+					SetPriceUnit(2.27)).
+				CreateInvoiceLines(invoiceLineBaseData.Copy().
 					SetProduct(h.ProductProduct().NewSet(env).GetRecord("product_product_product_2")).
 					SetName("product test 2").
-					SetQuantity(21))
-			invoiceLine3 := h.AccountInvoiceLine().Create(env,
-				invoiceLineBaseData.Copy().
+					SetQuantity(21)).
+				CreateInvoiceLines(invoiceLineBaseData.Copy().
 					SetProduct(h.ProductProduct().NewSet(env).GetRecord("product_product_product_3")).
 					SetName("product test 3").
 					SetQuantity(21))
 
-			invoiceLines := invoiceLine1.Union(invoiceLine2.Union(invoiceLine3))
-
-			invoice := h.AccountInvoice().Create(env,
-				h.AccountInvoice().NewData().
-					SetName("Test Customer Invoice").
-					SetReferenceType("none").
-					SetPaymentTerm(paymentTerm).
-					SetJournal(journalRec).
-					SetPartner(partner).
-					SetInvoiceLines(invoiceLines))
+			invoice := h.AccountInvoice().Create(env, invoiceData)
 
 			total := 0.0
 			for _, x := range invoice.TaxLines().Records() {
@@ -199,9 +194,9 @@ func TestCustomerInvoiceTaxRefund(t *testing.T) {
 					SetUserType(accTypeCurAssets).
 					SetCompany(company))
 
-			journal := h.AccountJournal().Search(env, q.AccountJournal().Type().Equals("sale")).Records()[0]
+			journal := h.AccountJournal().Search(env, q.AccountJournal().Type().Equals("sale")).Limit(1)
 			partner := h.Partner().NewSet(env).GetRecord("base_res_partner_3")
-			account := h.AccountAccount().Search(env, q.AccountAccount().UserType().Equals(accTypeRevenue))
+			account := h.AccountAccount().Search(env, q.AccountAccount().UserType().Equals(accTypeRevenue)).Limit(1)
 
 			tax := h.AccountTax().Create(env,
 				h.AccountTax().NewData().
@@ -212,23 +207,20 @@ func TestCustomerInvoiceTaxRefund(t *testing.T) {
 					SetAccount(taxAccount).
 					SetRefundAccount(taxAccountRefund))
 
-			invoiceLine := h.AccountInvoiceLine().Create(env,
-				h.AccountInvoiceLine().NewData().
-					SetProduct(h.ProductProduct().NewSet(env).GetRecord("product_product_product_1")).
-					SetQuantity(40).
-					SetAccount(account).
-					SetName("product test 1").
-					SetDiscount(10).
-					SetPriceUnit(2.27).
-					SetInvoiceLineTaxes(tax))
-
 			invoice := h.AccountInvoice().Create(env,
 				h.AccountInvoice().NewData().
 					SetName("Test Customer Invoice").
 					SetReferenceType("none").
 					SetJournal(journal).
 					SetPartner(partner).
-					SetInvoiceLines(invoiceLine))
+					CreateInvoiceLines(h.AccountInvoiceLine().NewData().
+						SetProduct(h.ProductProduct().NewSet(env).GetRecord("product_product_product_1")).
+						SetQuantity(40).
+						SetAccount(account).
+						SetName("product test 1").
+						SetDiscount(10).
+						SetPriceUnit(2.27).
+						SetInvoiceLineTaxes(tax)))
 
 			invoice.ActionInvoiceOpen()
 			refund := invoice.Refund(dates.Date{}, dates.Date{}, "", h.AccountJournal().NewSet(env))
@@ -243,7 +235,7 @@ func TestCustomerInvoiceTaxRefund(t *testing.T) {
 			}
 
 			So(taxAccounts.Equals(taxAccount), ShouldBeTrue)
-			So(taxRefundAccounts.Equals(taxRefundAccounts), ShouldBeTrue)
+			So(taxRefundAccounts.Equals(taxAccountRefund), ShouldBeTrue)
 
 		}), ShouldBeNil)
 	})

@@ -484,9 +484,11 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				`outstanding`: false,
 				`content`:     []map[string]interface{}{}}
 			for _, payment := range rs.PaymentMoveLines().Records() {
-				var paymentCurrency m.CurrencySet
-				var amount float64
-				var amountCurrency float64
+				paymentCurrency := h.Currency().NewSet(rs.Env())
+				var (
+					amount         float64
+					amountCurrency float64
+				)
 				if strutils.IsIn(rs.Type(), "out_invoice", "in_refund") {
 					targetCurrency := payment.MatchedDebits().Currency()
 					for _, p := range payment.MatchedDebits().Records() {
@@ -699,11 +701,14 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			accountInvoiceTaxes := h.AccountInvoiceTax().NewSet(rs.Env())
 			for _, invoice := range rs.Records() {
 				// Delete non-manual tax lines
-				h.AccountInvoiceTax().Search(rs.Env(), q.AccountInvoiceTax().Invoice().Equals(invoice).And().Manual().Equals(false)).Unlink()
+				h.AccountInvoiceTax().Search(rs.Env(),
+					q.AccountInvoiceTax().Invoice().Equals(invoice).
+						And().Manual().Equals(false)).Unlink()
 				// Generate one tax line per tax, however many invoice lines it's applied to
 				taxGrouped := invoice.GetTaxesValues()
 				// Create new tax lines
 				for _, tax := range taxGrouped {
+					tax.UnsetBase()
 					accountInvoiceTaxes.Create(tax)
 				}
 			}
@@ -964,6 +969,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				SetName(tax.Name).
 				SetTax(h.AccountTax().BrowseOne(rs.Env(), tax.ID)).
 				SetAmount(tax.Amount).
+				SetBase(tax.Base).
+				SetManual(false).
 				SetSequence(int64(tax.Sequence))
 			if tax.Analytic {
 				vals.SetAccountAnalytic(line.AccountAnalytic())
@@ -988,6 +995,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		`GetTaxesValues`,
 		func(rs m.AccountInvoiceSet) map[string]m.AccountInvoiceTaxData {
 			taxGrouped := make(map[string]m.AccountInvoiceTaxData)
+			roundCurr := rs.Currency().Round
 			for _, line := range rs.InvoiceLines().Records() {
 				priceUnit := line.PriceUnit() * (1 - line.Discount()/100)
 				_, _, _, taxes := line.InvoiceLineTaxes().ComputeAll(priceUnit, rs.Currency(), line.Quantity(), line.Product(), rs.Partner())
@@ -996,9 +1004,10 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 					key := h.AccountTax().BrowseOne(rs.Env(), t.ID).GetGroupingKey(val)
 					if data, ok := taxGrouped[key]; !ok {
 						taxGrouped[key] = val
+						taxGrouped[key].SetBase(roundCurr(val.Base()))
 					} else {
 						taxGrouped[key].SetAmount(data.Amount() + val.Amount())
-						taxGrouped[key].SetBase(data.Base() + val.Base())
+						taxGrouped[key].SetBase(data.Base() + roundCurr(val.Base()))
 					}
 				}
 			}
@@ -1477,17 +1486,18 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 			values := h.AccountInvoice().NewData()
 			for _, field := range rs.GetRefundCopyFields() {
-				/*
-						  if invoice._fields[field].type == 'many2one': //tovalid invoice._fields ?
-					          values[field] = invoice[field].id
-					      else:
-					          values[field] = invoice[field] or False
-				*/
-				// FIXME
-				fmt.Println(field)
+				values.Set(field.String(), invoice.Get(field.String()))
 			}
 			values.SetInvoiceLines(invoice.InvoiceLines())
-			taxLines := invoice.TaxLines()
+
+			taxLines := h.AccountInvoiceTax().NewSet(rs.Env())
+			for _, tl := range invoice.TaxLines().Records() {
+				taxLine := tl.Copy(h.AccountInvoiceTax().NewData().SetInvoice(nil))
+				if !tl.Tax().Account().Equals(tl.Tax().RefundAccount()) {
+					taxLine.SetAccount(tl.Tax().RefundAccount())
+				}
+				taxLines = taxLines.Union(taxLine)
+			}
 			values.SetTaxLines(taxLines)
 			var journ m.AccountJournalSet
 			switch {
@@ -1498,10 +1508,10 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			default:
 				journ = h.AccountJournal().Search(rs.Env(), q.AccountJournal().Type().Equals("sale")).Limit(1)
 			}
-			values.SetJournal(journ).
+			values.
+				SetJournal(journ).
 				SetType(Type2Refund[invoice.Type()]).
 				SetType("draft").
-				SetNumber("").
 				SetOrigin(invoice.Number()).
 				SetRefundInvoice(invoice)
 
@@ -1523,7 +1533,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		`Refund`,
 		func(rs m.AccountInvoiceSet, dateInvoice, date dates.Date,
 			description string, journal m.AccountJournalSet) m.AccountInvoiceSet {
-			var CreatedInvoices m.AccountInvoiceSet
+			CreatedInvoices := h.AccountInvoice().NewSet(rs.Env())
 			invoiceType := map[string]string{
 				"out_invoice": rs.T("customer invoices refund"),
 				"in_invoice":  rs.T("vendor bill refund"),
@@ -1540,7 +1550,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				// refund_invoice.MessagePost(message) //tovalid MessagePost func missing?
 				CreatedInvoices = CreatedInvoices.Union(refundInvoice)
 			}
-			return rs.Union(CreatedInvoices)
+			return CreatedInvoices
 		})
 
 	h.AccountInvoice().Methods().PayAndReconcile().DeclareMethod(
