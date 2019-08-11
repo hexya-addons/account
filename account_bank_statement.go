@@ -17,6 +17,7 @@ import (
 	"github.com/hexya-erp/pool/h"
 	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
+	"github.com/jmoiron/sqlx"
 )
 
 func init() {
@@ -878,22 +879,22 @@ set to draft and re-processed again.`},
 
 	h.AccountBankStatementLine().Methods().GetCommonSqlQuery().DeclareMethod(
 		`GetCommonSqlQuery`,
-		func(rs m.AccountBankStatementLineSet, overlookPartner m.PartnerSet, excludedIds []int64) (string, string, string) {
+		func(rs m.AccountBankStatementLineSet, overlookPartner bool, excludedIds []int64) (string, string, string) {
 			accType := `acc.reconcile = true`
-			if rs.Partner().IsNotEmpty() || overlookPartner.IsNotEmpty() {
+			if rs.Partner().IsNotEmpty() || overlookPartner {
 				accType = `acc.internal_type IN ('payable', 'receivable')`
 			}
 			accClause := ``
 			if rs.Journal().DefaultDebitAccount().IsNotEmpty() && rs.Journal().DefaultCreditAccount().IsNotEmpty() {
-				accClause = `(aml.statement_id IS NULL AND aml.account_id IN ? AND aml.payment_id IS NOT NULL) OR`
+				accClause = `(aml.statement_id IS NULL AND aml.account_id IN :account_payable_receivable AND aml.payment_id IS NOT NULL) OR`
 			}
-			whereClause := fmt.Sprintf(`WHERE aml.company_id = ?
+			whereClause := fmt.Sprintf(`WHERE aml.company_id = :company_id
 			                    AND ( %s (%s AND aml.reconciled = false))`, accClause, accType)
 			if rs.Partner().IsNotEmpty() {
-				whereClause += ` AND aml.partner_id = ?`
+				whereClause += ` AND aml.partner_id = :partner_id`
 			}
 			if len(excludedIds) > 0 {
-				whereClause += ` AND aml.id NOT IN ?`
+				whereClause += ` AND aml.id NOT IN :excluded_ids`
 			}
 			return `SELECT aml.id `,
 				`FROM account_move_line aml JOIN account_account acc ON acc.id = aml.account_id `,
@@ -923,41 +924,59 @@ set to draft and re-processed again.`},
 				precision = stLineCurrency.DecimalPlaces()
 			}
 			_, _ = currency, precision
-			/* tovalid: named sql parameters
-			params = {'company_id': self.env.user.company_id.id,
-						'account_payable_receivable': (self.journal_id.default_credit_account_id.id, self.journal_id.default_debit_account_id.id),
-						'amount': float_repr(float_round(amount, precision_digits=precision), precision_digits=precision),
-						'partner_id': self.partner_id.id,
-						'excluded_ids': tuple(excluded_ids),
-						'ref': self.name,
-						}
-			# Look for structured communication match
-			if self.name:
-				add_to_select = ", CASE WHEN aml.ref = %(ref)s THEN 1 ELSE 2 END as temp_field_order "
-				add_to_from = " JOIN account_move m ON m.id = aml.move_id "
-				select_clause, from_clause, where_clause = self._get_common_sql_query(overlook_partner=True, excluded_ids=excluded_ids, split=True)
-				sql_query = select_clause + add_to_select + from_clause + add_to_from + where_clause
-				sql_query += " AND (aml.ref= %(ref)s or m.name = %(ref)s) \
-						ORDER BY temp_field_order, date_maturity asc, aml.id asc"
-				self.env.cr.execute(sql_query, params)
-				results = self.env.cr.fetchone()
-				if results:
-					return self.env['account.move.line'].browse(results[0])
-			# Look for a single move line with the same amount
-			field = currency and 'amount_residual_currency' or 'amount_residual'
-			liquidity_field = currency and 'amount_currency' or amount > 0 and 'debit' or 'credit'
-			liquidity_amt_clause = currency and '%(amount)s::numeric' or 'abs(%(amount)s::numeric)'
-			sql_query = self._get_common_sql_query(excluded_ids=excluded_ids) + \
-					" AND ("+field+" = %(amount)s::numeric OR (acc.internal_type = 'liquidity' AND "+liquidity_field+" = " + liquidity_amt_clause + ")) \
-					ORDER BY date_maturity asc, aml.id asc LIMIT 1"
-			self.env.cr.execute(sql_query, params)
-			results = self.env.cr.fetchone()
-			if results:
-				return self.env['account.move.line'].browse(results[0])
+			params := map[string]interface{}{
+				"company_id":                 h.User().NewSet(rs.Env()).CurrentUser().Company().ID(),
+				"account_payable_receivable": []int64{rs.Journal().DefaultCreditAccount().ID(), rs.Journal().DefaultDebitAccount().ID()},
+				"amount":                     fmt.Sprintf(fmt.Sprintf("%%.%df", precision), amount),
+				"partner_id":                 rs.Partner().ID(),
+				"excluded_ids":               excludedIds,
+				"ref":                        rs.Name(),
+			}
+			// Look for structured communication match
+			if rs.Name() != "" {
+				addToSelect := ", CASE WHEN aml.ref = :ref THEN 1 ELSE 2 END as temp_field_order "
+				addToFrom := " JOIN account_move m ON m.id = aml.move_id "
+				selectClause, fromClause, whereClause := rs.GetCommonSqlQuery(true, excludedIds)
+				sqlQuery := selectClause + addToSelect + fromClause + addToFrom + whereClause
+				sqlQuery += " AND (aml.ref= :ref or m.name = :ref) ORDER BY temp_field_order, date_maturity asc, aml.id asc"
+				sqlQuery, slParams, err := sqlx.Named(sqlQuery, params)
+				if err != nil {
+					panic(rs.T("Unable to bind query with named parameters.\nQuery: %s \nParams: %v", sqlQuery, params))
+				}
+				var res int64
+				rs.Env().Cr().Get(&res, sqlQuery, slParams)
+				if res != 0 {
+					return h.AccountMoveLine().BrowseOne(rs.Env(), res)
+				}
+			}
 
-			return self.env['account.move.line']
-			*/
-			return h.AccountMoveLine().NewSet(rs.Env())
+			// Look for a single move line with the same amount
+			field := h.AccountMoveLine().Fields().AmountResidualCurrency()
+			if currency.IsEmpty() {
+				field = h.AccountMoveLine().Fields().AmountResidual()
+			}
+			liquidityField := h.AccountMoveLine().Fields().AmountCurrency()
+			if currency.IsEmpty() {
+				liquidityField = h.AccountMoveLine().Fields().Credit()
+				if amount > 0 {
+					liquidityField = h.AccountMoveLine().Fields().Debit()
+				}
+			}
+			liquidityAmtClause := ":amount ::numeric"
+			if currency.IsEmpty() {
+				liquidityAmtClause = "abs(:amount) ::numeric"
+			}
+			selectClause, fromClause, whereClause := rs.GetCommonSqlQuery(true, excludedIds)
+			sqlQuery := selectClause + fromClause + whereClause
+			sqlQuery += fmt.Sprintf(" AND (%s = :amount::numeric OR (acc.internal_type = 'liquidity' AND %s = %s )) ORDER BY date_maturity asc, aml.id asc LIMIT 1",
+				field, liquidityField, liquidityAmtClause)
+			sqlQuery, slParams, err := sqlx.Named(sqlQuery, params)
+			if err != nil {
+				panic(rs.T("Unable to bind query with named parameters.\nQuery: %s \nParams: %v", sqlQuery, params))
+			}
+			var res int64
+			rs.Env().Cr().Get(&res, sqlQuery, slParams)
+			return h.AccountMoveLine().BrowseOne(rs.Env(), res)
 		})
 
 	h.AccountBankStatementLine().Methods().GetMoveLinesForAutoReconcile().DeclareMethod(

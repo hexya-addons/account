@@ -27,31 +27,27 @@ func initTestBankStatementReconciliationStruct(env models.Environment) TestBankS
 }
 
 // Return the move line that gets to be reconciled (the one in the receivable account)
-func (self TestBankStatementReconciliationStruct) createInvoice(amount float64) m.AccountMoveLineSet {
+func (bs TestBankStatementReconciliationStruct) createInvoice(amount float64) m.AccountMoveLineSet {
 	vals := h.AccountInvoice().NewData().
-		SetPartner(self.PartnerAgrolait).
+		SetPartner(bs.PartnerAgrolait).
 		SetType("out_invoice").
 		SetName("-").
-		SetCurrency(h.User().NewSet(self.Env).CurrentUser().Company().Currency())
-	// new creates a temporary record to apply the on_change afterwards
-	// invoice = self.i_model.new(vals)
-	invoice := h.AccountInvoice().Create(self.Env, vals)
-	invoice.OnchangePartner()
-	vals.SetAccount(invoice.Account())
-	invoice.Unlink()
-	invoice = h.AccountInvoice().Create(self.Env, vals)
+		SetCurrency(h.User().NewSet(bs.Env).CurrentUser().Company().Currency())
 
-	h.AccountInvoiceLine().Create(self.Env,
+	vals = h.AccountInvoice().NewSet(bs.Env).UpdateDataForPartner(bs.PartnerAgrolait, vals)
+	invoice := h.AccountInvoice().Create(bs.Env, vals)
+
+	h.AccountInvoiceLine().Create(bs.Env,
 		h.AccountInvoiceLine().NewData().
 			SetQuantity(1).
 			SetPriceUnit(amount).
 			SetInvoice(invoice).
 			SetName(".").
-			SetAccount(h.AccountAccount().Search(self.Env,
-				q.AccountAccount().UserType().Equals(h.AccountAccountType().NewSet(self.Env).GetRecord("account_data_account_type_revenue"))).Limit(1)))
+			SetAccount(h.AccountAccount().Search(bs.Env,
+				q.AccountAccount().UserType().Equals(h.AccountAccountType().NewSet(bs.Env).GetRecord("account_data_account_type_revenue"))).Limit(1)))
 	invoice.ActionInvoiceOpen()
 
-	mvLine := h.AccountMoveLine().NewSet(self.Env)
+	mvLine := h.AccountMoveLine().NewSet(bs.Env)
 	for _, l := range invoice.Move().Lines().Records() {
 		if l.Account().Equals(vals.Account()) {
 			mvLine = l
@@ -61,15 +57,15 @@ func (self TestBankStatementReconciliationStruct) createInvoice(amount float64) 
 	return mvLine
 }
 
-func (self TestBankStatementReconciliationStruct) createStatementLine(stLineAmount float64) m.AccountBankStatementLineSet {
-	journal := h.AccountBankStatement().NewSet(self.Env).WithContext("journal_types", "bank").DefaultJournal()
-	bankStmt := h.AccountBankStatement().Create(self.Env,
+func (bs TestBankStatementReconciliationStruct) createStatementLine(stLineAmount float64) m.AccountBankStatementLineSet {
+	journal := h.AccountBankStatement().NewSet(bs.Env).WithContext("journal_type", "bank").DefaultJournal()
+	bankStmt := h.AccountBankStatement().Create(bs.Env,
 		h.AccountBankStatement().NewData().SetJournal(journal))
-	bankStmtLine := h.AccountBankStatementLine().Create(self.Env,
+	bankStmtLine := h.AccountBankStatementLine().Create(bs.Env,
 		h.AccountBankStatementLine().NewData().
 			SetName("_").
 			SetStatement(bankStmt).
-			SetPartner(self.PartnerAgrolait).
+			SetPartner(bs.PartnerAgrolait).
 			SetAmount(stLineAmount))
 	return bankStmtLine
 }

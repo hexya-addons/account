@@ -1371,7 +1371,14 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				// refuse to validate a vendor bill/refund if there already exists one with the same reference for the same partner,
 				// because it's probably a double encoding of the same bill/refund
 				if strutils.IsIn(invoice.Type(), "in_invoice", "in_refund") {
-					panic(rs.T(`Duplicated vendor reference detected. You probably encoded twice the same vendor bill/refund.`))
+					if h.AccountInvoice().Search(rs.Env(),
+						q.AccountInvoice().Type().Equals(invoice.Type()).
+							And().Reference().Equals(invoice.Reference()).
+							And().Company().Equals(invoice.Company()).
+							And().CommercialPartner().Equals(invoice.CommercialPartner()).
+							And().ID().NotEquals(invoice.ID())).IsNotEmpty() {
+						panic(rs.T(`Duplicated vendor reference detected. You probably encoded twice the same vendor bill/refund.`))
+					}
 				}
 			}
 			return rs.Write(h.AccountInvoice().NewData().SetState("open"))

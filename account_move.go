@@ -581,9 +581,9 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			cr := rs.Env().Cr()
 			cr.Execute(`DROP INDEX IF EXISTS account_move_line_partner_id_index`)
 			var out []interface{}
-			cr.Select(&out, `SELECT indexname FROM pg_indexes WHERE indexname = account_move_line_partner_id_ref_idx`)
+			cr.Select(&out, `SELECT indexname FROM pg_indexes WHERE indexname = 'account_move_line_partner_id_ref_idx'`)
 			if len(out) == 0 {
-				cr.Execute(``)
+				cr.Execute(`CREATE INDEX account_move_line_partner_id_ref_idx ON account_move_line (partner_id, ref)`)
 			}
 		})
 
@@ -1974,12 +1974,8 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 		`PrepareAnalyticLin Prepare the values used to create() an account.analytic.line upon validation of an account.move.line having
 			      an analytic account. This method is intended to be extended in other modules.e`,
 		func(rs m.AccountMoveLineSet) m.AccountAnalyticLineData {
-			var amount float64
-			var data m.AccountAnalyticLineData
-			var date dates.Date
-
-			amount = rs.Credit() - rs.Debit()
-			data = h.AccountAnalyticLine().NewData().
+			amount := rs.Credit() - rs.Debit()
+			data := h.AccountAnalyticLine().NewData().
 				SetName(rs.Name()).
 				SetDate(rs.Date()).
 				SetAccount(rs.AnalyticAccount()).
@@ -1992,7 +1988,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 				SetRef(rs.Ref()).
 				SetMove(rs).
 				SetUser(rs.Invoice().User())
-			date = rs.Date()
+			date := rs.Date()
 			if date.IsZero() {
 				date = dates.Today()
 			}

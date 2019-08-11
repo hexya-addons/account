@@ -15,7 +15,7 @@ func TestSupplierInvoice(t *testing.T) {
 	Convey("Test Supplier Invoice", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
 			accountTypeReceivable := h.AccountAccountType().NewSet(env).GetRecord("account_data_account_type_receivable")
-			AccountTypeExpenses := h.AccountAccountType().NewSet(env).GetRecord("account_data_account_type_expenses")
+			accountTypeExpenses := h.AccountAccountType().NewSet(env).GetRecord("account_data_account_type_expenses")
 			partner2 := h.Partner().NewSet(env).GetRecord("base_res_partner_2")
 			Product4 := h.ProductProduct().NewSet(env).GetRecord("product_product_product_4")
 
@@ -30,7 +30,7 @@ func TestSupplierInvoice(t *testing.T) {
 
 			// Should be changed by automatic on_change later
 			invoiceAccount := h.AccountAccount().Search(env, q.AccountAccount().UserType().Equals(accountTypeReceivable)).Limit(1)
-			invoiceLineAccount := h.AccountAccount().Search(env, q.AccountAccount().UserType().Equals(AccountTypeExpenses)).Limit(1)
+			invoiceLineAccount := h.AccountAccount().Search(env, q.AccountAccount().UserType().Equals(accountTypeExpenses)).Limit(1)
 
 			invoice := h.AccountInvoice().Create(env,
 				h.AccountInvoice().NewData().
@@ -139,8 +139,14 @@ func TestSupplierInvoice2(t *testing.T) {
 					bases = append(bases, val)
 				}
 			}
-			So(amounts, ShouldEqual, []float64{50.0, 550.0, 220.0})
-			So(bases, ShouldEqual, []float64{500.0, 500.0, 1100.0})
+			So(amounts, ShouldHaveLength, 3)
+			So(amounts[0], ShouldEqual, 50)
+			So(amounts[1], ShouldEqual, 550)
+			So(amounts[2], ShouldEqual, 220)
+			So(bases, ShouldHaveLength, 3)
+			So(bases[0], ShouldEqual, 500)
+			So(bases[1], ShouldEqual, 550)
+			So(bases[2], ShouldEqual, 1100)
 
 			// I cancel the account move which is in posted state and verifies that it gives warning message
 			So(func() { invoice.Move().ButtonCancel() }, ShouldPanic)
