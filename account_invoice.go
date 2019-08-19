@@ -762,7 +762,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 					panic("Cannot find a chart of accounts for this company, " +
 						"You should configure it. \nPlease go to Account Configuration.")
 				}
-				if strutils.IsIn(rs.Type(), "out_invoice", "out_refund") {
+				if strutils.IsIn(data.Type(), "out_invoice", "out_refund") {
 					data.SetAccount(recAccount)
 					data.SetPaymentTerm(p.PropertyPaymentTerm())
 				} else {
@@ -793,7 +793,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				}
 			}
 			data.UnsetDateDue()
-			if strutils.IsIn(rs.Type(), "in_invoice", "out_refund") {
+			if strutils.IsIn(data.Type(), "in_invoice", "out_refund") {
 				banks := p.CommercialPartner().Banks()
 				if banks.IsNotEmpty() {
 					data.SetPartnerBank(banks.Records()[0])

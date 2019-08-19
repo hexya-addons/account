@@ -1385,6 +1385,7 @@ set to draft and re-processed again.`},
 					panic(rs.T(`A selected statement line was already reconciled with an account move.`))
 				}
 			}
+
 			// Fully reconciled moves are just linked to the bank statement
 			total := rs.Amount()
 			counterPartMoves := h.AccountMove().NewSet(rs.Env())
