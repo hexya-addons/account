@@ -522,12 +522,13 @@ func init() {
 			                      FROM account_move_line aml
 			                          JOIN account_account acc ON acc.id = aml.account_id
 			                          JOIN account_bank_statement_line stl ON aml.ref = stl.name
-			                      WHERE (aml.company_id = %s
+                                      LEFT JOIN account_account_type aat ON acc.user_type_id = aat.id
+			                      WHERE (acc.company_id = %s
 			                          AND aml.partner_id IS NOT NULL)
 			                          AND (
 			                              (aml.statement_id IS NULL AND aml.account_id IN %s)
 			                              OR
-			                              (acc.internal_type IN ('payable', 'receivable') AND aml.reconciled = false)
+			                              (aat.type IN ('payable', 'receivable') AND aml.reconciled = false)
 			                              )
 			                          AND aml.ref IN %s
 `
@@ -882,22 +883,24 @@ set to draft and re-processed again.`},
 		func(rs m.AccountBankStatementLineSet, overlookPartner bool, excludedIds []int64) (string, string, string) {
 			accType := `acc.reconcile = true`
 			if rs.Partner().IsNotEmpty() || overlookPartner {
-				accType = `acc.internal_type IN ('payable', 'receivable')`
+				accType = `aat.type IN ('payable', 'receivable')`
 			}
 			accClause := ``
 			if rs.Journal().DefaultDebitAccount().IsNotEmpty() && rs.Journal().DefaultCreditAccount().IsNotEmpty() {
-				accClause = `(aml.statement_id IS NULL AND aml.account_id IN :account_payable_receivable AND aml.payment_id IS NOT NULL) OR`
+				accClause = `(aml.statement_id IS NULL AND aml.account_id IN (:account_payable_receivable) AND aml.payment_id IS NOT NULL) OR`
 			}
-			whereClause := fmt.Sprintf(`WHERE aml.company_id = :company_id
-			                    AND ( %s (%s AND aml.reconciled = false))`, accClause, accType)
+			whereClause := fmt.Sprintf(`WHERE acc.company_id = :company_id
+				AND ( %s (%s AND aml.reconciled = false))`, accClause, accType)
 			if rs.Partner().IsNotEmpty() {
 				whereClause += ` AND aml.partner_id = :partner_id`
 			}
 			if len(excludedIds) > 0 {
-				whereClause += ` AND aml.id NOT IN :excluded_ids`
+				whereClause += ` AND aml.id NOT IN (:excluded_ids)`
 			}
 			return `SELECT aml.id `,
-				`FROM account_move_line aml JOIN account_account acc ON acc.id = aml.account_id `,
+				`FROM account_move_line aml 
+				JOIN account_account acc ON acc.id = aml.account_id
+				LEFT JOIN account_account_type aat ON acc.user_type_id = aat.id `,
 				whereClause
 		})
 
@@ -911,10 +914,7 @@ set to draft and re-processed again.`},
 				amount = rs.Amount()
 			}
 			companyCurrency := rs.Journal().Company().Currency()
-			stLineCurrency := rs.Currency()
-			if stLineCurrency.IsEmpty() {
-				stLineCurrency = rs.Journal().Currency()
-			}
+			stLineCurrency := h.Currency().Coalesce(rs.Currency(), rs.Journal().Currency())
 			currency := h.Currency().NewSet(rs.Env())
 			if stLineCurrency.IsNotEmpty() && !stLineCurrency.Equals(companyCurrency) {
 				currency = stLineCurrency
@@ -932,21 +932,25 @@ set to draft and re-processed again.`},
 				"excluded_ids":               excludedIds,
 				"ref":                        rs.Name(),
 			}
+			type resStruct struct {
+				ID             int64 `db:"id"`
+				TempFieldOrder int   `db:"temp_field_order"`
+			}
 			// Look for structured communication match
 			if rs.Name() != "" {
 				addToSelect := ", CASE WHEN aml.ref = :ref THEN 1 ELSE 2 END as temp_field_order "
 				addToFrom := " JOIN account_move m ON m.id = aml.move_id "
 				selectClause, fromClause, whereClause := rs.GetCommonSqlQuery(true, excludedIds)
-				sqlQuery := selectClause + addToSelect + fromClause + addToFrom + whereClause
-				sqlQuery += " AND (aml.ref= :ref or m.name = :ref) ORDER BY temp_field_order, date_maturity asc, aml.id asc"
-				sqlQuery, slParams, err := sqlx.Named(sqlQuery, params)
+				query := selectClause + addToSelect + fromClause + addToFrom + whereClause
+				query += " AND (aml.ref= :ref or m.name = :ref) ORDER BY temp_field_order, date_maturity asc, aml.id asc"
+				slQuery, slParams, err := sqlx.Named(query, params)
 				if err != nil {
-					panic(rs.T("Unable to bind query with named parameters.\nQuery: %s \nParams: %v", sqlQuery, params))
+					panic(rs.T("Unable to bind query with named parameters.\nError: %s\nQuery: %s \nParams: %v", err, query, params))
 				}
-				var res int64
-				rs.Env().Cr().Get(&res, sqlQuery, slParams)
-				if res != 0 {
-					return h.AccountMoveLine().BrowseOne(rs.Env(), res)
+				var res []resStruct
+				rs.Env().Cr().Select(&res, slQuery, slParams...)
+				if len(res) > 0 {
+					return h.AccountMoveLine().BrowseOne(rs.Env(), res[0].ID)
 				}
 			}
 
@@ -962,21 +966,23 @@ set to draft and re-processed again.`},
 					liquidityField = h.AccountMoveLine().Fields().Debit()
 				}
 			}
-			liquidityAmtClause := ":amount ::numeric"
+			liquidityAmtClause := "CAST(:amount AS numeric)"
 			if currency.IsEmpty() {
-				liquidityAmtClause = "abs(:amount) ::numeric"
+				liquidityAmtClause = "CAST(abs(:amount) AS numeric)"
 			}
 			selectClause, fromClause, whereClause := rs.GetCommonSqlQuery(true, excludedIds)
-			sqlQuery := selectClause + fromClause + whereClause
-			sqlQuery += fmt.Sprintf(" AND (%s = :amount::numeric OR (acc.internal_type = 'liquidity' AND %s = %s )) ORDER BY date_maturity asc, aml.id asc LIMIT 1",
-				field, liquidityField, liquidityAmtClause)
-			sqlQuery, slParams, err := sqlx.Named(sqlQuery, params)
+			query := selectClause + fromClause + whereClause
+			query += fmt.Sprintf(" AND (aml.%s = CAST(:amount AS numeric) OR (aat.type = 'liquidity' AND aml.%s = %s )) ORDER BY date_maturity asc, aml.id asc LIMIT 1",
+				h.AccountMoveLine().Model.JSONizeFieldName(field.String()),
+				h.AccountMoveLine().Model.JSONizeFieldName(liquidityField.String()),
+				liquidityAmtClause)
+			slQuery, slParams, err := sqlx.Named(query, params)
 			if err != nil {
-				panic(rs.T("Unable to bind query with named parameters.\nQuery: %s \nParams: %v", sqlQuery, params))
+				panic(rs.T("Unable to bind query with named parameters.\nError: %s\nQuery: %s \nParams: %v", err, query, params))
 			}
-			var res int64
-			rs.Env().Cr().Get(&res, sqlQuery, slParams)
-			return h.AccountMoveLine().BrowseOne(rs.Env(), res)
+			var res []resStruct
+			rs.Env().Cr().Select(&res, slQuery, slParams...)
+			return h.AccountMoveLine().BrowseOne(rs.Env(), res[0].ID)
 		})
 
 	h.AccountBankStatementLine().Methods().GetMoveLinesForAutoReconcile().DeclareMethod(
@@ -1121,11 +1127,11 @@ set to draft and re-processed again.`},
 					ref = moveRef + " - " + rs.Ref()
 				}
 			}
-			data := h.AccountMove().NewData()
-			data.SetStatementLine(rs)
-			data.SetJournal(rs.Statement().Journal())
-			data.SetDate(rs.Date())
-			data.SetRef(ref)
+			data := h.AccountMove().NewData().
+				SetStatementLine(rs).
+				SetJournal(rs.Statement().Journal()).
+				SetDate(rs.Date()).
+				SetRef(ref)
 			if rs.MoveName() != "" {
 				data.SetName(rs.MoveName())
 			}
@@ -1138,44 +1144,43 @@ set to draft and re-processed again.`},
 			      :param recordset move: the account.move to link the move line
 			      :param float amount: the amount of transaction that wasn't already reconciled`,
 		func(rs m.AccountBankStatementLineSet, move m.AccountMoveSet, amount float64) m.AccountMoveLineData {
-			cpnyCur := rs.Journal().Company().Currency()
-			stmtCur := h.Currency().Coalesce(rs.Journal().Currency(), cpnyCur)
-			stlCur := h.Currency().Coalesce(rs.Currency(), stmtCur)
-			amtCur := 0.0
-			stlCurRate := 0.0
+			companyCurrency := rs.Journal().Company().Currency()
+			statementCurrency := h.Currency().Coalesce(rs.Journal().Currency(), companyCurrency)
+			statementLineCurrency := h.Currency().Coalesce(rs.Currency(), statementCurrency)
+			var amountCurrency, stLineCurrencyRate float64
 			if rs.Currency().IsNotEmpty() {
-				stlCurRate = rs.AmountCurrency() / rs.Amount()
+				stLineCurrencyRate = rs.AmountCurrency() / rs.Amount()
 			}
-			// We have several use case here to compure the currency and amount currency of counterpart line to balance the move:
+			// We have several use case here to compute the currency and amount currency of counterpart line to balance the move:
 			switch {
-			case (!stlCur.Equals(cpnyCur) && stlCur.Equals(stmtCur)) || (!stlCur.Equals(cpnyCur) && stmtCur.Equals(cpnyCur)):
+			case (!statementLineCurrency.Equals(companyCurrency) && statementLineCurrency.Equals(statementCurrency)) || (!statementLineCurrency.Equals(companyCurrency) && statementCurrency.Equals(companyCurrency)):
 				// company in currency A, statement in currency B and transaction in currency B or
 				// company in currency A, statement in currency A and transaction in currency B
 				// counterpart line must have currency B and correct amount is inverse of already existing lines
 				for _, line := range move.Lines().Records() {
-					amtCur -= line.AmountCurrency()
+					amountCurrency -= line.AmountCurrency()
 				}
-			case !stlCur.Equals(cpnyCur) && !stlCur.Equals(stmtCur):
+			case !statementLineCurrency.Equals(companyCurrency) && !statementLineCurrency.Equals(statementCurrency):
 				// company in currency A, statement in currency B and transaction in currency C
 				// counterpart line must have currency B and use rate between B and C to compute correct amount
 				for _, line := range move.Lines().Records() {
-					amtCur -= line.AmountCurrency()
+					amountCurrency -= line.AmountCurrency()
 				}
-				amtCur /= stlCurRate
-			case stlCur.Equals(cpnyCur) && !stmtCur.Equals(cpnyCur):
+				amountCurrency /= stLineCurrencyRate
+			case statementLineCurrency.Equals(companyCurrency) && !statementCurrency.Equals(companyCurrency):
 				// company in currency A, statement in currency B and transaction in currency A
 				// counterpart line must have currency B and amount is computed using the rate between A and B
-				amtCur = amount / stlCurRate
+				amountCurrency = amount / stLineCurrencyRate
 			}
 
 			// last case is company in currency A, statement in currency A and transaction in currency A
 			// and in this case counterpart line does not need any second currency nor amount_currency
-			data := h.AccountMoveLine().NewData()
-			data.SetName(rs.Name())
-			data.SetMove(move)
-			data.SetPartner(rs.Partner())
-			data.SetStatement(rs.Statement())
-			data.SetAmountCurrency(amtCur)
+			data := h.AccountMoveLine().NewData().
+				SetName(rs.Name()).
+				SetMove(move).
+				SetPartner(rs.Partner()).
+				SetStatement(rs.Statement()).
+				SetAmountCurrency(amountCurrency)
 			if amount >= 0 {
 				data.SetAccount(rs.Statement().Journal().DefaultCreditAccount())
 				data.SetDebit(amount)
@@ -1184,10 +1189,10 @@ set to draft and re-processed again.`},
 				data.SetCredit(-amount)
 			}
 			switch {
-			case stmtCur != cpnyCur:
-				data.SetCurrency(stmtCur)
-			case stlCur != cpnyCur:
-				data.SetCurrency(stlCur)
+			case statementCurrency != companyCurrency:
+				data.SetCurrency(statementCurrency)
+			case statementLineCurrency != companyCurrency:
+				data.SetCurrency(statementLineCurrency)
 			}
 			return data
 		})
@@ -1224,8 +1229,8 @@ set to draft and re-processed again.`},
 			for i := 0; i < len(data) && i < rs.Len(); i++ {
 				datum := safifyData(data[i])
 				for _, amlDict := range datum.CounterpartAmlDatas {
-					amlDict.MoveLineID = h.AccountMoveLine().BrowseOne(rs.Env(), amlDict.CounterpartAmlID).ID()
-					amlDict.CounterpartAmlID = 0
+					amlDict.MoveLineID = h.AccountMoveLine().BrowseOne(rs.Env(), amlDict.CounterpartAMLID).ID()
+					amlDict.CounterpartAMLID = 0
 				}
 				stLine[i].ProcessReconciliation(datum.PaymentAml, datum.CounterpartAmlDatas, datum.NewAmlDatas)
 			}
@@ -1251,8 +1256,8 @@ set to draft and re-processed again.`},
 			return rs.Name()
 		})
 
-	h.AccountBankStatementLine().Methods().ConvertAmlStructToData().DeclareMethod(
-		`ConvertAmlStructToData converts the given BankStatementAMLStruct to m.AccountMoveLineData`,
+	h.AccountBankStatementLine().Methods().ConvertAMLStructToData().DeclareMethod(
+		`ConvertAMLStructToData converts the given BankStatementAMLStruct to m.AccountMoveLineData`,
 		func(rs m.AccountBankStatementLineSet, strc accounttypes.BankStatementAMLStruct) m.AccountMoveLineData {
 			return h.AccountMoveLine().NewData().
 				SetName(strc.Name).
@@ -1288,6 +1293,50 @@ set to draft and re-processed again.`},
 			return out
 		})
 
+	h.AccountBankStatementLine().Methods().CompleteAMLStructs().DeclareMethod(`
+		CompleteAMLStructs takes a slice of BankStatementAMLStruct and returns a new slice with each struct updated.`,
+		func(rs m.AccountBankStatementLineSet, AMLStructs []accounttypes.BankStatementAMLStruct, move m.AccountMoveSet) []accounttypes.BankStatementAMLStruct {
+			companyCurrency := rs.Journal().Company().Currency()
+			statementCurrency := h.Currency().Coalesce(rs.Journal().Currency(), companyCurrency)
+			statementLineCurrency := h.Currency().Coalesce(rs.Currency(), statementCurrency)
+			var stLineCurrencyRate float64
+			if rs.Currency().IsNotEmpty() {
+				stLineCurrencyRate = rs.AmountCurrency() / rs.Amount()
+			}
+
+			var res []accounttypes.BankStatementAMLStruct
+			for _, amlDict := range AMLStructs {
+				amlDict.MoveID = move.ID()
+				amlDict.PartnerID = rs.Partner().ID()
+				amlDict.StatementID = rs.Statement().ID()
+				if !statementLineCurrency.Equals(companyCurrency) {
+					amlDict.AmountCurrency = amlDict.Debit - amlDict.Credit
+					amlDict.CurrencyID = statementLineCurrency.ID()
+					switch {
+					case rs.Currency().IsNotEmpty() && statementCurrency.Equals(companyCurrency) && stLineCurrencyRate != 0.0:
+						// Statement is in company currency but the transaction is in foreign currency
+						amlDict.Debit = companyCurrency.Round(amlDict.Debit / stLineCurrencyRate)
+						amlDict.Credit = companyCurrency.Round(amlDict.Credit / stLineCurrencyRate)
+					case rs.Currency().IsNotEmpty() && stLineCurrencyRate != 0.0:
+						// Statement is in foreign currency and the transaction is in another one
+						amlDict.Debit = statementLineCurrency.Compute(amlDict.Debit/stLineCurrencyRate, companyCurrency, true)
+						amlDict.Credit = statementCurrency.Compute(amlDict.Credit/stLineCurrencyRate, companyCurrency, true)
+					default:
+						// Statement is in foreign currency and no extra currency is given for the transaction
+						amlDict.Debit = statementLineCurrency.Compute(amlDict.Debit, companyCurrency, true)
+						amlDict.Credit = statementLineCurrency.Compute(amlDict.Credit, companyCurrency, true)
+					}
+				} else if !statementCurrency.Equals(companyCurrency) {
+					// Statement is in foreign currency but the transaction is in company currency
+					prorataFactor := (amlDict.Debit - amlDict.Credit) / rs.AmountCurrency()
+					amlDict.AmountCurrency = prorataFactor * rs.Amount()
+					amlDict.CurrencyID = statementCurrency.ID()
+				}
+				res = append(res, amlDict)
+			}
+			return res
+		})
+
 	h.AccountBankStatementLine().Methods().ProcessReconciliation().DeclareMethod(
 		`Match statement lines with existing payments (eg. checks) and/or payables/receivables (eg. invoices and refunds) and/or new move lines (eg. write-offs).
 			      If any new journal item needs to be created (via new_aml_dicts or counterpart_aml_dicts), a new journal entry will be created and will contain those
@@ -1316,17 +1365,17 @@ set to draft and re-processed again.`},
 			      :returns: The journal entries with which the transaction was matched. If there was at least an entry in counterpart_aml_dicts or new_aml_dicts, this list contains
 			          the move created by the reconciliation, containing entries for the statement.line (1), the counterpart move lines (0..*) and the new move lines (0..*).
 			  `,
-		func(rs m.AccountBankStatementLineSet, PaymentAmlRec m.AccountMoveLineSet, CounterpartAmlDicts, NewAmlDicts []accounttypes.BankStatementAMLStruct) m.AccountMoveSet {
+		func(rs m.AccountBankStatementLineSet, paymentAMLRec m.AccountMoveLineSet, counterpartAMLDicts, newAMLDicts []accounttypes.BankStatementAMLStruct) m.AccountMoveSet {
 			// Check and prepare recieved data
 			if rs.MoveName() != "" {
 				panic(rs.T(`Operation not allowed. Since your statement line already received a number, you cannot reconcile it entirely with existing journal entries otherwise it would make a gap in the numbering. You should book an entry and make a regular revert of it in case you want to cancel it.`))
 			}
-			for _, rc := range PaymentAmlRec.Records() {
+			for _, rc := range paymentAMLRec.Records() {
 				if rc.Statement().IsNotEmpty() {
 					panic(rs.T(`A selected move line was already reconciled.`))
 				}
 			}
-			for _, amlDict := range CounterpartAmlDicts {
+			for _, amlDict := range counterpartAMLDicts {
 				if h.AccountMoveLine().BrowseOne(rs.Env(), amlDict.MoveLineID).Reconciled() {
 					panic(rs.T(`A selected move line was already reconciled.`))
 				}
@@ -1338,30 +1387,21 @@ set to draft and re-processed again.`},
 			}
 			// Fully reconciled moves are just linked to the bank statement
 			total := rs.Amount()
-			cntrprtMvs := h.AccountMove().NewSet(rs.Env())
-			for _, amlRec := range PaymentAmlRec.Records() {
+			counterPartMoves := h.AccountMove().NewSet(rs.Env())
+			for _, amlRec := range paymentAMLRec.Records() {
 				total -= amlRec.Debit() - amlRec.Credit()
-				amlRecData := h.AccountMoveLine().NewData()
-				amlRecData.SetStatement(rs.Statement())
-				amlRec.Write(amlRecData)
-				amlRecMoveData := h.AccountMove().NewData()
-				amlRecMoveData.SetStatementLine(rs)
-				amlRec.Move().Write(amlRecMoveData)
-				cntrprtMvs = cntrprtMvs.Union(amlRec.Move())
+				amlRec.SetStatement(rs.Statement())
+				amlRec.Move().SetStatementLine(rs)
+				counterPartMoves = counterPartMoves.Union(amlRec.Move())
 			}
-			//Create move line(s). Either matching an existing journal entry (eg. invoice), in which
+			// Create move line(s). Either matching an existing journal entry (eg. invoice), in which
 			// case we reconcile the existing and the new move lines together, or being a write-off.
-			if len(CounterpartAmlDicts)+len(NewAmlDicts) == 0 {
-				cntrprtMvs.AssertBalanced()
-				return cntrprtMvs
+			if len(counterpartAMLDicts)+len(newAMLDicts) == 0 {
+				counterPartMoves.AssertBalanced()
+				return counterPartMoves
 			}
-			cpnyCur := rs.Journal().Company().Currency()
-			stmtCur := h.Currency().Coalesce(rs.Journal().Currency(), cpnyCur)
-			stlCur := h.Currency().Coalesce(rs.Currency(), stmtCur)
-			var stlCurRate float64
-			if rs.Currency().IsNotEmpty() {
-				stlCurRate = rs.AmountCurrency() / rs.Amount()
-			}
+			companyCurrency := rs.Journal().Company().Currency()
+
 			// Create the move
 			ids := rs.Statement().Lines().Ids()
 			ID := rs.ID()
@@ -1370,9 +1410,10 @@ set to draft and re-processed again.`},
 					rs.SetSequence(int64(i + 1))
 				}
 			}
-			mvVals := rs.PrepareReconciliationMove(rs.Statement().Name())
-			mv := h.AccountMove().Create(rs.Env(), mvVals)
-			cntrprtMvs = cntrprtMvs.Union(mv)
+			moveVals := rs.PrepareReconciliationMove(rs.Statement().Name())
+			move := h.AccountMove().Create(rs.Env(), moveVals)
+			counterPartMoves = counterPartMoves.Union(move)
+
 			// Create the payment
 			payment := h.AccountPayment().NewSet(rs.Env())
 			if math.Abs(total) > 0.00001 {
@@ -1391,7 +1432,6 @@ set to draft and re-processed again.`},
 					paymentMethods = rs.Journal().InboundPaymentMethods()
 					paymentType = "inbound"
 				}
-				data.SetPaymentType(paymentType)
 				if paymentMethods.IsNotEmpty() {
 					data.SetPaymentMethod(paymentMethods.Records()[0])
 					data.SetCommunication(rs.GetCommunication(paymentMethods))
@@ -1400,104 +1440,85 @@ set to draft and re-processed again.`},
 				if rs.Statement().Name() != "" {
 					nameVal = rs.Statement().Name()
 				}
-				data.SetName(nameVal)
-				data.SetCurrency(h.Currency().Coalesce(rs.Journal().Currency(), rs.Company().Currency()))
-				data.SetJournal(rs.Statement().Journal())
-				data.SetPaymentDate(rs.Date())
-				data.SetState("reconciled")
-				data.SetAmount(math.Abs(total))
+				data.
+					SetName(nameVal).
+					SetPaymentType(paymentType).
+					SetCurrency(h.Currency().Coalesce(rs.Journal().Currency(), rs.Company().Currency())).
+					SetJournal(rs.Statement().Journal()).
+					SetPaymentDate(rs.Date()).
+					SetState("reconciled").
+					SetAmount(math.Abs(total))
 				payment = h.AccountPayment().Create(rs.Env(), data)
 			}
+
 			// Complete dicts to create both counterpart move lines and write-offs
-			toCreate := append(CounterpartAmlDicts, NewAmlDicts...)
-			ctx := rs.Env().Context().WithKey("date", rs.Date().ToDateTime())
-			for _, amlDict := range toCreate {
-				amlDict.MoveID = mv.ID()
-				amlDict.PartnerID = rs.Partner().ID()
-				amlDict.StatementID = rs.Statement().ID()
-				if !stlCur.Equals(cpnyCur) {
-					amlDict.AmountCurrency = amlDict.Debit - amlDict.Credit
-					amlDict.CurrencyID = stlCur.ID()
-					switch {
-					case rs.Currency().IsNotEmpty() && stmtCur == cpnyCur && stlCurRate != 0.0:
-						// Statement is in company currency but the transaction is in foreign currency
-						amlDict.Debit = cpnyCur.Round(amlDict.Debit / stlCurRate)
-						amlDict.Credit = cpnyCur.Round(amlDict.Credit / stlCurRate)
-					case rs.Currency().IsNotEmpty() && stlCurRate != 0.0:
-						// Statement is in foreign currency and the transaction is in another one
-						amlDict.Debit = stlCur.WithNewContext(ctx).Compute(amlDict.Debit/stlCurRate, cpnyCur, true)
-						amlDict.Credit = stmtCur.WithNewContext(ctx).Compute(amlDict.Credit/stlCurRate, cpnyCur, true)
-					default:
-						// Statement is in foreign currency and no extra currency is given for the transaction
-						amlDict.Debit = stlCur.WithNewContext(ctx).Compute(amlDict.Debit, cpnyCur, true)
-						amlDict.Credit = stlCur.WithNewContext(ctx).Compute(amlDict.Credit, cpnyCur, true)
-					}
-				} else if !stmtCur.Equals(cpnyCur) {
-					// Statement is in foreign currency but the transaction is in company currency
-					prorataFactor := (amlDict.Debit - amlDict.Credit) / rs.AmountCurrency()
-					amlDict.AmountCurrency = prorataFactor * rs.Amount()
-					amlDict.CurrencyID = stmtCur.ID()
-				}
-			}
+			ctx := rs.Env().Context().WithKey("date", rs.Date())
+			counterpartAMLDicts = rs.WithNewContext(ctx).CompleteAMLStructs(counterpartAMLDicts, move)
+			newAMLDicts = rs.WithNewContext(ctx).CompleteAMLStructs(newAMLDicts, move)
+
 			// Create write-offs
 			// When we register a payment on an invoice, the write-off line contains the amount
 			// currency if all related invoices have the same currency. We apply the same logic in
 			// the manual reconciliation.
-			cntrprtAml := h.AccountMoveLine().NewSet(rs.Env())
-			for _, amlDict := range CounterpartAmlDicts {
-				cntrprtAml = cntrprtAml.Union(h.AccountMoveLine().BrowseOne(rs.Env(), amlDict.MoveLineID))
+			counterpartAML := h.AccountMoveLine().NewSet(rs.Env())
+			for _, amlDict := range counterpartAMLDicts {
+				counterpartAML = counterpartAML.Union(h.AccountMoveLine().BrowseOne(rs.Env(), amlDict.MoveLineID))
 			}
-			newAmlCur := h.Currency().NewSet(rs.Env())
+			newAMLCur := h.Currency().NewSet(rs.Env())
 			currencies := h.Currency().NewSet(rs.Env())
-			for _, aml := range cntrprtAml.Records() {
+			for _, aml := range counterpartAML.Records() {
 				currencies = currencies.Union(aml.Currency())
 			}
-			firstCntrprtAml := cntrprtAml.First()
-			if currencies.Len() == 1 && firstCntrprtAml.HasCurrency() && !firstCntrprtAml.Currency().Equals(cpnyCur) {
-				newAmlCur = firstCntrprtAml.Currency()
+			firstCounterpartAML := counterpartAML.First()
+			if currencies.Len() == 1 && firstCounterpartAML.HasCurrency() && !firstCounterpartAML.Currency().Equals(companyCurrency) {
+				newAMLCur = firstCounterpartAML.Currency()
 			}
-			for _, amlDict := range NewAmlDicts {
+			for _, amlDict := range newAMLDicts {
 				if payment.IsNotEmpty() {
 					amlDict.PaymentID = payment.ID()
 				}
-				if newAmlCur.IsNotEmpty() && h.Currency().BrowseOne(rs.Env(), amlDict.CurrencyID).IsEmpty() {
-					amlDict.CurrencyID = newAmlCur.ID()
-					amlDict.AmountCurrency = cpnyCur.WithNewContext(ctx).Compute(amlDict.Debit-amlDict.Credit, newAmlCur, true)
+				if newAMLCur.IsNotEmpty() && h.Currency().BrowseOne(rs.Env(), amlDict.CurrencyID).IsEmpty() {
+					amlDict.CurrencyID = newAMLCur.ID()
+					amlDict.AmountCurrency = companyCurrency.WithNewContext(ctx).Compute(amlDict.Debit-amlDict.Credit, newAMLCur, true)
 				}
-				h.AccountMoveLine().NewSet(rs.Env()).WithContext("apply_taxes", true).Create(rs.ConvertAmlStructToData(amlDict))
+				h.AccountMoveLine().NewSet(rs.Env()).
+					WithContext("apply_taxes", true).
+					WithContext("check_move_validity", false).
+					Create(rs.ConvertAMLStructToData(amlDict))
 			}
+
 			// Create counterpart move lines and reconcile them
-			for _, amlDict := range CounterpartAmlDicts {
-				cntrprtMoveLine := h.AccountMoveLine().BrowseOne(rs.Env(), amlDict.MoveLineID)
-				if cntrprtMoveLine.Partner().IsNotEmpty() {
-					amlDict.PartnerID = cntrprtMoveLine.Partner().ID()
+			for _, amlDict := range counterpartAMLDicts {
+				counterpartMoveLine := h.AccountMoveLine().BrowseOne(rs.Env(), amlDict.MoveLineID)
+				if counterpartMoveLine.Partner().IsNotEmpty() {
+					amlDict.PartnerID = counterpartMoveLine.Partner().ID()
 				}
-				amlDict.AccountID = cntrprtMoveLine.Account().ID()
+				amlDict.AccountID = counterpartMoveLine.Account().ID()
 				if payment.IsNotEmpty() {
 					amlDict.PaymentID = payment.ID()
 				}
-				if cntrprtMoveLine.Currency().IsNotEmpty() && !cntrprtMoveLine.Currency().Equals(cpnyCur) && h.Currency().BrowseOne(rs.Env(), amlDict.CurrencyID).IsEmpty() {
-					amlDict.CurrencyID = cntrprtMoveLine.Currency().ID()
-					amlDict.AmountCurrency = cpnyCur.WithNewContext(ctx).Compute(amlDict.Debit-amlDict.Credit, cntrprtMoveLine.Currency(), true)
+				if counterpartMoveLine.Currency().IsNotEmpty() && !counterpartMoveLine.Currency().Equals(companyCurrency) && h.Currency().BrowseOne(rs.Env(), amlDict.CurrencyID).IsEmpty() {
+					amlDict.CurrencyID = counterpartMoveLine.Currency().ID()
+					amlDict.AmountCurrency = companyCurrency.WithNewContext(ctx).Compute(amlDict.Debit-amlDict.Credit, counterpartMoveLine.Currency(), true)
 				}
-				newAml := h.AccountMoveLine().Create(rs.Env(), rs.ConvertAmlStructToData(amlDict))
-				newAml.Union(cntrprtMoveLine).Reconcile(h.AccountAccount().NewSet(rs.Env()), h.AccountJournal().NewSet(rs.Env()))
+				newAml := h.AccountMoveLine().NewSet(rs.Env()).WithContext("check_move_validity", false).Create(rs.ConvertAMLStructToData(amlDict))
+				newAml.Union(counterpartMoveLine).Reconcile(h.AccountAccount().NewSet(rs.Env()), h.AccountJournal().NewSet(rs.Env()))
 			}
 			// Balance the move
-			stlAmount := 0.0
-			for _, line := range mv.Lines().Records() {
-				stlAmount -= line.Balance()
+			var stLineAmount float64
+			for _, line := range move.Lines().Records() {
+				stLineAmount -= line.Balance()
 			}
-			amlDict := rs.PrepareReconciliationMoveLine(mv, stlAmount)
+			amlVals := rs.PrepareReconciliationMoveLine(move, stLineAmount)
 			if payment.IsNotEmpty() {
-				amlDict.SetPayment(payment)
+				amlVals.SetPayment(payment)
 			}
-			h.AccountMoveLine().Create(rs.Env(), amlDict)
-			mv.Post()
+			h.AccountMoveLine().NewSet(rs.Env()).WithContext("check_move_validity", false).Create(amlVals)
+			move.Post()
 			// record the move name on the statement line to be able to retrieve it in case of unreconciliation
-			rs.Write(h.AccountBankStatementLine().NewData().SetMoveName(mv.Name()))
-			payment.Write(h.AccountPayment().NewData().SetPaymentReference(mv.Name()))
-			cntrprtMvs.AssertBalanced()
-			return cntrprtMvs
+			rs.SetMoveName(move.Name())
+			payment.SetPaymentReference(move.Name())
+			counterPartMoves.AssertBalanced()
+			return counterPartMoves
 		})
 }

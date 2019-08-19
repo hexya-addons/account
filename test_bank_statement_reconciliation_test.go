@@ -95,10 +95,10 @@ func TestFullReconcile(t *testing.T) {
 
 			// reconcile
 			counterpartAmlDicts := []accounttypes.BankStatementAMLStruct{{
-				MoveID: rcvMvLine.ID(),
-				Debit:  0,
-				Credit: 100,
-				Name:   rcvMvLine.Name(),
+				MoveLineID: rcvMvLine.ID(),
+				Debit:      0,
+				Credit:     100,
+				Name:       rcvMvLine.Name(),
 			}}
 			stLine.ProcessReconciliation(h.AccountMoveLine().NewSet(env), counterpartAmlDicts, nil)
 

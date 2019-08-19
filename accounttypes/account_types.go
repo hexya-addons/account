@@ -60,7 +60,7 @@ type BankStatementAMLStruct struct {
 	PartnerID        int64
 	StatementID      int64
 	PaymentID        int64
-	CounterpartAmlID int64
+	CounterpartAMLID int64
 	JournalID        int64
 }
 
