@@ -1,8 +1,6 @@
 package account
 
 import (
-	"strconv"
-
 	"github.com/hexya-addons/base"
 	"github.com/hexya-addons/web/webdata"
 	"github.com/hexya-erp/hexya/src/actions"
@@ -68,13 +66,13 @@ func init() {
 			String:        "Federal States",
 			RelationModel: h.CountryState(),
 			JSON:          "state_ids"},
-		"ZipFrom": models.IntegerField{
+		"ZipFrom": models.CharField{
 			String:     "Zip Range From",
-			Default:    models.DefaultValue(0),
+			Default:    models.DefaultValue("0"),
 			Constraint: h.AccountFiscalPosition().Methods().CheckZip()},
-		"ZipTo": models.IntegerField{
+		"ZipTo": models.CharField{
 			String:     "Zip Range To",
-			Default:    models.DefaultValue(0),
+			Default:    models.DefaultValue("0"),
 			Constraint: h.AccountFiscalPosition().Methods().CheckZip()},
 		"StatesCount": models.IntegerField{
 			Compute: h.AccountFiscalPosition().Methods().ComputeStatesCount(),
@@ -151,8 +149,8 @@ func init() {
 			data := h.AccountFiscalPosition().NewData()
 			if rs.Country().IsNotEmpty() {
 				data.
-					SetZipFrom(0).
-					SetZipTo(0).
+					SetZipFrom("0").
+					SetZipTo("0").
 					SetCountryGroup(h.CountryGroup().NewSet(rs.Env())).
 					SetStates(h.CountryState().NewSet(rs.Env())).
 					SetStatesCount(rs.Country().States().Len())
@@ -166,8 +164,8 @@ func init() {
 			data := h.AccountFiscalPosition().NewData()
 			if rs.Country().IsNotEmpty() {
 				data.
-					SetZipFrom(0).
-					SetZipTo(0).
+					SetZipFrom("0").
+					SetZipTo("0").
 					SetCountry(h.Country().NewSet(rs.Env())).
 					SetStates(h.CountryState().NewSet(rs.Env()))
 			}
@@ -187,20 +185,19 @@ func init() {
 			if id := rs.Env().Context().GetInteger("force_company"); id != 0 {
 				baseCond = baseCond.And().CompanyFilteredOn(q.Company().ID().Equals(id))
 			}
-			nullStateCond := q.AccountFiscalPosition().States().Equals(h.CountryState().NewSet(rs.Env()))
+			nullStateCond := q.AccountFiscalPosition().States().Equals(nil)
 			stateCond := nullStateCond
-			nullZipCond := q.AccountFiscalPosition().ZipFrom().Equals(0).And().ZipTo().Equals(0)
+			nullZipCond := q.AccountFiscalPosition().ZipFrom().Equals("0").And().ZipTo().Equals("0")
 			zipCond := nullZipCond
-			nullCountryCond := q.AccountFiscalPosition().Country().Equals(h.Country().NewSet(rs.Env())).
-				And().CountryGroup().Equals(h.CountryGroup().NewSet(rs.Env()))
+			nullCountryCond := q.AccountFiscalPosition().Country().Equals(nil).
+				And().CountryGroup().Equals(nil)
 
-			var zipInt int64
-			if zipCode != "" {
-				if zip, err := strconv.Atoi(zipCode); err != nil {
-					zipCond = q.AccountFiscalPosition().ZipFrom().LowerOrEqual(int64(zip)).
-						And().ZipTo().GreaterOrEqual(int64(zip))
-					zipInt = int64(zip)
-				}
+			if zipCode == "" {
+				zipCode = "0"
+			}
+			if zipCode != "0" {
+				zipCond = q.AccountFiscalPosition().ZipFrom().LowerOrEqual(zipCode).
+					And().ZipTo().GreaterOrEqual(zipCode)
 			}
 			if state.IsNotEmpty() {
 				stateCond = q.AccountFiscalPosition().States().Equals(state)
@@ -210,25 +207,25 @@ func init() {
 			CondGroup := baseCond.And().CountryGroupFilteredOn(q.CountryGroup().Countries().Equals(country))
 
 			// Build domain to search records with exact matching criteria
-			fpos := rs.Search(CondCountry.AndCond(stateCond).AndCond(zipCond)).Limit(1)
+			fpos := h.AccountFiscalPosition().NewSet(rs.Env()).Search(CondCountry.AndCond(stateCond).AndCond(zipCond)).Limit(1)
 			// return records that fit the most the criteria, and fallback on less specific fiscal positions if any can be found
 			if fpos.IsEmpty() && state.IsNotEmpty() {
-				fpos = rs.Search(CondCountry.AndCond(nullStateCond).AndCond(zipCond)).Limit(1)
+				fpos = h.AccountFiscalPosition().NewSet(rs.Env()).Search(CondCountry.AndCond(nullStateCond).AndCond(zipCond)).Limit(1)
 			}
-			if fpos.IsEmpty() && zipInt != 0 {
-				fpos = rs.Search(CondCountry.AndCond(stateCond).AndCond(nullZipCond)).Limit(1)
+			if fpos.IsEmpty() && zipCode != "0" {
+				fpos = h.AccountFiscalPosition().NewSet(rs.Env()).Search(CondCountry.AndCond(stateCond).AndCond(nullZipCond)).Limit(1)
 			}
-			if fpos.IsEmpty() && state.IsNotEmpty() && zipInt != 0 {
-				fpos = rs.Search(CondCountry.AndCond(nullStateCond).AndCond(nullZipCond)).Limit(1)
+			if fpos.IsEmpty() && state.IsNotEmpty() && zipCode != "0" {
+				fpos = h.AccountFiscalPosition().NewSet(rs.Env()).Search(CondCountry.AndCond(nullStateCond).AndCond(nullZipCond)).Limit(1)
 			}
 
 			// fallback: country group with no state/zip range
 			if fpos.IsEmpty() {
-				fpos = rs.Search(CondGroup.AndCond(nullStateCond).AndCond(nullZipCond)).Limit(1)
+				fpos = h.AccountFiscalPosition().NewSet(rs.Env()).Search(CondGroup.AndCond(nullStateCond).AndCond(nullZipCond)).Limit(1)
 			}
 			if fpos.IsEmpty() {
 				// Fallback on catchall (no country, no group)
-				fpos = rs.Search(baseCond.AndCond(nullCountryCond)).Limit(1)
+				fpos = h.AccountFiscalPosition().NewSet(rs.Env()).Search(baseCond.AndCond(nullCountryCond)).Limit(1)
 			}
 			if fpos.IsEmpty() {
 				return h.AccountFiscalPosition().NewSet(rs.Env())
@@ -239,13 +236,11 @@ func init() {
 	h.AccountFiscalPosition().Methods().GetFiscalPosition().DeclareMethod(
 		`GetFiscalPosition`,
 		func(rs m.AccountFiscalPositionSet, partner, delivery m.PartnerSet) m.AccountFiscalPositionSet {
-			if partner.IsNotEmpty() {
+			if partner.IsEmpty() {
 				return h.AccountFiscalPosition().NewSet(rs.Env())
 			}
-			// This can be easily overridden to apply more complex fiscal rules
-			_ = 0
 
-			//if no delivery use invoicing
+			// if no delivery use invoicing
 			if delivery.IsEmpty() {
 				delivery = partner
 			}
@@ -266,10 +261,10 @@ func init() {
 			if fp.IsEmpty() && vatRequired {
 				fp = rs.GetFposByRegion(delivery.Country(), delivery.State(), delivery.Zip(), false)
 			}
-			if fp.IsNotEmpty() {
-				return fp
+			if fp.IsEmpty() {
+				return h.AccountFiscalPosition().NewSet(rs.Env())
 			}
-			return h.AccountFiscalPosition().NewSet(rs.Env())
+			return fp
 		})
 
 	h.AccountFiscalPositionTax().DeclareModel()

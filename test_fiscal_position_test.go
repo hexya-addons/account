@@ -7,12 +7,10 @@ import (
 	"github.com/hexya-erp/hexya/src/models/security"
 	"github.com/hexya-erp/pool/h"
 	"github.com/hexya-erp/pool/m"
-	"github.com/hexya-erp/pool/q"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
 type TestFiscalPositionStruct struct {
-	Env     models.Environment
 	Be      m.CountrySet
 	Fr      m.CountrySet
 	Mx      m.CountrySet
@@ -31,10 +29,8 @@ func initTestFiscalPositionStruct(env models.Environment) TestFiscalPositionStru
 	var out TestFiscalPositionStruct
 
 	// reset any existing FP
-	h.AccountFiscalPosition().Search(env, q.AccountFiscalPosition().ID().Greater(-1)).Write(
+	h.AccountFiscalPosition().NewSet(env).SearchAll().Write(
 		h.AccountFiscalPosition().NewData().SetAutoApply(false))
-
-	out.Env = env
 
 	out.Be = h.Country().NewSet(env).GetRecord("base_be")
 	out.Fr = h.Country().NewSet(env).GetRecord("base_fr")
@@ -49,17 +45,21 @@ func initTestFiscalPositionStruct(env models.Environment) TestFiscalPositionStru
 	out.Jc = h.Partner().Create(env, h.Partner().NewData().
 		SetName("JCVD").
 		SetVAT("BE0477472701").
+		//SetNotifyEmail("none").
 		SetCountry(out.Be))
 	out.Ben = h.Partner().Create(env, h.Partner().NewData().
 		SetName("BP").
+		//SetNotifyEmail("none").
 		SetCountry(out.Be))
 	out.George = h.Partner().Create(env, h.Partner().NewData().
 		SetName("George").
 		SetVAT("FR0477472701").
+		//SetNotifyEmail("none").
 		SetCountry(out.Fr))
 	out.Alberto = h.Partner().Create(env, h.Partner().NewData().
 		SetName("Alberto").
 		SetVAT("MX0477472701").
+		//SetNotifyEmail("none").
 		SetCountry(out.Mx))
 
 	out.BeNat = h.AccountFiscalPosition().Create(env,
@@ -81,27 +81,28 @@ func initTestFiscalPositionStruct(env models.Environment) TestFiscalPositionStru
 			SetName("EU-VAT-FR-B2B").
 			SetAutoApply(true).
 			SetCountry(out.Fr).
-			SetVatRequired(false).
+			SetVatRequired(true).
 			SetSequence(50))
 
 	return out
 }
 
-func (self TestFiscalPositionStruct) assertFP(partner m.PartnerSet, expectedPos m.AccountFiscalPositionSet) {
-	fiscalPos := h.AccountFiscalPosition().NewSet(self.Env).GetFiscalPosition(partner, h.Partner().NewSet(self.Env))
-	So(fiscalPos.Equals(expectedPos), ShouldBeTrue)
-}
-
 func Test10FpCountry(t *testing.T) {
 	Convey("Test 10 fp country", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
+
+			assertFP := func(partner m.PartnerSet, expectedPos m.AccountFiscalPositionSet) {
+				fiscalPos := h.AccountFiscalPosition().NewSet(env).GetFiscalPosition(partner, h.Partner().NewSet(env))
+				So(fiscalPos.Equals(expectedPos), ShouldBeTrue)
+			}
+
 			self := initTestFiscalPositionStruct(env)
 
 			// B2B has precedence over B2C for same country even when sequence gives lower precedence
 			So(self.FrB2B.Sequence(), ShouldBeGreaterThan, self.FrB2C.Sequence())
-			self.assertFP(self.George, self.FrB2B)
+			assertFP(self.George, self.FrB2B)
 			self.FrB2B.SetAutoApply(false)
-			self.assertFP(self.George, self.FrB2C)
+			assertFP(self.George, self.FrB2C)
 			self.FrB2B.SetAutoApply(true)
 
 			// Create positions matching on Country Group and on NO country at all
@@ -121,44 +122,44 @@ func Test10FpCountry(t *testing.T) {
 
 			//Country match has higher precedence than group match or sequence
 			So(self.FrB2B.Sequence(), ShouldBeGreaterThan, euIntraB2B.Sequence())
-			self.assertFP(self.George, self.FrB2B)
+			assertFP(self.George, self.FrB2B)
 
 			// B2B has precedence regardless of country or group match
 			So(euIntraB2B.Sequence(), ShouldBeGreaterThan, self.BeNat.Sequence())
-			self.assertFP(self.Jc, euIntraB2B)
+			assertFP(self.Jc, euIntraB2B)
 
 			// Lower sequence = higher precedence if country/group and VAT matches
 			So(self.Ben.VAT(), ShouldEqual, "") //No VAT set
-			self.assertFP(self.Ben, self.BeNat)
+			assertFP(self.Ben, self.BeNat)
 
 			// Remove BE from EU group, now BE-NAT should be the fallback match before the wildcard WORLD
-			self.Be.SetCountryGroups(self.Eu)
+			self.Be.SetCountryGroups(self.Be.CountryGroups().Subtract(self.Eu))
 			So(self.Jc.VAT(), ShouldNotEqual, "")
-			self.assertFP(self.Jc, self.BeNat)
+			assertFP(self.Jc, self.BeNat)
 
 			// No country = wildcard match only if nothing else matches
 			So(self.Alberto.VAT(), ShouldNotEqual, "") //with VAt
-			self.assertFP(self.Alberto, world)
+			assertFP(self.Alberto, world)
 			self.Alberto.SetVAT("") //or without
-			self.assertFP(self.Alberto, world)
+			assertFP(self.Alberto, world)
 
 			// Zip range
-			frB2BZip100 := self.FrB2B.Copy(h.AccountFiscalPosition().NewData().SetZipFrom(0).SetZipTo(5000).SetSequence(60))
+			frB2BZip100 := self.FrB2B.Copy(h.AccountFiscalPosition().NewData().SetZipFrom("0").SetZipTo("5000").SetSequence(60))
 			self.George.SetZip("6000")
-			self.assertFP(self.George, self.FrB2B)
+			assertFP(self.George, self.FrB2B)
 			self.George.SetZip("3000")
-			self.assertFP(self.George, frB2BZip100)
+			assertFP(self.George, frB2BZip100)
 
 			// States
 			frB2BState := self.FrB2B.Copy(h.AccountFiscalPosition().NewData().SetStates(self.StateFr).SetSequence(70))
 			self.George.SetState(self.StateFr)
-			self.assertFP(self.George, frB2BZip100)
+			assertFP(self.George, frB2BZip100)
 			self.George.SetZip("0")
-			self.assertFP(self.George, frB2BState)
+			assertFP(self.George, frB2BState)
 
 			// Dedicated position has max precedence
 			self.George.SetPropertyAccountPosition(self.BeNat)
-			self.assertFP(self.George, self.BeNat)
+			assertFP(self.George, self.BeNat)
 
 		}), ShouldBeNil)
 	})
