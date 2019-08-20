@@ -221,26 +221,23 @@ has only one available which is 'manual'`},
 
 	h.AccountRegisterPayments().Methods().DefaultGet().Extend("",
 		func(rs m.AccountRegisterPaymentsSet) m.AccountRegisterPaymentsData {
-			var context *types.Context
-			var activeModel string
-			var activeIds []int64
-			var invoices m.AccountInvoiceSet
-			var totalAmount float64
-			var communication string
-
 			rec := rs.Super().DefaultGet()
-			context = rs.Env().Context()
-			activeModel = context.GetString("active_model")
-			activeIds = context.GetIntegerSlice("active_ids")
+			context := rs.Env().Context()
+			activeModel := context.GetString("active_model")
+			activeIds := context.GetIntegerSlice("active_ids")
 			if activeModel == "" || len(activeIds) == 0 {
-				panic(rs.T(`Programmation error: wizard action executed without active_model or active_ids in context.`))
+				panic(rs.T(`Programing error: wizard action executed without active_model or active_ids in context.`))
 			}
-			if activeModel != "accountInvoice" {
-				panic(rs.T(`Programmation error: the expected model for this action is 'account.invoice'. The provided one is '%d'.`, activeModel))
+			if !strutils.IsIn(activeModel, "account.invoice", "AccountInvoice") {
+				panic(rs.T(`Programing error: the expected model for this action is 'account.invoice'. The provided one is '%d'.`, activeModel))
 			}
 
 			// Checks on received invoice records
-			invoices = h.AccountInvoice().Browse(rs.Env(), activeIds)
+			var (
+				communication string
+				totalAmount   float64
+			)
+			invoices := h.AccountInvoice().Browse(rs.Env(), activeIds)
 			for _, inv := range invoices.Records() {
 				switch {
 				case inv.State() != "open":
@@ -261,10 +258,9 @@ has only one available which is 'manual'`},
 
 			rec.SetAmount(math.Abs(totalAmount))
 			rec.SetCurrency(invoices.Currency())
+			rec.SetPaymentType("outbound")
 			if totalAmount > 0 {
 				rec.SetPaymentType("inbound")
-			} else {
-				rec.SetPaymentType("outbound")
 			}
 			rec.SetPartner(invoices.CommercialPartner())
 			rec.SetPartnerType(Type2PartnerType[invoices.Type()])
@@ -450,31 +446,29 @@ set to draft and re-processed again." `},
 
 	h.AccountPayment().Methods().DefaultGet().Extend("",
 		func(rs m.AccountPaymentSet) m.AccountPaymentData {
-			var invoices m.AccountInvoiceSet
-			var invoice m.AccountInvoiceSet
-
 			rec := rs.Super().DefaultGet()
-			invoices = rs.Invoices()
-			if invoices.IsNotEmpty() {
-				invoice = invoices.Records()[0]
-				val := invoice.Reference()
-				if val == "" {
-					val = invoice.Name()
-				}
-				if val == "" {
-					val = invoice.Number()
-				}
-				rec.SetCommunication(val)
-				rec.SetCurrency(invoice.Currency())
-				if strutils.IsIn(invoice.Type(), "out_invoice", "in_refund") {
-					rec.SetPaymentType("inbound")
-				} else {
-					rec.SetPaymentType("outbound")
-				}
-				rec.SetPartnerType(Type2PartnerType[invoice.Type()])
-				rec.SetPartner(invoice.Partner())
-				rec.SetAmount(invoice.Residual())
+			invoices := rs.Invoices()
+			if invoices.IsEmpty() {
+				return rec
 			}
+			invoice := invoices.Records()[0]
+			val := invoice.Reference()
+			if val == "" {
+				val = invoice.Name()
+			}
+			if val == "" {
+				val = invoice.Number()
+			}
+			rec.SetCommunication(val)
+			rec.SetCurrency(invoice.Currency())
+			if strutils.IsIn(invoice.Type(), "out_invoice", "in_refund") {
+				rec.SetPaymentType("inbound")
+			} else {
+				rec.SetPaymentType("outbound")
+			}
+			rec.SetPartnerType(Type2PartnerType[invoice.Type()])
+			rec.SetPartner(invoice.Partner())
+			rec.SetAmount(invoice.Residual())
 			return rec
 		})
 
@@ -564,13 +558,6 @@ set to draft and re-processed again." `},
 			      If invoice_ids is not empty, there will be one reconciliable move line per invoice to reconcile with.
 			      If the payment is a transfer, a second journal entry is created in the destination journal to receive money from the transfer account.`,
 		func(rs m.AccountPaymentSet) {
-			var sequenceCode string
-			var amount float64
-			var sign float64
-			var move m.AccountMoveSet
-			var transferCreditAml m.AccountMoveLineSet
-			var transferDebitAml m.AccountMoveLineSet
-			var data m.AccountPaymentData
 
 			for _, rec := range rs.Records() {
 				if rec.State() != "draft" {
@@ -582,7 +569,8 @@ set to draft and re-processed again." `},
 					}
 				}
 
-				data = h.AccountPayment().NewData()
+				data := h.AccountPayment().NewData()
+				var sequenceCode string
 				// Use the right sequence to set the name
 				switch {
 				case rec.PaymentType() == "transfer":
@@ -595,8 +583,6 @@ set to draft and re-processed again." `},
 					sequenceCode = "account.payment.customer.refund"
 				case rec.PaymentType() == "outbound" && rec.PartnerType() == "supplier":
 					sequenceCode = "account.payment.supplier.invoice"
-				default:
-					sequenceCode = ""
 				}
 				name := h.Sequence().NewSet(rs.Env()).WithContext("ir_sequence_date", rec.PaymentDate()).NextByCode(sequenceCode)
 				if name == "" && rec.PaymentType() != "transfer" {
@@ -605,18 +591,18 @@ set to draft and re-processed again." `},
 				data.SetName(name)
 
 				// Create the journal entry
-				sign = -1
+				sign := -1.0
 				if strutils.IsIn(rec.PaymentType(), "outbound", "transfer") {
-					sign = 1
+					sign = 1.0
 				}
-				amount = rec.Amount() * sign
-				move = rec.CreatePaymentEntry(amount)
+				amount := rec.Amount() * sign
+				move := rec.CreatePaymentEntry(amount)
 
 				// In case of a transfer, the first journal entry created debited the source liquidity account and credited
 				// the transfer account. Now we debit the transfer account and credit the destination liquidity account.
 				if rec.PaymentType() == "transfer" {
-					transferCreditAml = move.Lines().Filtered(func(r m.AccountMoveLineSet) bool { return r.Account().Equals(rec.Company().TransferAccount()) })
-					transferDebitAml = rec.CreateTransferEntry(amount)
+					transferCreditAml := move.Lines().Filtered(func(r m.AccountMoveLineSet) bool { return r.Account().Equals(rec.Company().TransferAccount()) })
+					transferDebitAml := rec.CreateTransferEntry(amount)
 					transferCreditAml.Union(transferDebitAml).Reconcile(h.AccountAccount().NewSet(rs.Env()), h.AccountJournal().NewSet(rs.Env()))
 				}
 
@@ -647,12 +633,11 @@ set to draft and re-processed again." `},
 					invoiceCurrency = targetCur
 				}
 			}
-			debit, credit, amountCurrency, currency := amlObj.WithContext("date", rs.PaymentDate().ToDateTime()).ComputeAmountFields(amount, rs.Currency(), rs.Company().Currency(), invoiceCurrency)
+			debit, credit, amountCurrency, currency := amlObj.WithContext("date", rs.PaymentDate()).ComputeAmountFields(amount, rs.Currency(), rs.Company().Currency(), invoiceCurrency)
 
 			move := h.AccountMove().Create(env, rs.GetMoveVals(h.AccountJournal().NewSet(env)))
 
 			// Write line corresponding to invoice payment
-
 			counterpartAmlDict := rs.GetSharedMoveLineVals(debit, credit, amountCurrency, move, h.AccountInvoice().NewSet(env))
 			counterpartAmlDict.SetCurrency(currency)
 			undrlyng := counterpartAmlDict.Underlying()

@@ -2199,20 +2199,12 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 			rs.EnsureOne()
 
-			var moveLines m.AccountMoveLineSet
-			var accountPayableLine m.AccountMoveLineSet
-			var partialRec m.AccountPartialReconcileSet
-			var partialReconciles m.AccountPartialReconcileSet
-			var accountPayableLineData m.AccountMoveLineData
-			var moveLineData m.AccountMoveLineData
-			var partialRecData m.AccountPartialReconcileData
-
-			moveLines = h.AccountMoveLine().NewSet(rs.Env()).WithContext("check_move_validity", false)
-			partialReconciles = rs.WithContext("skip_full_reconcile_check", true)
+			moveLines := h.AccountMoveLine().NewSet(rs.Env()).WithContext("check_move_validity", false)
+			partialReconciles := rs.WithContext("skip_full_reconcile_check", true)
 			amountDiff = rs.Company().Currency().Round(amountDiff)
 
 			for _, aml := range amlsToFix.Records() {
-				accountPayableLineData = h.AccountMoveLine().NewData().
+				accountPayableLineData := h.AccountMoveLine().NewData().
 					SetName(rs.T(`Currency exchange rate difference`)).
 					SetDebit(0.0).
 					SetCredit(0.0).
@@ -2221,7 +2213,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 					SetCurrency(currency).
 					SetAmountCurrency(-aml.AmountResidualCurrency()).
 					SetPartner(rs.DebitMove().Partner())
-				moveLineData = h.AccountMoveLine().NewData().
+				moveLineData := h.AccountMoveLine().NewData().
 					SetName(rs.T(`Currency exchange rate difference`)).
 					SetDebit(0.0).
 					SetCredit(0.0).
@@ -2238,10 +2230,10 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 					accountPayableLineData.SetDebit(-aml.AmountResidual())
 					moveLineData.SetCredit(-aml.AmountResidual())
 				}
-				accountPayableLine = moveLines.Create(accountPayableLineData)
+				accountPayableLine := moveLines.Create(accountPayableLineData)
 				moveLines.Create(moveLineData)
 
-				partialRecData = h.AccountPartialReconcile().NewData().
+				partialRecData := h.AccountPartialReconcile().NewData().
 					SetDebitMove(aml).
 					SetCreditMove(aml).
 					SetAmount(math.Abs(aml.AmountResidual())).
@@ -2253,7 +2245,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 				if aml.Debit() != 0.0 {
 					partialRecData.SetCreditMove(accountPayableLine)
 				}
-				partialRec = rs.Super().Create(partialRecData)
+				partialRec := rs.WithContext("no_recompute_partial_lines", true).Create(partialRecData)
 
 				moveLines = moveLines.Union(accountPayableLine)
 				partialReconciles = partialReconciles.Union(partialRec)
@@ -2342,7 +2334,9 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 		"",
 		func(rs m.AccountPartialReconcileSet, data m.AccountPartialReconcileData) m.AccountPartialReconcileSet {
 			res := rs.Super().Create(data)
-			res.ComputePartialLines()
+			if !rs.Env().Context().GetBool("no_recompute_partial_lines") {
+				res.ComputePartialLines()
+			}
 			return res
 		})
 

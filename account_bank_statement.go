@@ -1272,27 +1272,6 @@ set to draft and re-processed again.`},
 				SetPayment(h.AccountPayment().BrowseOne(rs.Env(), strc.PaymentID))
 		})
 
-	h.AccountBankStatementLine().Methods().ConvertSetToAmlStruct().DeclareMethod(
-		``,
-		func(rs m.AccountBankStatementLineSet, set m.AccountMoveLineSet) []accounttypes.BankStatementAMLStruct {
-			var out []accounttypes.BankStatementAMLStruct
-			for _, s := range set.Records() {
-				out = append(out, accounttypes.BankStatementAMLStruct{
-					Name:           s.Name(),
-					Credit:         s.Credit(),
-					Debit:          s.Debit(),
-					AmountCurrency: s.AmountCurrency(),
-					AccountID:      s.Account().ID(),
-					CurrencyID:     s.Currency().ID(),
-					MoveID:         s.Move().ID(),
-					PartnerID:      s.Partner().ID(),
-					StatementID:    s.Statement().ID(),
-					PaymentID:      s.Payment().ID(),
-				})
-			}
-			return out
-		})
-
 	h.AccountBankStatementLine().Methods().CompleteAMLStructs().DeclareMethod(`
 		CompleteAMLStructs takes a slice of BankStatementAMLStruct and returns a new slice with each struct updated.`,
 		func(rs m.AccountBankStatementLineSet, AMLStructs []accounttypes.BankStatementAMLStruct, move m.AccountMoveSet) []accounttypes.BankStatementAMLStruct {
@@ -1366,7 +1345,7 @@ set to draft and re-processed again.`},
 			          the move created by the reconciliation, containing entries for the statement.line (1), the counterpart move lines (0..*) and the new move lines (0..*).
 			  `,
 		func(rs m.AccountBankStatementLineSet, paymentAMLRec m.AccountMoveLineSet, counterpartAMLDicts, newAMLDicts []accounttypes.BankStatementAMLStruct) m.AccountMoveSet {
-			// Check and prepare recieved data
+			// Check and prepare received data
 			if rs.MoveName() != "" {
 				panic(rs.T(`Operation not allowed. Since your statement line already received a number, you cannot reconcile it entirely with existing journal entries otherwise it would make a gap in the numbering. You should book an entry and make a regular revert of it in case you want to cancel it.`))
 			}
