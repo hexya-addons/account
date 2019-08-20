@@ -206,7 +206,7 @@ func TestFullPaymentProcess(t *testing.T) {
 				WithKey("active_model", "account.invoice").
 				WithKey("active_ids", []int64{inv1.ID(), inv2.ID()})
 			registerPaymentsData := h.AccountRegisterPayments().NewSet(env).WithNewContext(ctx).DefaultGet().
-				SetPaymentDate(dates.Today().SetMonth(7).SetDay(15)).
+				SetPaymentDate(dates.ParseDate("2015-07-15")).
 				SetJournal(tps.BankJournalEuro).
 				SetPaymentMethod(tps.PaymentMethodManualIn)
 			registerPayments := h.AccountRegisterPayments().NewSet(env).WithNewContext(ctx).Create(registerPaymentsData)
@@ -240,7 +240,7 @@ func TestInternalTransferJournalUsdJournalEur(t *testing.T) {
 			tps := initTestPaymentStruct(env)
 			payment := h.AccountPayment().Create(env,
 				h.AccountPayment().NewData().
-					SetPaymentDate(dates.Today().SetMonth(7).SetDay(15)).
+					SetPaymentDate(dates.ParseDate("2015-07-15")).
 					SetPaymentType("transfer").
 					SetAmount(50).
 					SetCurrency(tps.CurrencyUsd).
@@ -264,7 +264,7 @@ func TestPaymentChfJournalUsd(t *testing.T) {
 			tps := initTestPaymentStruct(env)
 			payment := h.AccountPayment().Create(env,
 				h.AccountPayment().NewData().
-					SetPaymentDate(dates.Today().SetMonth(7).SetDay(15)).
+					SetPaymentDate(dates.ParseDate("2015-07-15")).
 					SetPaymentType("outbound").
 					SetAmount(50).
 					SetCurrency(tps.CurrencyChf).

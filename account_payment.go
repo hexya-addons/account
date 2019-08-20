@@ -655,7 +655,7 @@ set to draft and re-processed again." `},
 				for _, invoice := range rs.Invoices().Records() {
 					totalResidualCompanySigned += invoice.ResidualCompanySigned()
 				}
-				totalPaymentCompanySigned := rs.Currency().WithContext("date", rs.PaymentDate().ToDateTime()).Compute(rs.Amount(), rs.Company().Currency(), true)
+				totalPaymentCompanySigned := rs.Currency().WithContext("date", rs.PaymentDate()).Compute(rs.Amount(), rs.Company().Currency(), true)
 				amountWo := totalResidualCompanySigned - totalPaymentCompanySigned
 				if strutils.IsIn(rs.Invoices().Records()[0].Type(), "in_invoice", "out_refund") {
 					amountWo = totalPaymentCompanySigned - totalResidualCompanySigned
@@ -689,7 +689,7 @@ set to draft and re-processed again." `},
 			rs.Invoices().WithContext("check_move_validity", false).RegisterPayment(counterpartAml, h.AccountAccount().NewSet(env), h.AccountJournal().NewSet(env))
 
 			// Write counterpart lines
-			if !rs.Currency().Equals(rs.Company().Currency()) {
+			if rs.Currency().Equals(rs.Company().Currency()) {
 				amountCurrency = 0
 			}
 			liquidityAmlDict := rs.GetSharedMoveLineVals(credit, debit, -amountCurrency, move, h.AccountInvoice().NewSet(env))
@@ -702,38 +702,34 @@ set to draft and re-processed again." `},
 	h.AccountPayment().Methods().CreateTransferEntry().DeclareMethod(
 		`CreateTransferEntry Create the journal entry corresponding to the 'incoming money' part of an internal transfer, return the reconciliable move line`,
 		func(rs m.AccountPaymentSet, amount float64) m.AccountMoveLineSet {
-			var debit float64
-			var credit float64
-			var amountCurrency float64
-			var dstMove m.AccountMoveSet
-			var transferDebitAml m.AccountMoveLineSet
-			var amlObj m.AccountMoveLineSet
-			var transferDebitAmlData m.AccountMoveLineData
 
-			amlObj = h.AccountMoveLine().NewSet(rs.Env()).WithContext("check_move_validity", false)
-			debit, credit, _, _ = amlObj.WithContext("date", rs.PaymentDate()).ComputeAmountFields(amount, rs.Currency(), rs.Company().Currency(), h.Currency().NewSet(rs.Env()))
+			amlObj := h.AccountMoveLine().NewSet(rs.Env()).WithContext("check_move_validity", false)
+			debit, credit, _, _ := amlObj.WithContext("date", rs.PaymentDate()).ComputeAmountFields(amount, rs.Currency(), rs.Company().Currency(), h.Currency().NewSet(rs.Env()))
+			var amountCurrency float64
 			if rs.DestinationJournal().Currency().IsNotEmpty() {
 				amountCurrency = rs.Currency().WithContext("date", rs.PaymentDate()).Compute(amount, rs.DestinationJournal().Currency(), true)
 			}
 
-			dstMove = h.AccountMove().Create(rs.Env(), rs.GetMoveVals(rs.DestinationJournal()))
-			amlObj.Create(rs.GetSharedMoveLineVals(debit, credit, amountCurrency, dstMove, h.AccountInvoice().NewSet(rs.Env())).
+			dstMove := h.AccountMove().Create(rs.Env(), rs.GetMoveVals(rs.DestinationJournal()))
+			dstLiquidityAMLData := rs.GetSharedMoveLineVals(debit, credit, amountCurrency, dstMove, h.AccountInvoice().NewSet(rs.Env())).
 				SetName(rs.T(`Transfer from %s`, rs.Journal().Name())).
 				SetAccount(rs.DestinationJournal().DefaultCreditAccount()).
 				SetCurrency(rs.DestinationJournal().Currency()).
 				SetPayment(rs).
-				SetJournal(rs.DestinationJournal()))
+				SetJournal(rs.DestinationJournal())
+			amlObj.Create(dstLiquidityAMLData)
 
-			transferDebitAmlData = rs.GetSharedMoveLineVals(credit, debit, 0, dstMove, h.AccountInvoice().NewSet(rs.Env())).
+			transferDebitAmlData := rs.GetSharedMoveLineVals(credit, debit, 0, dstMove, h.AccountInvoice().NewSet(rs.Env())).
 				SetName(rs.Name()).
 				SetPayment(rs).
 				SetAccount(rs.Company().TransferAccount()).
 				SetJournal(rs.DestinationJournal())
 			if !rs.Currency().Equals(rs.Company().Currency()) {
-				transferDebitAmlData.SetCurrency(rs.Currency()).
+				transferDebitAmlData.
+					SetCurrency(rs.Currency()).
 					SetAmountCurrency(-rs.Amount())
 			}
-			transferDebitAml = amlObj.Create(transferDebitAmlData)
+			transferDebitAml := amlObj.Create(transferDebitAmlData)
 			dstMove.Post()
 			return transferDebitAml
 		})
