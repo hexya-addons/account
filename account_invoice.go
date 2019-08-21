@@ -575,33 +575,9 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().Create().Extend("",
 		func(rs m.AccountInvoiceSet, data m.AccountInvoiceData) m.AccountInvoiceSet {
-			if !rs.Env().Context().HasKey("account_account_create_no_recursion") {
-				partnerFields := map[string]bool{
-					"Account":        true,
-					"PaymentTerm":    true,
-					"FiscalPosition": true,
-					"PartnerBank":    true,
-				}
-				journalFields := map[string]bool{
-					"Currency": true,
-				}
-
-				isMissing := func(fields []models.FieldNamer, refFields map[string]bool) bool {
-					for _, f := range fields {
-						if !refFields[f.String()] {
-							return true
-						}
-					}
-					return false
-				}
-
-				if isMissing(data.FieldNames(), partnerFields) {
-					data = rs.UpdateDataForPartner(data.Partner(), data)
-				}
-				if isMissing(data.FieldNames(), journalFields) {
-					data = rs.UpdateDataForJournal(data.Journal(), data)
-
-				}
+			if !rs.Env().Context().GetBool("account_account_create_no_recursion") {
+				data = rs.UpdateDataForPartner(data.Partner(), data)
+				data = rs.UpdateDataForJournal(data.Journal(), data)
 			}
 			if data.Account().IsEmpty() {
 				panic(rs.T(`Configuration error!\nCould not find any account to create the invoice, are you sure you have a chart of account installed?`))
@@ -762,15 +738,22 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 					panic("Cannot find a chart of accounts for this company, " +
 						"You should configure it. \nPlease go to Account Configuration.")
 				}
+				account := payAccount
+				payTerms := p.PropertySupplierPaymentTerm()
 				if strutils.IsIn(data.Type(), "out_invoice", "out_refund") {
-					data.SetAccount(recAccount)
-					data.SetPaymentTerm(p.PropertyPaymentTerm())
-				} else {
-					data.SetAccount(payAccount)
-					data.SetPaymentTerm(p.PropertySupplierPaymentTerm())
+					account = recAccount
+					payTerms = p.PropertyPaymentTerm()
+				}
+				if !data.HasAccount() {
+					data.SetAccount(account)
+				}
+				if !data.HasPaymentTerm() {
+					data.SetPaymentTerm(payTerms)
 				}
 				deliveryPartner := rs.GetDeliveryPartner(p)
-				data.SetFiscalPosition(h.AccountFiscalPosition().NewSet(rs.Env()).GetFiscalPosition(p, deliveryPartner))
+				if !data.HasFiscalPosition() {
+					data.SetFiscalPosition(h.AccountFiscalPosition().NewSet(rs.Env()).GetFiscalPosition(p, deliveryPartner))
+				}
 				// If partner has no warning, check its company
 				if p.InvoiceWarn() == "no-message" && p.Parent().IsNotEmpty() {
 					p = p.Parent()
@@ -788,14 +771,14 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 								}
 					*/
 					if p.InvoiceWarn() == "block" {
-						data.UnsetPartner()
+						data.SetPartner(h.Partner().NewSet(rs.Env()))
 					}
 				}
 			}
-			data.UnsetDateDue()
+			data.SetDateDue(dates.Date{})
 			if strutils.IsIn(data.Type(), "in_invoice", "out_refund") {
 				banks := p.CommercialPartner().Banks()
-				if banks.IsNotEmpty() {
+				if banks.IsNotEmpty() && !data.HasPartnerBank() {
 					data.SetPartnerBank(banks.Records()[0])
 				}
 				// domain = {'partner_bank_id': [('id', 'in', bank_ids.ids)]} // tovalid how to format? (see below)
@@ -1831,9 +1814,24 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			return accountsExp
 		})
 
+	h.AccountInvoiceLine().Methods().DefineCurrency().DeclareMethod(
+		`DefineCurrency updates PriceUnit within data with the correct currency`,
+		func(rs m.AccountInvoiceLineSet, data m.AccountInvoiceLineData) m.AccountInvoiceLineData {
+			res := data.Copy()
+			company := rs.Invoice().Company()
+			currency := rs.Invoice().Currency()
+			if company.IsNotEmpty() && currency.IsNotEmpty() {
+				if !company.Currency().Equals(currency) {
+					res.SetPriceUnit(data.PriceUnit() * currency.WithContext("date", rs.Invoice().DateInvoice()).Rate())
+				}
+			}
+			return res
+		})
+
 	h.AccountInvoiceLine().Methods().DefineTaxes().DeclareMethod(
 		`DefineTaxes is used in Onchange to set taxes and price.`,
-		func(rs m.AccountInvoiceLineSet) {
+		func(rs m.AccountInvoiceLineSet, data m.AccountInvoiceLineData) m.AccountInvoiceLineData {
+			res := data.Copy()
 			var taxes m.AccountTaxSet
 			if strutils.IsIn(rs.Invoice().Type(), "out_invoice", "out_refund") {
 				taxes = h.AccountTax().Coalesce(rs.Product().Taxes(), rs.Account().Taxes())
@@ -1843,28 +1841,30 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 			// Keep only taxes of the company
 			company := h.Company().Coalesce(rs.Company(), h.User().NewSet(rs.Env()).CurrentUser().Company())
-			taxes = taxes.Filtered(func(rs m.AccountTaxSet) bool { return rs.Company().Equals(company) })
+			taxes = taxes.Filtered(func(r m.AccountTaxSet) bool { return r.Company().Equals(company) })
 
-			data := h.AccountInvoiceLine().NewData()
 			fpTaxes := rs.Invoice().FiscalPosition().MapTax(taxes, rs.Product(), rs.Invoice().Partner())
-			data.SetInvoiceLineTaxes(fpTaxes)
+			res.SetInvoiceLineTaxes(fpTaxes)
 			fixPrice := h.AccountTax().NewSet(rs.Env()).FixTaxIncludedPrice
 			if strutils.IsIn(rs.Invoice().Type(), "in_invoice", "in_refund") {
 				prec := decimalPrecision.GetPrecision("Product Price").ToPrecision()
 				if rs.PriceUnit() == 0.0 || nbutils.Compare(rs.PriceUnit(), rs.Product().StandardPrice(), prec) == 0 {
-					data.SetPriceUnit(fixPrice(rs.Product().StandardPrice(), taxes, fpTaxes))
+					res.SetPriceUnit(fixPrice(rs.Product().StandardPrice(), taxes, fpTaxes))
+					res = rs.DefineCurrency(res)
 				}
 			} else {
-				data.SetPriceUnit(fixPrice(rs.Product().LstPrice(), taxes, fpTaxes))
+				res.SetPriceUnit(fixPrice(rs.Product().LstPrice(), taxes, fpTaxes))
+				res = rs.DefineCurrency(res)
 			}
-			rs.Write(data)
+			return res
 		})
 
 	h.AccountInvoiceLine().Methods().OnchangeProduct().DeclareMethod(
 		`OnchangeProduct`,
 		func(rs m.AccountInvoiceLineSet) m.AccountInvoiceLineData {
+			data := h.AccountInvoiceLine().NewData()
 			if rs.Invoice().IsEmpty() {
-				return h.AccountInvoiceLine().NewData()
+				return data
 			}
 			part := rs.Invoice().Partner()
 			fpos := rs.Invoice().FiscalPosition()
@@ -1883,44 +1883,45 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			}
 			if rs.Product().IsEmpty() {
 				if strutils.IsIn(typ, "in_invoice", "in_refund") {
-					rs.SetPriceUnit(0.0)
+					data.SetPriceUnit(0.0)
 				}
 				/*
 					domain['uom_id'] = []
 					return {'domain': domain} //tovalid  domain field missing in AccountInvoiceLine
 				*/
-				return h.AccountInvoiceLine().NewData()
+				return data
 			}
 			product := rs.Product()
 			if part.Lang() != "" {
 				product = product.WithContext("lang", part.Lang())
 			}
-			rs.SetName(product.PartnerRef())
+			data.SetName(product.PartnerRef())
 			account := rs.GetInvoiceLineAccount(typ, product, fpos, company)
 			if account.IsNotEmpty() {
-				rs.SetAccount(account)
+				data.SetAccount(account)
 			}
-			rs.DefineTaxes()
+			data = rs.DefineTaxes(data)
 
-			if strutils.IsIn(typ, "in_invoice", "in_refund") && product.DescriptionPurchase() != "" {
-				rs.SetName(rs.Name() + "\n" + product.DescriptionPurchase())
-			} else if product.DescriptionSale() != "" {
-				rs.SetName(rs.Name() + "\n" + product.DescriptionSale())
+			switch {
+			case strutils.IsIn(typ, "in_invoice", "in_refund") && product.DescriptionPurchase() != "":
+				data.SetName(rs.Name() + "\n" + product.DescriptionPurchase())
+			case product.DescriptionSale() != "":
+				data.SetName(rs.Name() + "\n" + product.DescriptionSale())
 			}
 
-			if rs.Uom().IsNotEmpty() || !product.Uom().Category().Equals(rs.Uom().Category()) {
-				rs.SetUom(product.Uom())
+			if rs.Uom().IsEmpty() || !product.Uom().Category().Equals(rs.Uom().Category()) {
+				data.SetUom(product.Uom())
 			}
 			if company.IsNotEmpty() && currency.IsNotEmpty() {
 				if rs.Uom().IsNotEmpty() && !rs.Uom().Equals(product.Uom()) {
-					rs.SetPriceUnit(product.Uom().ComputePrice(rs.PriceUnit(), rs.Uom()))
+					data.SetPriceUnit(product.Uom().ComputePrice(rs.PriceUnit(), rs.Uom()))
 				}
 			}
 			/*
 				domain['uom_id'] = [('category_id', '=', product.uom_id.category_id.id)]
 				return {'domain': domain} //tovalid  domain field missing in AccountInvoiceLine
 			*/
-			return h.AccountInvoiceLine().NewData()
+			return data
 		})
 
 	h.AccountInvoiceLine().Methods().OnchangeAccount().DeclareMethod(
@@ -1933,8 +1934,10 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			if rs.Product().IsEmpty() {
 				fpos := rs.Invoice().FiscalPosition()
 				data.SetInvoiceLineTaxes(fpos.MapTax(rs.Account().Taxes(), h.ProductProduct().NewSet(rs.Env()), rs.Partner()))
-			} else if rs.PriceUnit() == 0.0 {
-				rs.DefineTaxes()
+				return data
+			}
+			if rs.PriceUnit() == 0.0 {
+				data = rs.DefineTaxes(data)
 			}
 			return data
 		})

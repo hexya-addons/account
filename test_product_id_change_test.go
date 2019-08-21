@@ -122,9 +122,9 @@ func TestProductIDChange(t *testing.T) {
 					SetName("something in").
 					SetAccount(self.AccountRevenue))
 
-			outLine.OnchangeProduct()
+			outLine.Write(outLine.OnchangeProduct())
 			So(outLine.PriceUnit(), ShouldEqual, 100)
-			inLine.OnchangeProduct()
+			inLine.Write(inLine.OnchangeProduct())
 			So(inLine.PriceUnit(), ShouldEqual, 200)
 
 		}), ShouldBeNil)

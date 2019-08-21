@@ -56,6 +56,7 @@ github.com/hexya-addons/analytic v0.0.23/go.mod h1:mi2iKbXcEZ2rcmmPH45Hw+MmYXpMd
 github.com/hexya-addons/base v0.0.14/go.mod h1:58zuCja1OsJVEWtZ1RdK/E0kumD5FEpuWAzpahyGf9o=
 github.com/hexya-addons/base v0.0.22 h1:fYVHY+6YMdUmqAKdghGBYRoaYwluPauPKRybIx0o5g0=
 github.com/hexya-addons/base v0.0.22/go.mod h1:AaMC2HZqYmkYlO03nsyIr2V5LEopXmAMVAS3LBz7/ZM=
+github.com/hexya-addons/base v0.0.23 h1:ia16DKbiI8wEoLqf5QBdc74Z+xMsuouQd3K8VOlwm+8=
 github.com/hexya-addons/base v0.0.23/go.mod h1:ezMUchkc270DmmZsBHQG67+FMMeZga01wRuL0uoyKUk=
 github.com/hexya-addons/decimalPrecision v0.0.14 h1:dkqPcx0UHRyYKRQhbJYDUqpdycpfEAlFDRJADtdpqOA=
 github.com/hexya-addons/decimalPrecision v0.0.14/go.mod h1:owyvkJLnciYKC5TYlNCCXpVWZPmuGoGd00V291X56xc=

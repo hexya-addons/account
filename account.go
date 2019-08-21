@@ -1187,8 +1187,11 @@ to the same analytic account as the invoice line (if any)`},
 			if rs.IsEmpty() {
 				company = h.User().NewSet(rs.Env()).CurrentUser().Company()
 			}
-			if currency.IsEmpty() {
+			if currency == nil || currency.IsEmpty() {
 				currency = company.Currency()
+			}
+			if partner == nil {
+				partner = h.Partner().NewSet(rs.Env())
 			}
 			var taxes []accounttypes.AppliedTaxData
 			// By default, for each tax, tax amount will first be computed
@@ -1296,9 +1299,10 @@ to the same analytic account as the invoice line (if any)`},
 		`Subtract tax amount from price when corresponding "price included" taxes do not apply`,
 		func(rs m.AccountTaxSet, price float64, prodTaxes, lineTaxes m.AccountTaxSet) float64 {
 			// FIXME get currency in param?
-			inclTax := prodTaxes.Filtered(func(r m.AccountTaxSet) bool { return !r.Subtract(lineTaxes).IsEmpty() && r.PriceInclude() })
-			if !inclTax.IsEmpty() {
-				//return inclTax.ComputeAll() //tovalid
+			inclTax := prodTaxes.Filtered(func(r m.AccountTaxSet) bool { return r.Intersect(lineTaxes).IsEmpty() && r.PriceInclude() })
+			if inclTax.IsNotEmpty() {
+				_, totalExcluded, _, _ := inclTax.ComputeAll(price, nil, 1, nil, nil)
+				return totalExcluded
 			}
 			return price
 		})
