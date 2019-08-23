@@ -17,7 +17,7 @@ before_script:
   - hexya generate -t .
 
 script:
-  - go test -v ./...
+  - travis_wait go test -v ./...
 
 env:
   - HEXYA_DB_DRIVER=postgres HEXYA_DB_USER=postgres HEXYA_DB_PASSWORD= HEXYA_DB_PREFIX=hexya_test GO111MODULE=on GOMAXPROCS=2 GOGC=20

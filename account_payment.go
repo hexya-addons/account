@@ -647,7 +647,7 @@ set to draft and re-processed again." `},
 			// Reconcile with the invoices
 			if rs.PaymentDifferenceHandling() == "reconcile" && rs.PaymentDifference() != 0.0 {
 				writeoffLine := rs.GetSharedMoveLineVals(0, 0, 0, move, h.AccountInvoice().NewSet(env))
-				_, _, amountCurrencyWo, currency := amlObj.WithContext("date", rs.PaymentDate().ToDateTime()).ComputeAmountFields(rs.PaymentDifference(), rs.Currency(), rs.Company().Currency(), invoiceCurrency)
+				_, _, amountCurrencyWo, currency := amlObj.WithContext("date", rs.PaymentDate()).ComputeAmountFields(rs.PaymentDifference(), rs.Currency(), rs.Company().Currency(), invoiceCurrency)
 				// the writeoff debit and credit must be computed from the invoice residual in company currency
 				// minus the payment amount in company currency, and not from the payment difference in the payment currency
 				// to avoid loss of precision during the currency rate computations. See revision 20935462a0cabeb45480ce70114ff2f4e91eaf79 for a detailed example.

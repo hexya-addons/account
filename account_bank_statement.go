@@ -1298,12 +1298,12 @@ set to draft and re-processed again.`},
 						amlDict.Credit = companyCurrency.Round(amlDict.Credit / stLineCurrencyRate)
 					case rs.Currency().IsNotEmpty() && stLineCurrencyRate != 0.0:
 						// Statement is in foreign currency and the transaction is in another one
-						amlDict.Debit = statementLineCurrency.Compute(amlDict.Debit/stLineCurrencyRate, companyCurrency, true)
-						amlDict.Credit = statementCurrency.Compute(amlDict.Credit/stLineCurrencyRate, companyCurrency, true)
+						amlDict.Debit = statementCurrency.WithContext("date", rs.Date()).Compute(amlDict.Debit/stLineCurrencyRate, companyCurrency, true)
+						amlDict.Credit = statementCurrency.WithContext("date", rs.Date()).Compute(amlDict.Credit/stLineCurrencyRate, companyCurrency, true)
 					default:
 						// Statement is in foreign currency and no extra currency is given for the transaction
-						amlDict.Debit = statementLineCurrency.Compute(amlDict.Debit, companyCurrency, true)
-						amlDict.Credit = statementLineCurrency.Compute(amlDict.Credit, companyCurrency, true)
+						amlDict.Debit = statementLineCurrency.WithContext("date", rs.Date()).Compute(amlDict.Debit, companyCurrency, true)
+						amlDict.Credit = statementLineCurrency.WithContext("date", rs.Date()).Compute(amlDict.Credit, companyCurrency, true)
 					}
 				} else if !statementCurrency.Equals(companyCurrency) {
 					// Statement is in foreign currency but the transaction is in company currency

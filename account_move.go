@@ -150,7 +150,8 @@ will be created in 'Posted' status.'`},
 					totalReconciled += partialLine.Amount()
 				}
 			}
-			if nbutils.IsZero(totalAmount, rs.Currency().Rounding()) {
+			precisionCurrency := h.Currency().Coalesce(rs.Currency(), rs.Company().Currency())
+			if precisionCurrency.IsZero(totalAmount) {
 				data.SetMatchedPercentage(1.0)
 			} else {
 				data.SetMatchedPercentage(totalReconciled / totalAmount)
@@ -609,7 +610,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			if rs.Debit() == 0.0 && rs.Credit() == 0.0 && rs.AmountCurrency() != 0.0 && rs.Currency().IsNotEmpty() {
 				// residual for exchange rate entries
 				sign = -1
-				if nbutils.Compare(rs.AmountCurrency(), 0, rs.Currency().Rounding()) == 1 {
+				if rs.Currency().CompareAmounts(rs.AmountCurrency(), 0) == 1 {
 					sign = 1
 				}
 			}
@@ -625,8 +626,8 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 				amount += signPartialLine * partialLine.Amount()
 				// getting the date of the matched item to compute the amount_residual in currency
 				if rs.Currency().IsNotEmpty() {
-					if partialLine.Currency().Equals(rs.Currency()) {
-						amount += signPartialLine * partialLine.AmountCurrency()
+					if partialLine.Currency().IsNotEmpty() && partialLine.Currency().Equals(rs.Currency()) {
+						amountResidualCurrency += signPartialLine * partialLine.AmountCurrency()
 					} else {
 						rate := 0.0
 						if rs.Balance() != 0.0 && rs.AmountCurrency() != 0.0 {
@@ -636,7 +637,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 							if partialLine.DebitMove().Equals(rs) {
 								date = partialLine.CreditMove().Date()
 							}
-							rs.Currency().WithContext("date", date.ToDateTime()).Rate()
+							rate = rs.Currency().WithContext("date", date).Rate()
 						}
 						amountResidualCurrency += signPartialLine * rs.Currency().Round(partialLine.Amount()*rate)
 					}
@@ -644,11 +645,10 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			}
 			// computing the `reconciled` field. As we book exchange rate difference on each partial matching,
 			// we can only check the amount in company currency
-			reconciled := false
-			digitsRoundingPrecision := rs.Company().Currency().Rounding()
-			if nbutils.IsZero(amount, digitsRoundingPrecision) {
+			var reconciled bool
+			if rs.Company().Currency().IsZero(amount) {
 				if rs.Currency().IsNotEmpty() && rs.AmountCurrency() != 0.0 {
-					if nbutils.IsZero(amountResidualCurrency, rs.Currency().Rounding()) {
+					if rs.Currency().IsZero(amountResidualCurrency) {
 						reconciled = true
 					}
 				} else {

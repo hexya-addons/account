@@ -336,7 +336,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			valueTotal := valueUntaxed + valueTax
 			data.SetAmountTotal(valueTotal)
 			if rs.Currency().IsNotEmpty() && rs.Company().IsNotEmpty() && !rs.Currency().Equals(rs.Company().Currency()) {
-				currency := rs.Currency().WithContext("date", rs.DateInvoice().ToDateTime())
+				currency := rs.Currency().WithContext("date", rs.DateInvoice())
 				valueTotal = currency.Compute(valueTotal, rs.Company().Currency(), true)
 				valueUntaxed = currency.Compute(valueUntaxed, rs.Company().Currency(), true)
 			}
@@ -1770,7 +1770,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			}
 			data.SetPriceSubtotal(priceSubtotalSigned)
 			if rs.Invoice().Currency().IsNotEmpty() && rs.Invoice().Company().IsNotEmpty() && !rs.Invoice().Currency().Equals(rs.Invoice().Company().Currency()) {
-				priceSubtotalSigned = rs.Invoice().Currency().WithContext("date", rs.Invoice().DateInvoice().ToDateTime()).Compute(priceSubtotalSigned, rs.Invoice().Company().Currency(), true)
+				priceSubtotalSigned = rs.Invoice().Currency().WithContext("date", rs.Invoice().DateInvoice()).Compute(priceSubtotalSigned, rs.Invoice().Company().Currency(), true)
 			}
 			sign := 1.0
 			if strutils.IsIn(rs.Invoice().Type(), "in_refund", "out_refund") {
