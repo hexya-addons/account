@@ -281,7 +281,8 @@ func (trs TestReconciliationStruct) createMove(env models.Environment, lineStruc
 	return h.AccountMove().Create(env,
 		h.AccountMove().NewData().
 			SetJournal(trs.BankJournalEuro).
-			SetLines(h.AccountMoveLine().Create(env, debitLineVals).Union(h.AccountMoveLine().Create(env, creditLineVals))))
+			CreateLines(debitLineVals).
+			CreateLines(creditLineVals))
 }
 
 func (trs TestReconciliationStruct) determineDebitCreditLine(move m.AccountMoveSet) []m.AccountMoveLineSet {
@@ -503,104 +504,6 @@ func TestStatementEurInvoiceUsdTransactionEuroFull(t *testing.T) {
 	})
 }
 
-func TestBalancedExchangesGainLoss(t *testing.T) {
-	SkipConvey("Test Balanced exchanges gain loss - Skiped: adapt to new accounting", t, FailureContinues, func() {
-		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
-			/*
-			   # The point of this test is to show that we handle correctly the gain/loss exchanges during reconciliations in foreign currencies.
-			   # For instance, with a company set in EUR, and a USD rate set to 0.033,
-			   # the reconciliation of an invoice of 2.00 USD (60.61 EUR) and a bank statement of two lines of 1.00 USD (30.30 EUR)
-			   # will lead to an exchange loss, that should be handled correctly within the journal items.
-			   env = api.Environment(self.cr, self.uid, {})
-			   # We update the currency rate of the currency USD in order to force the gain/loss exchanges in next steps
-			   rateUSDbis = env.ref("base.rateUSDbis")
-			   rateUSDbis.write({
-			       'name': time.strftime('%Y-%m-%d') + ' 00:00:00',
-			       'rate': 0.033,
-			   })
-			   # We create a customer invoice of 2.00 USD
-			   invoice = self.account_invoice_model.create({
-			       'partner_id': self.partner_agrolait_id,
-			       'currency_id': self.currency_usd_id,
-			       'name': 'Foreign invoice with exchange gain',
-			       'account_id': self.account_rcv_id,
-			       'type': 'out_invoice',
-			       'date_invoice': time.strftime('%Y-%m-%d'),
-			       'journal_id': self.bank_journal_usd_id,
-			       'invoice_line': [
-			           (0, 0, {
-			               'name': 'line that will lead to an exchange gain',
-			               'quantity': 1,
-			               'price_unit': 2,
-			           })
-			       ]
-			   })
-			   invoice.action_invoice_open()
-			   # We create a bank statement with two lines of 1.00 USD each.
-			   statement = self.acc_bank_stmt_model.create({
-			       'journal_id': self.bank_journal_usd_id,
-			       'date': time.strftime('%Y-%m-%d'),
-			       'line_ids': [
-			           (0, 0, {
-			               'name': 'half payment',
-			               'partner_id': self.partner_agrolait_id,
-			               'amount': 1.0,
-			               'date': time.strftime('%Y-%m-%d')
-			           }),
-			           (0, 0, {
-			               'name': 'second half payment',
-			               'partner_id': self.partner_agrolait_id,
-			               'amount': 1.0,
-			               'date': time.strftime('%Y-%m-%d')
-			           })
-			       ]
-			   })
-
-			   # We process the reconciliation of the invoice line with the two bank statement lines
-			   line_id = None
-			   for l in invoice.move_id.line_id:
-			       if l.account_id.id == self.account_rcv_id:
-			           line_id = l
-			           break
-			   for statement_line in statement.line_ids:
-			       statement_line.process_reconciliation([
-			           {'counterpart_move_line_id': line_id.id, 'credit': 1.0, 'debit': 0.0, 'name': line_id.name}
-			       ])
-
-			   # The invoice should be paid, as the payments totally cover its total
-			   self.assertEquals(invoice.state, 'paid', 'The invoice should be paid by now')
-			   reconcile = None
-			   for payment in invoice.payment_ids:
-			       reconcile = payment.reconcile_id
-			       break
-			   # The invoice should be reconciled (entirely, not a partial reconciliation)
-			   self.assertTrue(reconcile, 'The invoice should be totally reconciled')
-			   result = {}
-			   exchange_loss_line = None
-			   for line in reconcile.line_id:
-			       res_account = result.setdefault(line.account_id, {'debit': 0.0, 'credit': 0.0, 'count': 0})
-			       res_account['debit'] = res_account['debit'] + line.debit
-			       res_account['credit'] = res_account['credit'] + line.credit
-			       res_account['count'] += 1
-			       if line.credit == 0.01:
-			           exchange_loss_line = line
-			   # We should be able to find a move line of 0.01 EUR on the Debtors account, being the cent we lost during the currency exchange
-			   self.assertTrue(exchange_loss_line, 'There should be one move line of 0.01 EUR in credit')
-			   # The journal items of the reconciliation should have their debit and credit total equal
-			   # Besides, the total debit and total credit should be 60.61 EUR (2.00 USD)
-			   self.assertEquals(sum([res['debit'] for res in result.values()]), 60.61)
-			   self.assertEquals(sum([res['credit'] for res in result.values()]), 60.61)
-			   counterpart_exchange_loss_line = None
-			   for line in exchange_loss_line.move_id.line_id:
-			       if line.account_id.id == self.account_fx_expense_id:
-			           counterpart_exchange_loss_line = line
-			   #  We should be able to find a move line of 0.01 EUR on the Foreign Exchange Loss account
-			   self.assertTrue(counterpart_exchange_loss_line, 'There should be one move line of 0.01 EUR on account "Foreign Exchange Loss"')
-			*/
-		}), ShouldBeNil)
-	})
-}
-
 func TestManualReconcileWizardOpw678153(t *testing.T) {
 	Convey("Test manual_reconcile_wizard_opw678153", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
@@ -609,7 +512,7 @@ func TestManualReconcileWizardOpw678153(t *testing.T) {
 				{name: "1", amount: -1.83, amountCurrency: 0, currency: trs.CurrencySwiss},
 				{name: "2", amount: 728.35, amountCurrency: 795.05, currency: trs.CurrencySwiss},
 				{name: "3", amount: -4.46, amountCurrency: 0, currency: trs.CurrencySwiss},
-				{name: "4", amount: -0.32, amountCurrency: 0, currency: trs.CurrencySwiss},
+				{name: "4", amount: 0.32, amountCurrency: 0, currency: trs.CurrencySwiss},
 				{name: "5", amount: 14.72, amountCurrency: 16.20, currency: trs.CurrencySwiss},
 				{name: "6", amount: -737.10, amountCurrency: -811.25, currency: trs.CurrencySwiss},
 			}
@@ -618,7 +521,8 @@ func TestManualReconcileWizardOpw678153(t *testing.T) {
 				moves = moves.Union(trs.createMove(env, val))
 			}
 			amlRecs := h.AccountMoveLine().Search(env, q.AccountMoveLine().Move().In(moves).And().Account().Equals(trs.AccountRcv))
-			wizard := h.AccountMoveLineReconcile().NewSet(env).WithContext("active_ids", amlRecs.Ids()).Create(h.AccountMoveLineReconcile().NewData())
+			wizard := h.AccountMoveLineReconcile().NewSet(env).WithContext("active_ids", amlRecs.Ids()).Create(
+				h.AccountMoveLineReconcile().NewSet(env).DefaultGet())
 			wizard.TransRecReconcileFull()
 			for _, aml := range amlRecs.Records() {
 				So(aml.Reconciled(), ShouldBeTrue)
@@ -629,7 +533,7 @@ func TestManualReconcileWizardOpw678153(t *testing.T) {
 			moveListVals = []moveLineStruct{
 				{name: "2", amount: 728.35, amountCurrency: 795.05, currency: trs.CurrencySwiss},
 				{name: "3", amount: -4.46, amountCurrency: 0, currency: trs.CurrencyFalse},
-				{name: "4", amount: -0.32, amountCurrency: 0, currency: trs.CurrencyFalse},
+				{name: "4", amount: 0.32, amountCurrency: 0, currency: trs.CurrencyFalse},
 				{name: "5", amount: 14.72, amountCurrency: 16.20, currency: trs.CurrencySwiss},
 				{name: "6", amount: -737.10, amountCurrency: -811.25, currency: trs.CurrencySwiss},
 			}
@@ -639,7 +543,7 @@ func TestManualReconcileWizardOpw678153(t *testing.T) {
 			}
 			amlRecs = h.AccountMoveLine().Search(env, q.AccountMoveLine().Move().In(moves).And().Account().Equals(trs.AccountRcv))
 			wizard2 := h.AccountMoveLineReconcileWriteoff().NewSet(env).WithContext("active_ids", amlRecs.Ids()).Create(
-				h.AccountMoveLineReconcileWriteoff().NewData().
+				h.AccountMoveLineReconcileWriteoff().NewSet(env).DefaultGet().
 					SetJournal(trs.BankJournalUsd).
 					SetWriteoffAcc(trs.AccountRsa))
 			wizard2.TransRecReconcile()
@@ -665,13 +569,13 @@ func TestReconcileBankStatementWithPaymentAndWriteoff(t *testing.T) {
 			// register payment on invoice
 			payment := h.AccountPayment().Create(env,
 				h.AccountPayment().NewData().
-					SetPartnerType("inbound").
+					SetPaymentType("inbound").
 					SetPaymentMethod(h.AccountPaymentMethod().NewSet(env).GetRecord("account_account_payment_method_manual_in")).
 					SetPartnerType("customer").
 					SetPartner(trs.PartnerAgrolait).
 					SetAmount(80).
 					SetCurrency(trs.CurrencyUsd).
-					SetPaymentDate(dates.Today().SetMonth(07).SetDay(15)).
+					SetPaymentDate(dates.ParseDate("2015-07-15")).
 					SetJournal(trs.BankJournalUsd))
 			payment.Post()
 			paymentMoveLine := h.AccountMoveLine().NewSet(env)
@@ -683,13 +587,13 @@ func TestReconcileBankStatementWithPaymentAndWriteoff(t *testing.T) {
 					bankMoveLine = l
 				}
 			}
-			invoice.RegisterPayment(paymentMoveLine, m.AccountAccountSet(nil), m.AccountJournalSet(nil))
+			invoice.RegisterPayment(paymentMoveLine, h.AccountAccount().NewSet(env), h.AccountJournal().NewSet(env))
 
 			// create bank statement
 			bankStmt := h.AccountBankStatement().Create(env,
 				h.AccountBankStatement().NewData().
 					SetJournal(trs.BankJournalUsd).
-					SetDate(dates.Today().SetMonth(07).SetDay(15)))
+					SetDate(dates.ParseDate("2015-07-15")))
 
 			bankStmtLine := h.AccountBankStatementLine().Create(env,
 				h.AccountBankStatementLine().NewData().
@@ -697,7 +601,7 @@ func TestReconcileBankStatementWithPaymentAndWriteoff(t *testing.T) {
 					SetStatement(bankStmt).
 					SetPartner(trs.PartnerAgrolait).
 					SetAmount(85).
-					SetDate(dates.Today().SetMonth(07).SetDay(15)))
+					SetDate(dates.ParseDate("2015-07-15")))
 
 			// reconcile the statement with invoice and put remaining in another account
 			bankStmtLine.ProcessReconciliation(bankMoveLine, nil,

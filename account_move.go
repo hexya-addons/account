@@ -1351,6 +1351,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			if amountReconcile == -creditValue {
 				rs = rs.Subtract(smCreditMove)
 			}
+
 			// Check for the currency and amount_currency we can set
 			currency = h.Currency().NewSet(rs.Env())
 			amountReconcileCurrency := 0.0
@@ -1393,12 +1394,14 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			companies := h.Company().NewSet(rs.Env())
 			accounts := h.AccountAccount().NewSet(rs.Env())
 			partners := h.Partner().NewSet(rs.Env())
-			currencies := h.Currency().NewSet(rs.Env())
+			shareSameCurrency := true
 			for _, line := range rs.Records() {
 				if line.Reconciled() {
 					panic(rs.T(`You are trying to reconcile some entries that are already reconciled!`))
 				}
-				currencies = currencies.Union(line.Currency())
+				if !line.Currency().Equals(rs.Records()[0].Currency()) {
+					shareSameCurrency = false
+				}
 				companies = companies.Union(line.Company())
 				accounts = accounts.Union(line.Account())
 				if strutils.IsIn(line.Account().InternalType(), "receivable", "payable") {
@@ -1422,14 +1425,13 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			if writeoffAccount.IsEmpty() || writeoffJournal.IsEmpty() || remainingMoves.IsEmpty() {
 				return h.AccountMoveLine().NewSet(rs.Env())
 			}
-			shareSameCurrency := currencies.Len() == 1
-			vals := h.AccountMoveLine().NewData().
+			writeOffVals := h.AccountMoveLine().NewData().
 				SetAccount(writeoffAccount).
 				SetJournal(writeoffJournal)
 			if !shareSameCurrency {
-				vals.SetAmountCurrency(0.0)
+				writeOffVals.SetAmountCurrency(0.0)
 			}
-			writeoffToReconcile := remainingMoves.CreateWriteoff(vals)
+			writeoffToReconcile := remainingMoves.CreateWriteoff(writeOffVals)
 			// add writeoff line to reconcile algo and finish the reconciliation
 			remainingMoves = remainingMoves.Union(writeoffToReconcile).AutoReconcileLines()
 			return writeoffToReconcile
@@ -1468,21 +1470,19 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			}
 
 			// Compute the writeoff amount if not given
-			if !data.HasCredit() { // -> && !data.HasDebit()
+			if !data.HasCredit() && !data.HasDebit() {
 				amount := 0.0
 				for _, r := range rs.Records() {
 					amount += r.AmountResidual()
 				}
+				data.
+					SetCredit(0).
+					SetDebit(0)
 				switch {
 				case amount > 0.0:
 					data.SetCredit(amount)
-					data.SetDebit(0.0)
 				case amount < 0.0:
-					data.SetCredit(0.0)
 					data.SetDebit(math.Abs(amount))
-				case amount == 0.0:
-					data.SetCredit(0.0)
-					data.SetDebit(0.0)
 				}
 			}
 
@@ -1509,16 +1509,16 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			secondLine := rs.PrepareWriteoffSecondLine(data)
 
 			// Create the move
-			ctx := types.NewContext().WithKey("apply_taxes", true)
-			writeoffMove := h.AccountMove().NewSet(rs.Env()).WithNewContext(ctx).Create(h.AccountMove().NewData().
+			writeoffMove := h.AccountMove().NewSet(rs.Env()).WithContext("apply_taxes", true).Create(h.AccountMove().NewData().
 				SetJournal(data.Journal()).
 				SetDate(data.Date()).
 				SetState("draft").
-				SetLines(h.AccountMoveLine().Create(rs.Env(), firstLine).Union(h.AccountMoveLine().Create(rs.Env(), secondLine))))
+				CreateLines(firstLine).
+				CreateLines(secondLine))
 			writeoffMove.Post()
 
 			// Return the writeoff move.line which is to be reconciled
-			return writeoffMove.Lines().Filtered(func(r m.AccountMoveLineSet) bool { return r.Account() == rs.Account() })
+			return writeoffMove.Lines().Filtered(func(r m.AccountMoveLineSet) bool { return r.Account().Equals(rs.Account()) })
 		})
 
 	h.AccountMoveLine().Methods().PrepareWriteoffFirstLine().DeclareMethod(
@@ -1534,7 +1534,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			}
 
 			amount := line.Credit() - line.Debit()
-			_, _, amountTax, _ := line.Taxes().ComputeAll(amount, h.Currency().NewSet(rs.Env()), 1.0,
+			_, _, amountTax, _ := data.Taxes().ComputeAll(amount, h.Currency().NewSet(rs.Env()), 1.0,
 				h.ProductProduct().NewSet(rs.Env()), h.Partner().NewSet(rs.Env()))
 			line.SetCredit(0.0)
 			if amountTax > 0 {
@@ -1568,18 +1568,12 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 			      This ensure that all aml in the full reconciliation are reconciled (amount_residual = amount_residual_currency = 0). `,
 		func(rs m.AccountMoveLineSet) {
-			var totalDebit float64
-			var totalCredit float64
-			var totalAmountCurrency float64
-			var currency m.CurrencySet
-			var aml m.AccountMoveLineSet
-			var amlToBalanceCurrency m.AccountMoveLineSet
-			var partialRec m.AccountPartialReconcileSet
-			var partialRecSet m.AccountPartialReconcileSet
+			var totalDebit, totalCredit, totalAmountCurrency float64
 			var maxDate dates.Date
 
-			amlToBalanceCurrency = h.AccountMoveLine().NewSet(rs.Env())
-			partialRecSet = h.AccountPartialReconcile().NewSet(rs.Env())
+			currency := h.Currency().NewSet(rs.Env())
+			amlToBalanceCurrency := h.AccountMoveLine().NewSet(rs.Env())
+			partialRecSet := h.AccountPartialReconcile().NewSet(rs.Env())
 
 			for _, aml := range rs.Records() {
 				totalDebit += aml.Debit()
@@ -1599,16 +1593,15 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 				partialRecSet = partialRecSet.Union(aml.MatchedDebits().Union(aml.MatchedCredits()))
 			}
 
+			otherAml := h.AccountMoveLine().NewSet(rs.Env())
+			otherPartialRec := h.AccountPartialReconcile().NewSet(rs.Env())
 			if currency.IsNotEmpty() && amlToBalanceCurrency.IsNotEmpty() {
-				var otherAml m.AccountMoveLineSet
-				var otherPartialRec m.AccountPartialReconcileSet
 
-				aml = amlToBalanceCurrency.Records()[0]
+				aml := amlToBalanceCurrency.Records()[0]
 				// eventually create journal entries to book the difference due to foreign currency's exchange rate that fluctuates
+				partialRec := aml.MatchedCredits().Records()[0]
 				if aml.Credit() != 0.0 {
 					partialRec = aml.MatchedDebits().Records()[0]
-				} else {
-					partialRec = aml.MatchedCredits().Records()[0]
 				}
 				otherAml, otherPartialRec = partialRec.WithContext("skip_full_reconcile_check", true).
 					CreateExchangeRateEntry(amlToBalanceCurrency, 0.0, totalAmountCurrency, currency, maxDate)
@@ -1618,14 +1611,14 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			}
 
 			//if the total debit and credit are equal, and the total amount in currency is 0, the reconciliation is full
-			if nbutils.Compare(totalDebit, totalCredit, rs.Company().Currency().Rounding()) == 0 &&
-				(currency.IsEmpty() || nbutils.IsZero(totalAmountCurrency, currency.Rounding())) {
+			if rs.Company().Currency().CompareAmounts(totalDebit, totalCredit) == 0 &&
+				(currency.IsEmpty() || currency.IsZero(totalAmountCurrency)) {
 				// in that case, mark the reference on the partial reconciliations and the entries
 				data := h.AccountFullReconcile().NewData().
 					SetPartialReconciles(partialRecSet).
 					SetReconciledLines(rs).
-					SetExchangeMove(aml.Move()).
-					SetExchangePartialRec(partialRec)
+					SetExchangeMove(otherAml.Move()).
+					SetExchangePartialRec(otherPartialRec)
 				h.AccountFullReconcile().NewSet(rs.Env()).WithContext("check_move_validity", false).Create(data)
 			}
 		})

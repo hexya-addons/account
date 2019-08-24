@@ -47,15 +47,17 @@ func init() {
 		func(rs m.AccountMoveLineReconcileSet) m.AccountMoveLineReconcileData {
 			res := rs.Super().DefaultGet()
 			data := rs.TransRecGet()
-			res.SetTransNbr(data.TransNbr).SetCredit(data.Credit).SetDebit(data.Debit).SetWriteoff(data.WriteOff)
+			res.SetTransNbr(data.TransNbr).
+				SetCredit(data.Credit).
+				SetDebit(data.Debit).
+				SetWriteoff(data.WriteOff)
 			return res
 		})
 
 	h.AccountMoveLineReconcile().Methods().TransRecGet().DeclareMethod(
 		`TransRecGet`,
 		func(rs m.AccountMoveLineReconcileSet) accounttypes.TransRecGetStruct {
-			var credit float64
-			var debit float64
+			var credit, debit float64
 
 			lines := h.AccountMoveLine().Browse(rs.Env(), rs.Env().Context().GetIntegerSlice("active_ids"))
 			for _, line := range lines.Records() {
@@ -64,14 +66,13 @@ func init() {
 					debit += line.Debit()
 				}
 			}
-			precision := nbutils.Digits{
-				Scale: int8(h.User().NewSet(rs.Env()).CurrentUser().Company().Currency().DecimalPlaces()),
-			}.ToPrecision()
+			currency := h.User().NewSet(rs.Env()).CurrentUser().Company().Currency()
 			return accounttypes.TransRecGetStruct{
 				TransNbr: int64(lines.Len()),
-				Credit:   nbutils.Round(credit, precision),
-				Debit:    nbutils.Round(debit, precision),
-				WriteOff: nbutils.Round(debit-credit, precision)}
+				Credit:   currency.Round(credit),
+				Debit:    currency.Round(debit),
+				WriteOff: currency.Round(debit - credit),
+			}
 		})
 
 	h.AccountMoveLineReconcile().Methods().TransRecAddendumWriteoff().DeclareMethod(
@@ -94,10 +95,12 @@ func init() {
 			for _, aml := range moveLines.Records() {
 				if currency.IsEmpty() && aml.Currency().IsNotEmpty() {
 					currency = aml.Currency()
-				} else if aml.Currency().IsNotEmpty() && aml.Currency().Equals(currency) {
-					continue
+				} else if aml.Currency().IsNotEmpty() {
+					if aml.Currency().Equals(currency) {
+						continue
+					}
+					panic(rs.T(`Operation not allowed. You can only reconcile entries that share the same secondary currency or that don\'t have one. Edit your journal items or make another selection before proceeding any further.`))
 				}
-				panic(rs.T(`Operation not allowed. You can only reconcile entries that share the same secondary currency or that don\'t have one. Edit your journal items or make another selection before proceeding any further.`))
 			}
 			// Don't consider entrires that are already reconciled
 			moveLinesFiltered := moveLines.Filtered(func(set m.AccountMoveLineSet) bool {
@@ -187,25 +190,28 @@ func init() {
 			for _, aml := range moveLines.Records() {
 				if currency.IsEmpty() && aml.Currency().IsNotEmpty() {
 					currency = aml.Currency()
-				} else if aml.Currency().IsNotEmpty() && aml.Currency().Equals(currency) {
-					continue
+				} else if aml.Currency().IsNotEmpty() {
+					if aml.Currency().Equals(currency) {
+						continue
+					}
+					panic(rs.T(`Operation not allowed. You can only reconcile entries that share the same secondary currency or that don\'t have one. Edit your journal items or make another selection before proceeding any further.`))
 				}
-				panic(rs.T(`Operation not allowed. You can only reconcile entries that share the same secondary currency or that don\'t have one. Edit your journal items or make another selection before proceeding any further.`))
 			}
 
-			// Don't consider entrires that are already reconciled
-			moveLinesFiltered := moveLines.Filtered(func(set m.AccountMoveLineSet) bool {
-				return !set.Reconciled()
+			// Don't consider entries that are already reconciled
+			moveLinesFiltered := moveLines.Filtered(func(r m.AccountMoveLineSet) bool {
+				return !r.Reconciled()
 			})
-			// Because we are making a full reconcilition in batch, we need to consider use cases as defined in the test test_manual_reconcile_wizard_opw678153
+
+			// Because we are making a full reconciliation in batch, we need to consider use cases as defined in the test test_manual_reconcile_wizard_opw678153
 			// So we force the reconciliation in company currency only at first,
 			context = context.
 				WithKey("skip_full_reconcile_check", "amount_currency_excluded").
 				WithKey("manual_full_reconcile_currency_id", currency.ID())
 			writeoff := moveLinesFiltered.WithNewContext(context).Reconcile(rs.WriteoffAcc(), rs.Journal())
 			// then in second pass the amounts in secondary currency, only if some lines are still not fully reconciled
-			moveLinesFiltered = moveLines.Filtered(func(set m.AccountMoveLineSet) bool {
-				return !set.Reconciled()
+			moveLinesFiltered = moveLines.Filtered(func(r m.AccountMoveLineSet) bool {
+				return !r.Reconciled()
 			})
 			if moveLinesFiltered.IsNotEmpty() {
 				moveLinesFiltered.
