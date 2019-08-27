@@ -575,10 +575,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().Create().Extend("",
 		func(rs m.AccountInvoiceSet, data m.AccountInvoiceData) m.AccountInvoiceSet {
-			if !rs.Env().Context().GetBool("account_account_create_no_recursion") {
-				data = rs.UpdateDataForPartner(data.Partner(), data)
-				data = rs.UpdateDataForJournal(data.Journal(), data)
-			}
+			data = rs.UpdateDataForPartner(data.Partner(), data)
+			data = rs.UpdateDataForJournal(data.Journal(), data)
 			if data.Account().IsEmpty() {
 				panic(rs.T(`Configuration error!\nCould not find any account to create the invoice, are you sure you have a chart of account installed?`))
 			}
@@ -1015,12 +1013,17 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		func(rs m.AccountInvoiceSet, creditAML m.AccountMoveLineSet) m.AccountMoveLineSet {
 			rs.EnsureOne()
 			if creditAML.Currency().IsEmpty() && !rs.Currency().Equals(rs.Company().Currency()) {
-				creditAML.WithContext("allow_amount_currency", true).Write(
-					h.AccountMoveLine().NewData().SetCurrency(rs.Currency()).
-						SetAmountCurrency(rs.Company().Currency().WithContext("date", creditAML.Date()).Compute(creditAML.Balance(), rs.Currency(), true)))
+				creditAML.
+					WithContext("allow_amount_currency", true).
+					WithContext("check_move_validity", false).
+					Write(h.AccountMoveLine().NewData().
+						SetCurrency(rs.Currency()).
+						SetAmountCurrency(rs.Company().Currency().
+							WithContext("date", creditAML.Date()).
+							Compute(creditAML.Balance(), rs.Currency(), true)))
 			}
 			if creditAML.Payment().IsNotEmpty() {
-				creditAML.Payment().Write(h.AccountPayment().NewData().SetInvoices(rs))
+				creditAML.Payment().SetInvoices(rs.Union(creditAML.Payment().Invoices()))
 			}
 			return rs.RegisterPayment(creditAML, h.AccountAccount().NewSet(rs.Env()), h.AccountJournal().NewSet(rs.Env()))
 		})
@@ -1357,6 +1360,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 					if h.AccountInvoice().Search(rs.Env(),
 						q.AccountInvoice().Type().Equals(invoice.Type()).
 							And().Reference().Equals(invoice.Reference()).
+							And().Reference().IsNotNull().
 							And().Company().Equals(invoice.Company()).
 							And().CommercialPartner().Equals(invoice.CommercialPartner()).
 							And().ID().NotEquals(invoice.ID())).IsNotEmpty() {

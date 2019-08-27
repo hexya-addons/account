@@ -99,7 +99,7 @@ func init() {
 					if aml.Currency().Equals(currency) {
 						continue
 					}
-					panic(rs.T(`Operation not allowed. You can only reconcile entries that share the same secondary currency or that don\'t have one. Edit your journal items or make another selection before proceeding any further.`))
+					panic(rs.T(`Operation not allowed. You can only reconcile entries that share the same secondary currency or that don't have one. Edit your journal items or make another selection before proceeding any further.`))
 				}
 			}
 			// Don't consider entrires that are already reconciled

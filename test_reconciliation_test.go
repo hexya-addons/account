@@ -522,7 +522,7 @@ func TestManualReconcileWizardOpw678153(t *testing.T) {
 			}
 			amlRecs := h.AccountMoveLine().Search(env, q.AccountMoveLine().Move().In(moves).And().Account().Equals(trs.AccountRcv))
 			wizard := h.AccountMoveLineReconcile().NewSet(env).WithContext("active_ids", amlRecs.Ids()).Create(
-				h.AccountMoveLineReconcile().NewSet(env).DefaultGet())
+				h.AccountMoveLineReconcile().NewSet(env).WithContext("active_ids", amlRecs.Ids()).DefaultGet())
 			wizard.TransRecReconcileFull()
 			for _, aml := range amlRecs.Records() {
 				So(aml.Reconciled(), ShouldBeTrue)
@@ -543,7 +543,7 @@ func TestManualReconcileWizardOpw678153(t *testing.T) {
 			}
 			amlRecs = h.AccountMoveLine().Search(env, q.AccountMoveLine().Move().In(moves).And().Account().Equals(trs.AccountRcv))
 			wizard2 := h.AccountMoveLineReconcileWriteoff().NewSet(env).WithContext("active_ids", amlRecs.Ids()).Create(
-				h.AccountMoveLineReconcileWriteoff().NewSet(env).DefaultGet().
+				h.AccountMoveLineReconcileWriteoff().NewSet(env).WithContext("active_ids", amlRecs.Ids()).DefaultGet().
 					SetJournal(trs.BankJournalUsd).
 					SetWriteoffAcc(trs.AccountRsa))
 			wizard2.TransRecReconcile()
@@ -614,9 +614,11 @@ func TestReconcileBankStatementWithPaymentAndWriteoff(t *testing.T) {
 
 			// Check that move lines associated to bank_statement are correct
 			bankStmtAml := h.AccountMoveLine().Search(env, q.AccountMoveLine().Statement().Equals(bankStmt))
-			for _, move := range bankStmtAml.Move().Records() {
-				for _, line := range move.Lines().Records() {
-					bankStmtAml = bankStmtAml.Union(line)
+			for _, bsa := range bankStmtAml.Records() {
+				for _, move := range bsa.Move().Records() {
+					for _, line := range move.Lines().Records() {
+						bankStmtAml = bankStmtAml.Union(line)
+					}
 				}
 			}
 			So(bankStmtAml.Len(), ShouldEqual, 4)
@@ -650,7 +652,7 @@ func TestReconcileBankStatementWithPaymentAndWriteoff(t *testing.T) {
 func TestPartialReconcileCurrencies(t *testing.T) {
 	Convey("Test Partial Reconcile Currencies", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
-			self := initTestReconciliationStruct(env)
+			trs := initTestReconciliationStruct(env)
 
 			//                client Account (payable, rsa)
 			//        Debit                      Credit
@@ -670,46 +672,48 @@ func TestPartialReconcileCurrencies(t *testing.T) {
 				Type().Equals("purchase").And().
 				Company().Equals(mainCpny))
 			accountExpenses := h.AccountAccount().Search(env, q.AccountAccount().
-				UserType().Equals(self.AccountTypeExpenses))
+				UserType().Equals(trs.AccountTypeExpenses))
 
 			data := h.AccountJournal().NewData().
-				SetDefaultCreditAccount(self.AccountRsa).
-				SetDefaultDebitAccount(self.AccountRsa)
+				SetDefaultCreditAccount(trs.AccountRsa).
+				SetDefaultDebitAccount(trs.AccountRsa)
 
-			self.BankJournalEuro.Write(data)
+			trs.BankJournalEuro.Write(data)
 			destJournal.Write(data)
 
 			// Setting up rates for USD (main_company is in EUR)
 			h.CurrencyRate().Create(env,
 				h.CurrencyRate().NewData().
-					SetName(dates.Now().SetMonth(7).SetDay(1)).
+					SetName(dates.ParseDateTime("2015-07-01 00:00:00")).
 					SetRate(0.5).
-					SetCurrency(self.CurrencyUsd).
+					SetCurrency(trs.CurrencyUsd).
 					SetCompany(mainCpny))
 			h.CurrencyRate().Create(env,
 				h.CurrencyRate().NewData().
-					SetName(dates.Now().SetMonth(8).SetDay(1)).
+					SetName(dates.ParseDateTime("2015-08-01 00:00:00")).
 					SetRate(0.75).
-					SetCurrency(self.CurrencyUsd).
+					SetCurrency(trs.CurrencyUsd).
 					SetCompany(mainCpny))
 			h.CurrencyRate().Create(env,
 				h.CurrencyRate().NewData().
-					SetName(dates.Now().SetMonth(9).SetDay(1)).
+					SetName(dates.ParseDateTime("2015-09-01 00:00:00")).
 					SetRate(0.8).
-					SetCurrency(self.CurrencyUsd).
+					SetCurrency(trs.CurrencyUsd).
 					SetCompany(mainCpny))
 
 			// Preparing Invoices (from vendor)
 			baseInvoiceData := h.AccountInvoice().NewData().
+				SetPartner(trs.PartnerAgrolait).
 				SetReferenceType("none").
-				SetCurrency(self.CurrencyUsd).
+				SetCurrency(trs.CurrencyUsd).
 				SetName("invoice to vendor").
-				SetAccount(self.AccountRsa).
+				SetAccount(trs.AccountRsa).
 				SetType("in_invoice")
-			invoiceA := h.AccountInvoice().Create(env, baseInvoiceData.SetDate(dates.Today().SetMonth(7).SetDay(1)))
-			invoiceB := h.AccountInvoice().Create(env, baseInvoiceData.SetDate(dates.Today().SetMonth(8).SetDay(1)))
+			invoiceA := h.AccountInvoice().Create(env, baseInvoiceData.SetDateInvoice(dates.ParseDate("2015-07-02")))
+			invoiceB := h.AccountInvoice().Create(env, baseInvoiceData.SetDateInvoice(dates.ParseDate("2015-08-02")))
 
 			baseInvoiceLine := h.AccountInvoiceLine().NewData().
+				SetProduct(trs.Product).
 				SetQuantity(1).
 				SetPriceUnit(50).
 				SetName("product that cost 50").
@@ -723,10 +727,10 @@ func TestPartialReconcileCurrencies(t *testing.T) {
 			// Preparing Payments
 			basePaymentData := h.AccountPayment().NewData().
 				SetPaymentType("outbound").
-				SetCurrency(self.CurrencyUsd).
-				SetJournal(self.BankJournalEuro).
+				SetCurrency(trs.CurrencyUsd).
+				SetJournal(trs.BankJournalEuro).
 				SetCompany(mainCpny).
-				SetPartner(self.PartnerAgrolait).
+				SetPartner(trs.PartnerAgrolait).
 				SetPaymentMethod(h.AccountPaymentMethod().NewSet(env).GetRecord("account_account_payment_method_manual_out")).
 				SetDestinationJournal(destJournal).
 				SetPartnerType("supplier")
@@ -734,22 +738,22 @@ func TestPartialReconcileCurrencies(t *testing.T) {
 			// One partial for invoice_a (fully assigned to it)
 			paymentA := h.AccountPayment().Create(env, basePaymentData.
 				SetAmount(25).
-				SetPaymentDate(dates.Today().SetMonth(7).SetDay(1)))
+				SetPaymentDate(dates.ParseDate("2015-07-02")))
 			// One that will complete the payment of a, the rest goes to b
 			paymentB := h.AccountPayment().Create(env, basePaymentData.
 				SetAmount(50).
-				SetPaymentDate(dates.Today().SetMonth(8).SetDay(1)))
+				SetPaymentDate(dates.ParseDate("2015-08-02")))
 			// The last one will complete the payment of b
 			paymentC := h.AccountPayment().Create(env, basePaymentData.
 				SetAmount(25).
-				SetPaymentDate(dates.Today().SetMonth(9).SetDay(1)))
+				SetPaymentDate(dates.ParseDate("2015-09-01")))
 
 			paymentA.Post()
 			paymentB.Post()
 			paymentC.Post()
 
-			filterFunc := func(set m.AccountMoveLineSet) bool {
-				return set.Debit() != 0.0 && set.Account().Equals(destJournal.DefaultDebitAccount())
+			filterFunc := func(r m.AccountMoveLineSet) bool {
+				return r.Debit() != 0.0 && r.Account().Equals(destJournal.DefaultDebitAccount())
 			}
 
 			debitLineA := paymentA.MoveLines().Filtered(filterFunc)
@@ -766,6 +770,9 @@ func TestPartialReconcileCurrencies(t *testing.T) {
 			for _, inv := range invoiceA.Union(invoiceB).Records() {
 				So(inv.Reconciled(), ShouldBeTrue)
 				for _, aml := range inv.PaymentMoveLines().Union(inv.Move().Lines()).Records() {
+					if !aml.Account().Equals(trs.AccountRsa) {
+						continue
+					}
 					So(aml.AmountResidual(), ShouldEqual, 0)
 					So(aml.AmountResidualCurrency(), ShouldEqual, 0)
 					So(aml.Reconciled(), ShouldBeTrue)
@@ -783,7 +790,7 @@ func TestPartialReconcileCurrencies(t *testing.T) {
 
 			// Checking if the direction of the move is correct
 			fullRecPayable := fullRecMove.Lines().Filtered(func(set m.AccountMoveLineSet) bool {
-				return set.Account().Equals(self.AccountRsa)
+				return set.Account().Equals(trs.AccountRsa)
 			})
 			So(fullRecPayable.Balance(), ShouldEqual, 18.75)
 		}), ShouldBeNil)

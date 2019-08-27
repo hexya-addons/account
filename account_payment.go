@@ -588,7 +588,7 @@ set to draft and re-processed again." `},
 				if name == "" && rec.PaymentType() != "transfer" {
 					panic(rs.T("You have to define a sequence for %s in your company.", sequenceCode))
 				}
-				data.SetName(name)
+				rec.SetName(name)
 
 				// Create the journal entry
 				sign := -1.0
@@ -785,13 +785,13 @@ set to draft and re-processed again." `},
 				name = rs.Name()
 			} else {
 				switch {
-				case rs.PaymentType() == "customer" && rs.PartnerType() == "inbound":
+				case rs.PartnerType() == "customer" && rs.PaymentType() == "inbound":
 					name = rs.T("Customer Payment")
-				case rs.PaymentType() == "customer" && rs.PartnerType() == "outbound":
+				case rs.PartnerType() == "customer" && rs.PaymentType() == "outbound":
 					name = rs.T("Customer Refund")
-				case rs.PaymentType() == "supplier" && rs.PartnerType() == "inbound":
+				case rs.PartnerType() == "supplier" && rs.PaymentType() == "inbound":
 					name = rs.T("Vendor Refund")
-				case rs.PaymentType() == "supplier" && rs.PartnerType() == "outbound":
+				case rs.PartnerType() == "supplier" && rs.PaymentType() == "outbound":
 					name = rs.T("Vendor Payment")
 				}
 				if invoice.IsNotEmpty() {
@@ -808,13 +808,13 @@ set to draft and re-processed again." `},
 			if !rs.Currency().Equals(rs.Company().Currency()) {
 				CurrencyVal = rs.Currency()
 			}
-			ret := h.AccountMoveLine().NewData().
+			res := h.AccountMoveLine().NewData().
 				SetName(name).
 				SetJournal(rs.Journal()).
 				SetCurrency(CurrencyVal).
 				SetPayment(rs).
 				SetAccount(rs.DestinationAccount())
-			return ret
+			return res
 		})
 
 	h.AccountPayment().Methods().GetLiquidityMoveLineVals().DeclareMethod(
