@@ -254,11 +254,8 @@ func init() {
 	h.AccountBankStatement().Methods().ComputeIsDifferenceZero().DeclareMethod(
 		`ComputeIsDifferenceZero`,
 		func(rs m.AccountBankStatementSet) m.AccountBankStatementData {
-			res := h.AccountBankStatement().NewData()
-			value := nbutils.IsZero(res.Difference(), nbutils.Digits{16, int8(res.Currency().DecimalPlaces())}.ToPrecision())
-			if rs.IsDifferenceZero() != value {
-				res.SetIsDifferenceZero(value)
-			}
+			res := h.AccountBankStatement().NewData().
+				SetIsDifferenceZero(rs.Currency().IsZero(rs.Difference()))
 			return res
 		})
 
@@ -435,7 +432,7 @@ func init() {
 		`ButtonConfirmBank`,
 		func(rs m.AccountBankStatementSet) {
 			rs.BalanceCheck()
-			statements := rs.Filtered(func(rs m.AccountBankStatementSet) bool { return rs.State() == "open" })
+			statements := rs.Filtered(func(r m.AccountBankStatementSet) bool { return r.State() == "open" })
 			for _, stmt := range statements.Records() {
 				moves := h.AccountMove().NewSet(rs.Env())
 				for _, stLine := range stmt.Lines().Records() {
@@ -719,7 +716,7 @@ set to draft and re-processed again.`},
 				data.SetStatementLine(h.AccountBankStatementLine().NewSet(rs.Env()))
 				movesToUnbind.Write(data)
 				for _, move := range movesToUnbind.Records() {
-					moveLine := move.Lines().Filtered(func(rs m.AccountMoveLineSet) bool { return rs.Statement().Equals(stL.Statement()) })
+					moveLine := move.Lines().Filtered(func(r m.AccountMoveLineSet) bool { return r.Statement().Equals(stL.Statement()) })
 					dataLine := h.AccountMoveLine().NewData()
 					dataLine.SetStatement(h.AccountBankStatement().NewSet(rs.Env()))
 					moveLine.Write(dataLine)

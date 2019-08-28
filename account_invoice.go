@@ -403,7 +403,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			data.SetResidualSigned(math.Abs(residual) * sign)
 			data.SetResidual(math.Abs(residual))
 			data.SetReconciled(false)
-			if nbutils.IsZero(data.Residual(), rs.Currency().Rounding()) {
+			if rs.Currency().IsZero(data.Residual()) {
 				data.SetReconciled(true)
 			}
 			return data
@@ -442,7 +442,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				} else {
 					amtToShow = line.Company().Currency().WithContext("date", line.Date()).Compute(math.Abs(line.AmountResidual()), rs.Currency(), true)
 				}
-				if nbutils.IsZero(amtToShow, rs.Currency().Rounding()) {
+				if rs.Currency().IsZero(amtToShow) {
 					continue
 				}
 				curInfoContent := make(map[string]interface{})
@@ -521,7 +521,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				} else {
 					amtToShow = payment.Company().Currency().WithContext("date", payment.Date()).Compute(amount, rs.Currency(), true)
 				}
-				if nbutils.IsZero(amtToShow, rs.Currency().Rounding()) {
+				if rs.Currency().IsZero(amtToShow) {
 					continue
 				}
 				paymentRef := payment.Move().Name()
@@ -598,13 +598,11 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoice().Methods().Write().Extend("",
 		func(rs m.AccountInvoiceSet, vals m.AccountInvoiceData) bool {
-			preNotReconciled := rs.Filtered(func(r m.AccountInvoiceSet) bool { return !r.Reconciled() })
-			preReconciled := rs.Subtract(preNotReconciled)
 			res := rs.Super().Write(vals)
 			reconciled := rs.Filtered(func(r m.AccountInvoiceSet) bool { return r.Reconciled() })
 			notReconciled := rs.Subtract(reconciled)
-			reconciled.Intersect(preReconciled).Filtered(func(r m.AccountInvoiceSet) bool { return r.State() == "open" }).ActionInvoicePaid()
-			notReconciled.Intersect(preNotReconciled).Filtered(func(r m.AccountInvoiceSet) bool { return r.State() == "paid" }).ActionInvoiceReOpen()
+			reconciled.Filtered(func(r m.AccountInvoiceSet) bool { return r.State() == "open" }).ActionInvoicePaid()
+			notReconciled.Filtered(func(r m.AccountInvoiceSet) bool { return r.State() == "paid" }).ActionInvoiceReOpen()
 			return res
 		})
 
@@ -705,7 +703,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		`OnchangeInvoiceLines`,
 		func(rs m.AccountInvoiceSet) m.AccountInvoiceData {
 			taxesGrouped := rs.GetTaxesValues()
-			taxLines := rs.TaxLines().Filtered(func(rs m.AccountInvoiceTaxSet) bool { return rs.Manual() })
+			taxLines := rs.TaxLines().Filtered(func(r m.AccountInvoiceTaxSet) bool { return r.Manual() })
 			for _, tax := range taxesGrouped {
 				taxLines.Union(h.AccountInvoiceTax().Create(rs.Env(), tax))
 			}
@@ -847,7 +845,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 	h.AccountInvoice().Methods().ActionInvoiceDraft().DeclareMethod(
 		`ActionInvoiceDraft`,
 		func(rs m.AccountInvoiceSet) bool {
-			if rs.Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() != "cancel" }).IsNotEmpty() {
+			if rs.Filtered(func(r m.AccountInvoiceSet) bool { return r.State() != "cancel" }).IsNotEmpty() {
 				panic(rs.T(`Invoice must be cancelled in order to reset it to draft.`))
 			}
 			// go from canceled state to draft state
@@ -872,7 +870,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 	h.AccountInvoice().Methods().ActionInvoiceProforma2().DeclareMethod(
 		`ActionInvoiceProforma2`,
 		func(rs m.AccountInvoiceSet) bool {
-			if rs.Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() != "draft" }).IsNotEmpty() {
+			if rs.Filtered(func(r m.AccountInvoiceSet) bool { return r.State() != "draft" }).IsNotEmpty() {
 				panic(rs.T(`Invoice must be a draft in order to set it to Pro-forma.`))
 			}
 			return rs.Write(h.AccountInvoice().NewData().SetState("proforma2"))
@@ -895,11 +893,11 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		`ActionInvoicePaid`,
 		func(rs m.AccountInvoiceSet) bool {
 			// lots of duplicate calls to action_invoice_paid, so we remove those already paid
-			toPayInvoices := rs.Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() != "paid" })
-			if toPayInvoices.Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() != "open" }).IsNotEmpty() {
+			toPayInvoices := rs.Filtered(func(r m.AccountInvoiceSet) bool { return r.State() != "paid" })
+			if toPayInvoices.Filtered(func(r m.AccountInvoiceSet) bool { return r.State() != "open" }).IsNotEmpty() {
 				panic(rs.T(`Invoice must be validated in order to set it to register payment.`))
 			}
-			if toPayInvoices.Filtered(func(rs m.AccountInvoiceSet) bool { return !rs.Reconciled() }).IsNotEmpty() {
+			if toPayInvoices.Filtered(func(r m.AccountInvoiceSet) bool { return !r.Reconciled() }).IsNotEmpty() {
 				panic(rs.T(`You cannot pay an invoice which is partially paid. You need to reconcile payment entries first.`))
 			}
 			if toPayInvoices.IsNotEmpty() {
@@ -911,7 +909,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 	h.AccountInvoice().Methods().ActionInvoiceReOpen().DeclareMethod(
 		`ActionInvoiceReOpen`,
 		func(rs m.AccountInvoiceSet) bool {
-			if rs.Filtered(func(rs m.AccountInvoiceSet) bool { return rs.State() != "paid" }).IsNotEmpty() {
+			if rs.Filtered(func(r m.AccountInvoiceSet) bool { return r.State() != "paid" }).IsNotEmpty() {
 				panic(rs.T(`Invoice must be paid in order to set it to register payment.`))
 			}
 			if rs.IsNotEmpty() {
@@ -923,7 +921,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 	h.AccountInvoice().Methods().ActionInvoiceCancel().DeclareMethod(
 		`ActionInvoiceCancel`,
 		func(rs m.AccountInvoiceSet) bool {
-			if rs.Filtered(func(rs m.AccountInvoiceSet) bool { return strutils.IsIn(rs.State(), "proforma2", "draft", "open") }).IsNotEmpty() {
+			if rs.Filtered(func(r m.AccountInvoiceSet) bool { return strutils.IsIn(r.State(), "proforma2", "draft", "open") }).IsNotEmpty() {
 				panic(rs.T(`Invoice must be in draft, Pro-forma or open state in order to be cancelled.`))
 			}
 			return rs.ActionCancel()
@@ -1980,8 +1978,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 
 	h.AccountInvoiceLine().Methods().Unlink().Extend("",
 		func(rs m.AccountInvoiceLineSet) int64 {
-			if rs.Filtered(func(rs m.AccountInvoiceLineSet) bool {
-				return rs.Invoice().IsNotEmpty() && rs.Invoice().State() != "draft"
+			if rs.Filtered(func(r m.AccountInvoiceLineSet) bool {
+				return r.Invoice().IsNotEmpty() && r.Invoice().State() != "draft"
 			}).IsNotEmpty() {
 				panic(rs.T(`You can only delete an invoice line if the invoice is in draft state.`))
 			}
@@ -2092,7 +2090,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			if PTLlen > 0 && paymentTermLines.Records()[PTLlen-1].Value() != "balance" {
 				panic(rs.T(`A Payment Term should have its last line of type Balance.`))
 			}
-			PTLlen = rs.Lines().Filtered(func(rs m.AccountPaymentTermLineSet) bool { return rs.Value() == "balance" }).Len()
+			PTLlen = rs.Lines().Filtered(func(r m.AccountPaymentTermLineSet) bool { return r.Value() == "balance" }).Len()
 			if PTLlen > 1 {
 				panic(rs.T(`A Payment Term should have only one line of type Balance.`))
 			}
@@ -2116,16 +2114,15 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 			} else {
 				currency = h.User().NewSet(rs.Env()).CurrentUser().Company().Currency()
 			}
-			prec := math.Pow10(int(-currency.DecimalPlaces()))
 			for _, line := range rs.Lines().Records() {
 				amt := 0.0
 				switch line.Value() {
 				case "fixed":
-					amt = sign * nbutils.Round(line.ValueAmount(), prec)
+					amt = sign * currency.Round(line.ValueAmount())
 				case "percent":
-					amt = nbutils.Round(value*(line.ValueAmount()/100), prec)
+					amt = currency.Round(value * (line.ValueAmount() / 100))
 				case "balance":
-					amt = nbutils.Round(amount, prec)
+					amt = currency.Round(amount)
 				}
 				if amt == 0.0 {
 					continue
@@ -2145,7 +2142,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				amount -= amt
 			}
 			amount = 0.0 //  reduce(lambda x, y: x + y[1], result, 0.0) //tovalid wat?
-			dist := nbutils.Round(value-amount, prec)
+			dist := currency.Round(value - amount)
 			if dist != 0.0 {
 				lastDate := dates.Today()
 				if len := len(result); len > 0 {

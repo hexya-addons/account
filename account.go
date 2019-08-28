@@ -636,14 +636,14 @@ journalCompany holder: '%s' - ID_%d
 			result := rs.Super().Write(vals)
 			// Create the bank_account_id if necessary
 			if vals.BankAccNumber() != "" {
-				for _, journal := range rs.Filtered(func(rs m.AccountJournalSet) bool { return rs.Type() == "bank" && !rs.BankAccount().IsEmpty() }).Records() {
+				for _, journal := range rs.Filtered(func(r m.AccountJournalSet) bool { return r.Type() == "bank" && !rs.BankAccount().IsEmpty() }).Records() {
 					journal.DefineBankAccount(vals.BankAccNumber(), vals.Bank())
 				}
 			}
 			// Create the relevant refund sequence
 			if val := vals.Get("RefundSequence"); val != nil {
-				for _, journal := range rs.Filtered(func(rs m.AccountJournalSet) bool {
-					return (rs.Type() == "sale" || rs.Type() == "purchase") && !rs.RefundEntrySequence().IsEmpty()
+				for _, journal := range rs.Filtered(func(r m.AccountJournalSet) bool {
+					return (r.Type() == "sale" || r.Type() == "purchase") && !r.RefundEntrySequence().IsEmpty()
 				}).Records() {
 					jVals := h.AccountJournal().NewData()
 					jVals.SetName(journal.Name())
