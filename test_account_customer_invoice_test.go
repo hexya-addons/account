@@ -165,11 +165,11 @@ func TestCustomerInvoiceTax(t *testing.T) {
 
 			invoice := h.AccountInvoice().Create(env, invoiceData)
 
-			total := 0.0
+			var total float64
 			for _, x := range invoice.TaxLines().Records() {
 				total += x.Base()
 			}
-			So(invoice.AmountUntaxed(), ShouldEqual, total)
+			So(invoice.AmountUntaxed(), ShouldAlmostEqual, total)
 		}), ShouldBeNil)
 	})
 }

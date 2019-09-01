@@ -101,30 +101,30 @@ type computeAllOutStruct struct {
 	taxes         []accounttypes.AppliedTaxData
 }
 
-func (self TestTaxStruct) simpleComputeAll(tax m.AccountTaxSet, price float64) computeAllOutStruct {
+func (tts TestTaxStruct) simpleComputeAll(tax m.AccountTaxSet, price float64) computeAllOutStruct {
 	var out computeAllOutStruct
 	out.base, out.totalExcluded, out.totalIncluded, out.taxes = tax.ComputeAll(
-		price, h.Currency().NewSet(self.Env), 1, h.ProductProduct().NewSet(self.Env), h.Partner().NewSet(self.Env))
+		price, h.Currency().NewSet(tts.Env), 1, h.ProductProduct().NewSet(tts.Env), h.Partner().NewSet(tts.Env))
 	return out
 }
 
 func TestTaxGroupOfGroupTax(t *testing.T) {
 	Convey("Test Tax Group Of Group Tax", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
-			self := initTestTaxStruct(env)
-			self.FixedTax.SetIncludeBaseAmount(true)
-			self.GroupTax.SetIncludeBaseAmount(true)
-			self.GroupOfGroupTax.SetIncludeBaseAmount(true)
-			res := self.simpleComputeAll(self.GroupOfGroupTax, 200)
-			/*
-				# After calculation of first group
-				# base = 210
-				# total_included = 231
-				# Base of the first grouped is passed
-				# Base after the second group (220) is dropped.
-				# Base of the group of groups is passed out,
-				# so we obtain base as after first group
-			*/
+			tts := initTestTaxStruct(env)
+			tts.FixedTax.SetIncludeBaseAmount(true)
+			tts.GroupTax.SetIncludeBaseAmount(true)
+			tts.GroupOfGroupTax.SetIncludeBaseAmount(true)
+			res := tts.simpleComputeAll(tts.GroupOfGroupTax, 200)
+
+			// After calculation of first group
+			// base = 210
+			// total_included = 231
+			// Base of the first grouped is passed
+			// Base after the second group (220) is dropped.
+			// Base of the group of groups is passed out,
+			// so we obtain base as after first group
+
 			So(res.base, ShouldEqual, 210)
 			So(res.totalExcluded, ShouldEqual, 200)
 			So(res.totalIncluded, ShouldEqual, 263)
@@ -135,8 +135,8 @@ func TestTaxGroupOfGroupTax(t *testing.T) {
 func TestTaxGroup(t *testing.T) {
 	Convey("Test Tax Group", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
-			self := initTestTaxStruct(env)
-			res := self.simpleComputeAll(self.GroupTax, 200)
+			tts := initTestTaxStruct(env)
+			res := tts.simpleComputeAll(tts.GroupTax, 200)
 			So(res.totalExcluded, ShouldEqual, 200)
 			So(res.totalIncluded, ShouldEqual, 230)
 			So(len(res.taxes), ShouldEqual, 2)
@@ -149,21 +149,21 @@ func TestTaxGroup(t *testing.T) {
 func TestTaxPercentDivision(t *testing.T) {
 	Convey("Test Tax Percent Division", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
-			self := initTestTaxStruct(env)
-			self.DivisionTax.SetPriceInclude(true)
-			self.DivisionTax.SetIncludeBaseAmount(true)
-			self.PercentTax.SetPriceInclude(false)
-			self.PercentTax.SetIncludeBaseAmount(false)
-			resDivision := self.simpleComputeAll(self.DivisionTax, 200)
-			resPercent := self.simpleComputeAll(self.PercentTax, 200)
+			tts := initTestTaxStruct(env)
+			tts.DivisionTax.SetPriceInclude(true)
+			tts.DivisionTax.SetIncludeBaseAmount(true)
+			tts.PercentTax.SetPriceInclude(false)
+			tts.PercentTax.SetIncludeBaseAmount(false)
+			resDivision := tts.simpleComputeAll(tts.DivisionTax, 200)
+			resPercent := tts.simpleComputeAll(tts.PercentTax, 200)
 			So(resDivision.taxes[0].Amount, ShouldEqual, 20)
 			So(resPercent.taxes[0].Amount, ShouldEqual, 20)
-			self.DivisionTax.SetPriceInclude(false)
-			self.DivisionTax.SetIncludeBaseAmount(false)
-			self.PercentTax.SetPriceInclude(true)
-			self.PercentTax.SetIncludeBaseAmount(true)
-			resDivision = self.simpleComputeAll(self.DivisionTax, 200)
-			resPercent = self.simpleComputeAll(self.PercentTax, 200)
+			tts.DivisionTax.SetPriceInclude(false)
+			tts.DivisionTax.SetIncludeBaseAmount(false)
+			tts.PercentTax.SetPriceInclude(true)
+			tts.PercentTax.SetIncludeBaseAmount(true)
+			resDivision = tts.simpleComputeAll(tts.DivisionTax, 200)
+			resPercent = tts.simpleComputeAll(tts.PercentTax, 200)
 			So(resDivision.taxes[0].Amount, ShouldEqual, 22.22)
 			So(resPercent.taxes[0].Amount, ShouldEqual, 18.18)
 		}), ShouldBeNil)
@@ -173,12 +173,12 @@ func TestTaxPercentDivision(t *testing.T) {
 func TestTaxSequenceNormalizedSet(t *testing.T) {
 	Convey("Test Tax Sequence Normalized Set", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
-			self := initTestTaxStruct(env)
-			self.DivisionTax.SetSequence(1)
-			self.FixedTax.SetSequence(2)
-			self.PercentTax.SetSequence(3)
-			taxesSet := self.GroupTax.Union(self.DivisionTax)
-			res := self.simpleComputeAll(taxesSet, 200)
+			tts := initTestTaxStruct(env)
+			tts.DivisionTax.SetSequence(1)
+			tts.FixedTax.SetSequence(2)
+			tts.PercentTax.SetSequence(3)
+			taxesSet := tts.GroupTax.Union(tts.DivisionTax)
+			res := tts.simpleComputeAll(taxesSet, 200)
 			So(res.taxes[0].Amount, ShouldEqual, 22.22)
 			So(res.taxes[1].Amount, ShouldEqual, 10)
 			So(res.taxes[2].Amount, ShouldEqual, 20)
@@ -189,9 +189,9 @@ func TestTaxSequenceNormalizedSet(t *testing.T) {
 func TestTaxIncludeBaseAmount(t *testing.T) {
 	Convey("Test Tax Include Base Amount", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
-			self := initTestTaxStruct(env)
-			self.FixedTax.SetIncludeBaseAmount(true)
-			res := self.simpleComputeAll(self.GroupTax, 200)
+			tts := initTestTaxStruct(env)
+			tts.FixedTax.SetIncludeBaseAmount(true)
+			res := tts.simpleComputeAll(tts.GroupTax, 200)
 			So(res.totalIncluded, ShouldEqual, 231)
 		}), ShouldBeNil)
 	})
@@ -200,10 +200,10 @@ func TestTaxIncludeBaseAmount(t *testing.T) {
 func TestTaxCurrency(t *testing.T) {
 	Convey("Test Tax Currency", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
-			self := initTestTaxStruct(env)
-			self.DivisionTax.SetAmount(15)
-			_, _, totalIncl, _ := self.DivisionTax.ComputeAll(
-				200, h.Currency().NewSet(self.Env).GetRecord("base_VEF"), 1, h.ProductProduct().NewSet(self.Env), h.Partner().NewSet(self.Env))
+			tts := initTestTaxStruct(env)
+			tts.DivisionTax.SetAmount(15)
+			_, _, totalIncl, _ := tts.DivisionTax.ComputeAll(
+				200, h.Currency().NewSet(tts.Env).GetRecord("base_VEF"), 1, h.ProductProduct().NewSet(tts.Env), h.Partner().NewSet(tts.Env))
 			So(totalIncl, ShouldAlmostEqual, 235.2941)
 		}), ShouldBeNil)
 	})
@@ -213,42 +213,37 @@ func TestTaxCurrency(t *testing.T) {
 func TestTaxMoveLinesCreation(t *testing.T) {
 	Convey("Test Tax Move Lines Creation", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
-			self := initTestTaxStruct(env)
-			self.FixedTax.SetPriceInclude(true)
-			self.FixedTax.SetIncludeBaseAmount(true)
-
+			tts := initTestTaxStruct(env)
+			tts.FixedTax.SetPriceInclude(true)
+			tts.FixedTax.SetIncludeBaseAmount(true)
 			company := h.User().NewSet(env).CurrentUser().Company()
-
-			line1 := h.AccountMoveLine().Create(env,
-				h.AccountMoveLine().NewData().
-					SetAccount(self.BankAccount).
-					SetDebit(235).
-					SetCredit(0).
-					SetName("Bank Fees"))
-			line2 := h.AccountMoveLine().Create(env,
-				h.AccountMoveLine().NewData().
-					SetAccount(self.ExpenseAccount).
-					SetDebit(0).
-					SetCredit(200).
-					SetName("Bank Fees").
-					SetTaxes(self.GroupTax.Union(self.FixedTaxBis)))
 
 			move := h.AccountMove().NewSet(env).WithContext("apply_taxes", true).Create(
 				h.AccountMove().NewData().
 					SetDate(dates.Today().SetMonth(01).SetDay(01)).
-					SetJournal(self.BankJournal).
+					SetJournal(tts.BankJournal).
 					SetName("Test move").
-					SetLines(line1.Union(line2)).
-					SetCompany(company))
+					SetCompany(company).
+					CreateLines(h.AccountMoveLine().NewData().
+						SetAccount(tts.BankAccount).
+						SetDebit(235).
+						SetCredit(0).
+						SetName("Bank Fees")).
+					CreateLines(h.AccountMoveLine().NewData().
+						SetAccount(tts.ExpenseAccount).
+						SetDebit(0).
+						SetCredit(200).
+						SetName("Bank Fees").
+						SetTaxes(tts.GroupTax.Union(tts.FixedTaxBis))))
 
 			amlFixedTax := move.Lines().Filtered(func(set m.AccountMoveLineSet) bool {
-				return set.TaxLine().Equals(self.FixedTax)
+				return set.TaxLine().Equals(tts.FixedTax)
 			})
 			amlPercentTax := move.Lines().Filtered(func(set m.AccountMoveLineSet) bool {
-				return set.TaxLine().Equals(self.PercentTax)
+				return set.TaxLine().Equals(tts.PercentTax)
 			})
 			amlFixedTaxBis := move.Lines().Filtered(func(set m.AccountMoveLineSet) bool {
-				return set.TaxLine().Equals(self.FixedTaxBis)
+				return set.TaxLine().Equals(tts.FixedTaxBis)
 			})
 
 			So(amlFixedTax.Len(), ShouldEqual, 1)
@@ -259,7 +254,7 @@ func TestTaxMoveLinesCreation(t *testing.T) {
 			So(amlFixedTaxBis.Credit(), ShouldEqual, 15)
 
 			amlWithTaxes := move.Lines().Filtered(func(set m.AccountMoveLineSet) bool {
-				return set.Taxes().Equals(self.GroupTax.Union(self.FixedTaxBis))
+				return set.Taxes().Equals(tts.GroupTax.Union(tts.FixedTaxBis))
 			})
 			So(amlWithTaxes.Len(), ShouldEqual, 1)
 			So(amlWithTaxes.Credit(), ShouldEqual, 190)

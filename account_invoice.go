@@ -341,7 +341,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 				valueUntaxed = currency.Compute(valueUntaxed, rs.Company().Currency(), true)
 			}
 			sign := 1.0
-			if rs.Type() == "in_refund" || rs.Type() == "out_refund" {
+			if strutils.IsIn(rs.Type(), "in_refund", "out_refund") {
 				sign = -1.0
 			}
 			data.SetAmountTotalCompanySigned(valueTotal * sign)

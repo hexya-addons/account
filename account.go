@@ -221,14 +221,12 @@ or if you click the "Done" button.`},
 	instead of its name. In that case, switch both fields values.`,
 		func(rs m.AccountAccountSet) m.AccountAccountData {
 			defaultName := rs.Env().Context().GetString("default_name")
-			defaultCode := rs.Env().Context().GetInteger("default_code") //int??
+			defaultCode := rs.Env().Context().GetString("default_code")
 
-			if defaultName != "" && defaultCode == 0 {
-				i := -789098765
-				i, err := strconv.Atoi(defaultName)
-				if err == nil && i != -789098765 {
+			if defaultName != "" && defaultCode == "" {
+				if _, err := strconv.Atoi(defaultName); err == nil {
+					defaultCode = defaultName
 					defaultName = ""
-					defaultCode = int64(i)
 				}
 			}
 			return rs.WithContext(defaultName, defaultCode).Super().DefaultGet()
@@ -236,20 +234,16 @@ or if you click the "Done" button.`},
 
 	h.AccountAccount().Methods().SearchByName().Extend("",
 		func(rs m.AccountAccountSet, name string, op operator.Operator, additionalCond q.AccountAccountCondition, limit int) m.AccountAccountSet {
-			//Tovalid
-			//@api.model
-			/*def name_search(self, name, args=None, operator='ilike', limit=100):
-			  args = args or []
-			  domain = []
-			  if name:
-			      domain = ['|', ('code', '=ilike', name + '%'), ('name', operator, name)]
-			      if operator in expression.NEGATIVE_TERM_OPERATORS:
-			          domain = ['&', '!'] + domain[1:]
-			  accounts = self.search(domain + args, limit=limit)
-			  return accounts.name_get()
-
-			*/
-			return rs.Super().SearchByName(name, op, additionalCond, limit)
+			if name == "" {
+				return rs.Super().SearchByName(name, op, additionalCond, limit)
+			}
+			var cond q.AccountAccountCondition
+			if op.IsNegative() {
+				cond = q.AccountAccount().Name().AddOperator(op, name).AndNot().Code().ILike(fmt.Sprintf("%s%%", name))
+			} else {
+				cond = q.AccountAccount().Name().AddOperator(op, name).Or().Code().ILike(fmt.Sprintf("%s%%", name))
+			}
+			return h.AccountAccount().Search(rs.Env(), cond.AndCond(additionalCond)).Limit(limit)
 		})
 
 	h.AccountAccount().Methods().OnchangeInternalType().DeclareMethod(
@@ -1064,9 +1058,9 @@ to the same analytic account as the invoice line (if any)`},
 			case "in_invoice", "in_refund":
 				cond = cond.And().TypeTaxUse().Equals("purchase")
 			}
-			jId := ctx.GetIntegerSlice(`journal_id`)
-			if len(jId) > 0 {
-				journal := h.AccountJournal().Browse(rs.Env(), jId)
+			jId := ctx.GetInteger(`journal_id`)
+			if jId != 0 {
+				journal := h.AccountJournal().BrowseOne(rs.Env(), jId)
 				if journal.Type() == "sale" || journal.Type() == "purchase" {
 					cond = cond.And().TypeTaxUse().Equals(journal.Type())
 				}

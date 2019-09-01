@@ -330,10 +330,6 @@ will be created in 'Posted' status.'`},
 			      	HAVING      abs(sum(debit) - sum(credit)) > ?
 			      `, rs.Ids(), math.Pow10(-int(prec)))
 			if len(moves) != 0 {
-				fmt.Println("AB>", moves)
-				for _, l := range h.AccountMoveLine().Search(rs.Env(), q.AccountMoveLine().MoveFilteredOn(q.AccountMove().ID().Equals(moves[0]))).Records() {
-					fmt.Println(">", l.Move().Name(), l.Name(), l.Credit(), l.Debit(), l.AmountResidual(), l.AmountResidualCurrency())
-				}
 				panic(rs.T(`Cannot create unbalanced journal entry.`))
 			}
 			return true
@@ -364,7 +360,13 @@ will be created in 'Posted' status.'`},
 			}
 			reversedMoves := h.AccountMove().NewSet(rs.Env())
 			for _, acMove := range rs.Records() {
-				reversedMoves = reversedMoves.Union(acMove.ReverseMove(date, journal))
+				// unreconcile all lines reversed
+				aml := acMove.Lines().Filtered(func(r m.AccountMoveLineSet) bool {
+					return r.Account().Reconcile() || r.Account().InternalType() == "liquidity"
+				})
+				aml.RemoveMoveReconcile()
+				reversedMove := acMove.ReverseMove(date, journal)
+				reversedMoves = reversedMoves.Union(reversedMove)
 			}
 			if reversedMoves.IsNotEmpty() {
 				reversedMoves.PostValidate()
@@ -445,14 +447,14 @@ views from reports`},
 			Compute: h.AccountMoveLine().Methods().ComputeAmountResidual(),
 			Stored:  true,
 			Depends: []string{"Debit", "Credit", "AmountCurrency", "Currency", "MatchedDebits", "MatchedCredits",
-				"MatchedDebits.Amount", "MatchedCredits.Amount", "Account.Currency", "Move.State"},
+				"MatchedDebits.Amount", "MatchedCredits.Amount", "Move.State"},
 			Help: "The residual amount on a journal item expressed in the company currency."},
 		"AmountResidualCurrency": models.FloatField{
 			String:  "Residual Amount in Currency",
 			Compute: h.AccountMoveLine().Methods().ComputeAmountResidual(),
 			Stored:  true,
 			Depends: []string{"Debit", "Credit", "AmountCurrency", "Currency", "MatchedDebits", "MatchedCredits",
-				"MatchedDebits.Amount", "MatchedCredits.Amount", "Account.Currency", "Move.State"},
+				"MatchedDebits.Amount", "MatchedCredits.Amount", "Move.State"},
 			Help: "The residual amount on a journal item expressed in its currency (possibly not the company currency)."},
 		"Account": models.Many2OneField{
 			RelationModel: h.AccountAccount(),
@@ -1626,21 +1628,30 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 	h.AccountMoveLine().Methods().RemoveMoveReconcile().DeclareMethod(
 		`RemoveMoveReconcile Undo a reconciliation`,
 		func(rs m.AccountMoveLineSet) int64 {
-			var recMoves m.AccountPartialReconcileSet
-
 			if rs.IsEmpty() {
 				return 0
 			}
-			recMoves = h.AccountPartialReconcile().NewSet(rs.Env())
+			recMoves := h.AccountPartialReconcile().NewSet(rs.Env())
 			for _, aml := range rs.Records() {
 				for _, invoice := range aml.Payment().Invoices().Records() {
 					if invoice.ID() == rs.Env().Context().GetInteger("invoice_id") &&
 						aml.Intersect(invoice.PaymentMoveLines()).IsNotEmpty() {
-						aml.Payment().Write(h.AccountPayment().NewData().SetInvoices(invoice))
+						remainingInvoices := aml.Payment().Invoices().Subtract(invoice)
+						aml.Payment().SetInvoices(remainingInvoices)
 					}
 				}
 				recMoves = recMoves.Union(aml.MatchedDebits())
 				recMoves = recMoves.Union(aml.MatchedCredits())
+			}
+			if rs.Env().Context().HasKey("invoice_id") {
+				currentInvoice := h.AccountInvoice().BrowseOne(rs.Env(), rs.Env().Context().GetInteger("invoice_id"))
+				amlToKeep := currentInvoice.Move().Lines()
+				for _, l := range amlToKeep.Move().Lines().Records() {
+					amlToKeep = amlToKeep.Union(l.FullReconcile().ExchangeMove().Lines())
+				}
+				recMoves = recMoves.Filtered(func(r m.AccountPartialReconcileSet) bool {
+					return r.DebitMove().Union(r.CreditMove()).Intersect(amlToKeep).IsNotEmpty()
+				})
 			}
 			return recMoves.Unlink()
 		})
@@ -1761,14 +1772,8 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 					if taxData.Amount == 0.0 {
 						continue
 					}
-
-					var tax m.AccountTaxSet
 					var accountID int64
-					var account m.AccountAccountSet
-					var temp m.AccountMoveLineData
-					var bank m.AccountBankStatementSet
-
-					tax = h.AccountTax().BrowseOne(rs.Env(), taxData.ID)
+					tax := h.AccountTax().BrowseOne(rs.Env(), taxData.ID)
 					if amount > 0 {
 						accountID = taxData.AccountID
 					} else {
@@ -1780,7 +1785,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 						account = h.AccountAccount().BrowseOne(rs.Env(), accountID)
 					}
 
-					temp = h.AccountMoveLine().NewData().
+					temp := h.AccountMoveLine().NewData().
 						SetAccount(account).
 						SetName(data.Name() + " " + taxData.Name).
 						SetTaxLine(tax).
@@ -1798,7 +1803,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 						temp.SetCredit(-taxData.Amount)
 					}
 
-					bank = data.Statement()
+					bank := data.Statement()
 					if !bank.Currency().Equals(bank.Company().Currency()) {
 						var context *types.Context
 
@@ -1912,15 +1917,10 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 
 	h.AccountMoveLine().Methods().NameGet().Extend("",
 		func(rs m.AccountMoveLineSet) string {
-			/*def name_get(self):
-			for line in self:
-				if line.ref:
-					result.append((line.id, (line.move_id.name or '') + '(' + line.ref + ')'))
-				else:
-					result.append((line.id, line.move_id.name))
-			return result
-			*/
-			return rs.Super().NameGet()
+			if rs.Ref() != "" {
+				return fmt.Sprintf("%s(%s)", rs.Move().Name(), rs.Ref())
+			}
+			return rs.Move().Name()
 		})
 
 	h.AccountMoveLine().Methods().ComputeAmountFields().DeclareMethod(
@@ -2352,12 +2352,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 	h.AccountPartialReconcile().Methods().Unlink().Extend(
 		"When removing a partial reconciliation, also unlink its full reconciliation if it exists",
 		func(rs m.AccountPartialReconcileSet) int64 {
-			var res int64
-			var toUnlink m.AccountPartialReconcileSet
-			var fullToUnlink m.AccountFullReconcileSet
-
-			fullToUnlink = h.AccountFullReconcile().NewSet(rs.Env())
-			toUnlink = rs
+			fullToUnlink := h.AccountFullReconcile().NewSet(rs.Env())
 			if !rs.Env().Context().HasKey("full_rec_lookup") || rs.Env().Context().GetBool("full_rec_lookup") {
 				for _, rec := range rs.Records() {
 					if rec.FullReconcile().IsNotEmpty() {
@@ -2365,9 +2360,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 					}
 				}
 			}
-			if toUnlink.IsNotEmpty() {
-				res = toUnlink.Super().Unlink()
-			}
+			res := rs.Super().Unlink()
 			if fullToUnlink.IsNotEmpty() {
 				fullToUnlink.Unlink()
 			}
@@ -2413,8 +2406,9 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 				}
 				// reverse the exchange rate entry
 				// reconciliation of the exchange move and its reversal is handled in reverse_moves
-				rec.ExchangeMove().ReverseMoves(dates.Date{}, h.AccountJournal().NewSet(rs.Env()))
-				rec.SetExchangeMove(h.AccountMove().NewSet(rs.Env()))
+				exchangeMove := rec.ExchangeMove()
+				rec.SetExchangeMove(nil)
+				exchangeMove.ReverseMoves(dates.Date{}, h.AccountJournal().NewSet(rs.Env()))
 			}
 			return rs.Super().Unlink()
 		})

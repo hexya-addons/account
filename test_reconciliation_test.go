@@ -840,7 +840,7 @@ func TestUnreconcile(t *testing.T) {
 			So(inv1.Residual(), ShouldAlmostEqual, 10)
 			So(inv2.Residual(), ShouldAlmostEqual, 0)
 			creditAml.WithContext("invoice_id", inv2.ID()).RemoveMoveReconcile()
-			So(inv1.Residual(), ShouldAlmostEqual, 0)
+			So(inv1.Residual(), ShouldAlmostEqual, 10)
 			So(inv2.Residual(), ShouldAlmostEqual, 20)
 		}), ShouldBeNil)
 	})
@@ -915,7 +915,8 @@ func TestRevertPaymentAndReconcile(t *testing.T) {
 				SetPartnerType("customer").
 				SetPartner(self.PartnerAgrolait).
 				SetJournal(self.BankJournalUsd).
-				SetPaymentDate(dates.Date{}.SetYear(2018).SetMonth(06).SetDay(04)))
+				SetPaymentDate(dates.ParseDate("2018-06-04")).
+				SetAmount(666))
 			payment.Post()
 			So(payment.MoveLines().Len(), ShouldEqual, 2)
 
