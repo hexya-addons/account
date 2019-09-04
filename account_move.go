@@ -1802,9 +1802,8 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 					} else if taxData.Amount < 0 {
 						temp.SetCredit(-taxData.Amount)
 					}
-
 					bank := data.Statement()
-					if !bank.Currency().Equals(bank.Company().Currency()) {
+					if bank.IsValid() && !bank.Currency().Equals(bank.Company().Currency()) {
 						var context *types.Context
 
 						context = types.NewContext()
