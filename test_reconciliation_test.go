@@ -907,21 +907,21 @@ func TestUnreconcileExchange(t *testing.T) {
 func TestRevertPaymentAndReconcile(t *testing.T) {
 	Convey("Test Revert Payment And Reconcile", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
-			self := initTestReconciliationStruct(env)
+			trs := initTestReconciliationStruct(env)
 
 			payment := h.AccountPayment().Create(env, h.AccountPayment().NewData().
-				SetPaymentMethod(self.InboundPaymentMethod).
+				SetPaymentMethod(trs.InboundPaymentMethod).
 				SetPaymentType("inbound").
 				SetPartnerType("customer").
-				SetPartner(self.PartnerAgrolait).
-				SetJournal(self.BankJournalUsd).
+				SetPartner(trs.PartnerAgrolait).
+				SetJournal(trs.BankJournalUsd).
 				SetPaymentDate(dates.ParseDate("2018-06-04")).
 				SetAmount(666))
 			payment.Post()
 			So(payment.MoveLines().Len(), ShouldEqual, 2)
 
 			bankLine := payment.MoveLines().Filtered(func(set m.AccountMoveLineSet) bool {
-				return set.Account().Equals(self.BankJournalUsd.DefaultDebitAccount())
+				return set.Account().Equals(trs.BankJournalUsd.DefaultDebitAccount())
 			})
 			customerLine := payment.MoveLines().Subtract(bankLine)
 
@@ -939,7 +939,7 @@ func TestRevertPaymentAndReconcile(t *testing.T) {
 
 			// Testing the reconciliation matching between the move lines and their reversed counterparts
 			reversedBankLine := reversedMove.Lines().Filtered(func(set m.AccountMoveLineSet) bool {
-				return set.Account().Equals(self.BankJournalUsd.DefaultDebitAccount())
+				return set.Account().Equals(trs.BankJournalUsd.DefaultDebitAccount())
 			})
 			reversedCustomerLine := reversedMove.Lines().Subtract(reversedBankLine)
 
@@ -954,53 +954,73 @@ func TestRevertPaymentAndReconcile(t *testing.T) {
 }
 
 func TestAgedReport(t *testing.T) {
-	SkipConvey("Test Aged Report", t, FailureContinues, func() {
+	Convey("Test Aged Report", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
-			self := initTestReconciliationStruct(env)
-			_ = self
-			/*
-				   AgedReport = self.env['report.account.report_agedpartnerbalance'].with_context(include_nullified_amount=True)
-				   account_type = ['receivable']
-				   report_date_to = time.strftime('%Y') + '-07-15'
-				   partner = self.env['res.partner'].create({'name': 'AgedPartner'})
-				   currency = self.env.user.company_id.currency_id
+			trs := initTestReconciliationStruct(env)
+			agedReport := h.ReportAccountReportAgedpartnerbalance().NewSet(env).WithContext("include_nullified_amount", true)
+			reportDateTo := dates.ParseDate("2015-07-15")
+			partner := h.Partner().Create(env, h.Partner().NewData().SetName("AgedPartner"))
+			currency := h.User().NewSet(env).CurrentUser().Company().Currency()
 
-				   invoice = self.create_invoice_partner(currency_id=currency.id, partner_id=partner.id)
-				   # Don't forward port in >= 11.0
-				   journal = self.env['account.journal'].create({'name': 'Bank', 'type': 'bank', 'code': 'THE'})
+			invoice := trs.createInvoicePartner(env, "out_invoice", 50, currency, partner)
+			journal := h.AccountJournal().Create(env, h.AccountJournal().NewData().
+				SetName("Bank").
+				SetType("bank").
+				SetCode("THE"))
+			statement := trs.makePayment(env, invoice, journal, 50, 0, h.Currency().NewSet(env))
 
-				   statement = self.make_payment(invoice, journal, 50)
+			// The report searches on the create_date to dispatch reconciled lines to report periods
+			// Also, in this case, there can be only 1 partial_reconcile
+			statementPartial := h.AccountPartialReconcile().NewSet(env)
+			for _, l := range statement.MoveLines().Records() {
+				statementPartial = statementPartial.Union(l.MatchedCredits().Union(l.MatchedDebits()))
+			}
+			env.Cr().Execute(`UPDATE account_partial_reconcile SET create_date = ? WHERE id IN (?)`,
+				reportDateTo, statementPartial.Ids())
 
-				   # The report searches on the create_date to dispatch reconciled lines to report periods
-				   # Also, in this case, there can be only 1 partial_reconcile
-				   statement_partial_id = statement.move_line_ids.mapped(lambda l: l.matched_credit_ids + l.matched_debit_ids)
-				   self.env.cr.execute('UPDATE account_partial_reconcile SET create_date = %(date)s WHERE id = %(partial_id)s',
-					   {'date': report_date_to + ' 00:00:00',
-						'partial_id': statement_partial_id.id})
+			// Case 1: The invoice and payment are reconciled: Nothing should appear
+			reportLines, _, amls := agedReport.GetPartnerMoveLines([]string{"receivable"}, reportDateTo, "posted", 30)
+			var partnerLines []accounttypes.AgedBalanceReportValues
+			for _, l := range reportLines {
+				if l.PartnerID == partner.ID() {
+					partnerLines = append(partnerLines, l)
+				}
+			}
+			So(partnerLines, ShouldBeEmpty)
+			So(amls[partner.ID()], ShouldBeEmpty)
 
-				   # Case 1: The invoice and payment are reconciled: Nothing should appear
-				   report_lines, total, amls = AgedReport._get_partner_move_lines(account_type, report_date_to, 'posted', 30)
+			// Case 2: The invoice and payment are not reconciled: we should have one line on the report
+			// and 2 amls
+			invoice.Move().Lines().WithContext("invoice_id", invoice.ID()).RemoveMoveReconcile()
+			reportLines, _, amls = agedReport.GetPartnerMoveLines([]string{"receivable"}, reportDateTo, "posted", 30)
 
-				   partner_lines = [line for line in report_lines if line['partner_id'] == partner.id]
-				   self.assertEqual(partner_lines, [], 'The aged receivable shouldn\'t have lines at this point')
-				   self.assertFalse(amls.get(partner.id, False), 'The aged receivable should not have amls either')
+			partnerLines = []accounttypes.AgedBalanceReportValues{}
+			for _, l := range reportLines {
+				if l.PartnerID == partner.ID() {
+					partnerLines = append(partnerLines, l)
+				}
+			}
+			So(partnerLines, ShouldHaveLength, 1)
+			p0 := partnerLines[0]
+			So(p0.Trust, ShouldBeTrue)
+			So(p0.Values, ShouldEqual, [5]float64{0, 0, 0, 0, 0})
+			So(p0.Direction, ShouldEqual, 0)
+			So(p0.PartnerID, ShouldEqual, partner.ID())
+			So(p0.Name, ShouldEqual, "AgedPartner")
+			So(amls[partner.ID()], ShouldHaveLength, 2)
 
-				   # Case 2: The invoice and payment are not reconciled: we should have one line on the report
-				   # and 2 amls
-				   invoice.move_id.line_ids.with_context(invoice_id=invoice.id).remove_move_reconcile()
-				   report_lines, total, amls = AgedReport._get_partner_move_lines(account_type, report_date_to, 'posted', 30)
-
-				   partner_lines = [line for line in report_lines if line['partner_id'] == partner.id]
-				   self.assertEqual(partner_lines, [{'trust': 'normal', '1': 0.0, '0': 0.0, 'direction': 0.0, 'partner_id': partner.id, '3': 0.0, 'total': 0.0, 'name': 'AgedPartner', '4': 0.0, '2': 0.0}],
-					   'We should have a line in the report for the partner')
-				   self.assertEqual(len(amls[partner.id]), 2, 'We should have 2 account move lines for the partner')
-
-				   positive_line = [line for line in amls[partner.id] if line['line'].balance > 0]
-				   negative_line = [line for line in amls[partner.id] if line['line'].balance < 0]
-
-				   self.assertEqual(positive_line[0]['amount'], 50.0, 'The amount of the amls should be 50')
-				   self.assertEqual(negative_line[0]['amount'], -50.0, 'The amount of the amls should be -50')
-			*/
+			var positiveLine, negativeLine accounttypes.AgedBalanceReportLine
+			for _, l := range amls[partner.ID()] {
+				lineRec := h.AccountMoveLine().BrowseOne(env, l.LineID)
+				if lineRec.Balance() > 0 {
+					positiveLine = l
+				}
+				if lineRec.Balance() < 0 {
+					negativeLine = l
+				}
+			}
+			So(positiveLine.Amount, ShouldEqual, 50)
+			So(negativeLine.Amount, ShouldEqual, -50)
 		}), ShouldBeNil)
 	})
 }
@@ -1008,26 +1028,26 @@ func TestAgedReport(t *testing.T) {
 func TestRevertPaymentAndReconcileExchange(t *testing.T) {
 	Convey("Test Revert Payment And Reconcile Exchange", t, FailureContinues, func() {
 		So(models.SimulateInNewEnvironment(security.SuperUserID, func(env models.Environment) {
-			self := initTestReconciliationStruct(env)
+			trs := initTestReconciliationStruct(env)
 			baseCurrencyRateData := h.CurrencyRate().NewData().
-				SetCurrency(self.CurrencyUsd).
+				SetCurrency(trs.CurrencyUsd).
 				SetCompany(h.Company().NewSet(env).GetRecord("base_main_company"))
 			h.CurrencyRate().Create(env, baseCurrencyRateData.
-				SetName(dates.Now().SetMonth(7).SetDay(1)).
+				SetName(dates.ParseDateTime("2015-07-01 00:00:00")).
 				SetRate(1))
 			h.CurrencyRate().Create(env, baseCurrencyRateData.
-				SetName(dates.Now().SetMonth(8).SetDay(1)).
+				SetName(dates.ParseDateTime("2015-08-01 00:00:00")).
 				SetRate(0.5))
-			inv := self.createInvoice(env, "out_invoice", 111, self.CurrencyUsd)
+			inv := trs.createInvoice(env, "out_invoice", 111, trs.CurrencyUsd)
 			payment := h.AccountPayment().Create(env, h.AccountPayment().NewData().
 				SetPaymentType("inbound").
 				SetPaymentMethod(h.AccountPaymentMethod().NewSet(env).GetRecord("account_account_payment_method_manual_in")).
 				SetPartnerType("customer").
-				SetPartner(self.PartnerAgrolait).
+				SetPartner(trs.PartnerAgrolait).
 				SetAmount(111).
-				SetCurrency(self.CurrencyUsd).
-				SetJournal(self.BankJournalUsd).
-				SetPaymentDate(dates.Today().SetMonth(8).SetDay(1)))
+				SetCurrency(trs.CurrencyUsd).
+				SetJournal(trs.BankJournalUsd).
+				SetPaymentDate(dates.ParseDate("2015-08-01")))
 			payment.Post()
 
 			creditAml := payment.MoveLines().Filtered(func(set m.AccountMoveLineSet) bool {
@@ -1043,18 +1063,19 @@ func TestRevertPaymentAndReconcileExchange(t *testing.T) {
 			exchangeMove := exchangeReconcile.ExchangeMove()
 			paymentMove := payment.MoveLines().Records()[0].Move()
 
-			revertedPaymentMove := paymentMove.ReverseMoves(dates.Today().SetMonth(8).SetDay(1), h.AccountJournal().NewSet(env))
+			revertedPaymentMove := paymentMove.ReverseMoves(dates.ParseDate("2015-08-01"), h.AccountJournal().NewSet(env))
 
 			// After reversal of payment, the invoice should be open
 			So(inv.State(), ShouldEqual, "open")
+			exchangeReconcile.ForceLoad("ID")
 			So(exchangeReconcile.IsEmpty(), ShouldBeTrue)
 
 			revertedPaymentMove = h.AccountMove().Search(env, q.AccountMove().
 				Journal().Equals(exchangeMove.Journal()).And().
 				Ref().Contains(exchangeMove.Name())).Limit(1)
 
-			self.moveRevertTestPair(paymentMove, revertedPaymentMove)
-			self.moveRevertTestPair(exchangeMove, revertedPaymentMove)
+			trs.moveRevertTestPair(paymentMove, revertedPaymentMove)
+			trs.moveRevertTestPair(exchangeMove, revertedPaymentMove)
 
 		}), ShouldBeNil)
 	})

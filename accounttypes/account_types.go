@@ -87,3 +87,27 @@ type InvoiceLineAMLStruct struct {
 	AnalyticLinesIDs  []int64
 	DateMaturity      dates.Date
 }
+
+// AgedBalanceReportValues holds data to render the aged partner balance report
+type AgedBalanceReportValues struct {
+	Direction float64
+	Values    [5]float64
+	Total     float64
+	PartnerID int64
+	Name      string
+	Trust     bool
+}
+
+// AgedBalanceReportLine holds data to render the aged partner balance report
+type AgedBalanceReportLine struct {
+	LineID int64
+	Amount float64
+	Period int
+}
+
+// AgedBalancePeriod holds data of a period in the aged partner balance report
+type AgedBalancePeriod struct {
+	Name  string
+	Start dates.Date
+	Stop  dates.Date
+}
