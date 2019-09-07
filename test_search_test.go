@@ -37,7 +37,7 @@ func TestNameSearch(t *testing.T) {
 					SetUserType(acs).
 					SetReconcile(true))
 
-			allIds := []int64{atax.ID(), apurchase.ID(), atax.ID()}
+			allIds := []int64{atax.ID(), apurchase.ID(), asale.ID()}
 
 			ataxes := h.AccountAccount().NewSet(env).SearchByName("Tax", operator.IContains, q.AccountAccount().ID().In(allIds), 100)
 			So(ataxes.Equals(atax), ShouldBeTrue) //name_search 'ilike Tax' should have returned Tax Received account only

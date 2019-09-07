@@ -306,7 +306,7 @@ func (trs TestReconciliationStruct) moveRevertTestPair(move, revert m.AccountMov
 	movelines := trs.determineDebitCreditLine(move)
 	revertLines := trs.determineDebitCreditLine(revert)
 
-	//in the case of the exchange entry, only one pair of lines will be found
+	// in the case of the exchange entry, only one pair of lines will be found
 
 	if movelines[0].IsNotEmpty() && revertLines[1].IsNotEmpty() {
 		So(movelines[0].FullReconcile().IsNotEmpty(), ShouldBeTrue)
@@ -1067,15 +1067,15 @@ func TestRevertPaymentAndReconcileExchange(t *testing.T) {
 
 			// After reversal of payment, the invoice should be open
 			So(inv.State(), ShouldEqual, "open")
-			exchangeReconcile.ForceLoad("ID")
+			exchangeReconcile.ForceLoad()
 			So(exchangeReconcile.IsEmpty(), ShouldBeTrue)
 
-			revertedPaymentMove = h.AccountMove().Search(env, q.AccountMove().
+			revertedExchangeMove := h.AccountMove().Search(env, q.AccountMove().
 				Journal().Equals(exchangeMove.Journal()).And().
 				Ref().Contains(exchangeMove.Name())).Limit(1)
 
-			trs.moveRevertTestPair(paymentMove, revertedPaymentMove)
-			trs.moveRevertTestPair(exchangeMove, revertedPaymentMove)
+			trs.moveRevertTestPair(paymentMove.ForceLoad(), revertedPaymentMove)
+			trs.moveRevertTestPair(exchangeMove, revertedExchangeMove)
 
 		}), ShouldBeNil)
 	})

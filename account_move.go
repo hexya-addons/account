@@ -335,6 +335,24 @@ will be created in 'Posted' status.'`},
 			return true
 		})
 
+	h.AccountMove().Methods().ReconcileReversedPair().DeclareMethod(
+		`ReconcileReversedPair reconciles the reversed move with its reverse`,
+		func(rs m.AccountMoveSet, move m.AccountMoveSet, reversedMove m.AccountMoveSet) {
+			amlToReconcile := move.Lines().Union(reversedMove.Lines()).Filtered(func(r m.AccountMoveLineSet) bool {
+				return !r.Reconciled()
+			})
+			for _, aml := range amlToReconcile.Records() {
+				if !aml.Account().Reconcile() && aml.Account().InternalType() != "liquidity" {
+					continue
+				}
+				amlsForAccount := amlToReconcile.Filtered(func(r m.AccountMoveLineSet) bool {
+					return r.Account().Equals(aml.Account())
+				})
+				amlsForAccount.Reconcile(h.AccountAccount().NewSet(rs.Env()), h.AccountJournal().NewSet(rs.Env()))
+				amlToReconcile = amlToReconcile.Subtract(amlsForAccount)
+			}
+		})
+
 	h.AccountMove().Methods().ReverseMove().DeclareMethod(
 		`ReverseMove`,
 		func(rs m.AccountMoveSet, date dates.Date, journal m.AccountJournalSet) m.AccountMoveSet {
@@ -349,6 +367,7 @@ will be created in 'Posted' status.'`},
 					SetCredit(acmLine.Debit()).
 					SetAmountCurrency(-acmLine.AmountCurrency()))
 			}
+			rs.ReconcileReversedPair(rs, reversedMove)
 			return reversedMove
 		})
 

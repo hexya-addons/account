@@ -237,6 +237,9 @@ or if you click the "Done" button.`},
 			if name == "" {
 				return rs.Super().SearchByName(name, op, additionalCond, limit)
 			}
+			if op == "" {
+				op = operator.IContains
+			}
 			var cond q.AccountAccountCondition
 			if op.IsNegative() {
 				cond = q.AccountAccount().Name().AddOperator(op, name).AndNot().Code().ILike(fmt.Sprintf("%s%%", name))
