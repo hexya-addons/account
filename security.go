@@ -4,18 +4,25 @@
 package account
 
 import (
-	"github.com/hexya-addons/base"
 	"github.com/hexya-erp/hexya/src/models/security"
 	"github.com/hexya-erp/pool/h"
 )
 
 var (
+	GroupUser           *security.Group
+	GroupPartnerManager *security.Group
 	GroupAccountInvoice *security.Group
 	GroupAccountUser    *security.Group
 	GroupAccountManager *security.Group
 )
 
 func init() {
+	GroupUser = security.Registry.GetGroup("base_group_user")
+	GroupPartnerManager = security.Registry.GetGroup("base_group_partner_manager")
+	GroupAccountInvoice = security.Registry.NewGroup("account_group_account_invoice", "Billing", GroupUser)
+	GroupAccountUser = security.Registry.NewGroup("account_group_account_user", "Accountant", GroupAccountInvoice)
+	GroupAccountManager = security.Registry.NewGroup("account_group_account_manager", "Adviser", GroupAccountUser)
+
 	h.ProductProduct().Methods().Load().AllowGroup(GroupAccountUser)
 	h.ProductProduct().Methods().AllowAllToGroup(GroupAccountManager)
 	h.ProductTemplate().Methods().AllowAllToGroup(GroupAccountManager)
@@ -24,11 +31,11 @@ func init() {
 	h.AccountPaymentTermLine().Methods().Load().AllowGroup(GroupAccountUser)
 	h.AccountAccountType().Methods().AllowAllToGroup(GroupAccountManager)
 	h.AccountAccountType().Methods().Load().AllowGroup(GroupAccountUser)
-	h.AccountTax().Methods().Load().AllowGroup(base.GroupUser)
+	h.AccountTax().Methods().Load().AllowGroup(GroupUser)
 	h.AccountAccount().Methods().AllowAllToGroup(GroupAccountManager)
 	h.AccountAccount().Methods().Load().AllowGroup(GroupAccountUser)
-	h.AccountAccount().Methods().Load().AllowGroup(base.GroupUser)
-	h.AccountAccount().Methods().Load().AllowGroup(base.GroupPartnerManager)
+	h.AccountAccount().Methods().Load().AllowGroup(GroupUser)
+	h.AccountAccount().Methods().Load().AllowGroup(GroupPartnerManager)
 	h.AccountTax().Methods().Load().AllowGroup(GroupAccountInvoice)
 	h.AccountAccountTemplate().Methods().AllowAllToGroup(GroupAccountManager)
 	h.AccountChartTemplate().Methods().AllowAllToGroup(GroupAccountManager)
@@ -38,7 +45,7 @@ func init() {
 	h.AccountBankStatement().Methods().AllowAllToGroup(GroupAccountUser)
 	h.AccountBankStatementLine().Methods().AllowAllToGroup(GroupAccountUser)
 	h.AccountAnalyticLine().Methods().Load().AllowGroup(GroupAccountManager)
-	h.AccountAnalyticAccount().Methods().Load().AllowGroup(base.GroupUser)
+	h.AccountAnalyticAccount().Methods().Load().AllowGroup(GroupUser)
 	h.AccountInvoice().Methods().AllowAllToGroup(GroupAccountInvoice)
 	h.AccountInvoiceLine().Methods().AllowAllToGroup(GroupAccountInvoice)
 	h.AccountInvoiceTax().Methods().AllowAllToGroup(GroupAccountInvoice)
@@ -53,16 +60,16 @@ func init() {
 	h.AccountInvoice().Methods().AllowAllToGroup(GroupAccountInvoice)
 	h.Currency().Methods().AllowAllToGroup(GroupAccountManager)
 	h.CurrencyRate().Methods().AllowAllToGroup(GroupAccountManager)
-	h.AccountInvoice().Methods().Load().AllowGroup(base.GroupUser)
-	h.AccountInvoiceLine().Methods().Load().AllowGroup(base.GroupUser)
-	h.AccountPaymentTerm().Methods().Load().AllowGroup(base.GroupUser)
-	h.AccountPaymentTermLine().Methods().Load().AllowGroup(base.GroupUser)
+	h.AccountInvoice().Methods().Load().AllowGroup(GroupUser)
+	h.AccountInvoiceLine().Methods().Load().AllowGroup(GroupUser)
+	h.AccountPaymentTerm().Methods().Load().AllowGroup(GroupUser)
+	h.AccountPaymentTermLine().Methods().Load().AllowGroup(GroupUser)
 	h.AccountFiscalPosition().Methods().AllowAllToGroup(GroupAccountManager)
 	h.AccountFiscalPositionTax().Methods().AllowAllToGroup(GroupAccountManager)
 	h.AccountFiscalPositionAccount().Methods().AllowAllToGroup(GroupAccountManager)
-	h.AccountFiscalPosition().Methods().Load().AllowGroup(base.GroupUser)
-	h.AccountFiscalPositionTax().Methods().Load().AllowGroup(base.GroupUser)
-	h.AccountFiscalPositionAccount().Methods().Load().AllowGroup(base.GroupUser)
+	h.AccountFiscalPosition().Methods().Load().AllowGroup(GroupUser)
+	h.AccountFiscalPositionTax().Methods().Load().AllowGroup(GroupUser)
+	h.AccountFiscalPositionAccount().Methods().Load().AllowGroup(GroupUser)
 	h.AccountFiscalPositionTemplate().Methods().AllowAllToGroup(GroupAccountManager)
 	h.AccountFiscalPositionTaxTemplate().Methods().AllowAllToGroup(GroupAccountManager)
 	h.AccountFiscalPositionAccountTemplate().Methods().AllowAllToGroup(GroupAccountManager)
@@ -93,7 +100,7 @@ func init() {
 	h.AccountPayment().Methods().AllowAllToGroup(GroupAccountInvoice)
 	h.AccountBankStatementCashbox().Methods().AllowAllToGroup(GroupAccountUser)
 	h.AccountCashboxLine().Methods().AllowAllToGroup(GroupAccountUser)
-	h.AccountTaxGroup().Methods().Load().AllowGroup(base.GroupUser)
+	h.AccountTaxGroup().Methods().Load().AllowGroup(GroupUser)
 	h.AccountTaxGroup().Methods().Load().AllowGroup(GroupAccountInvoice)
 	h.AccountTaxGroup().Methods().AllowAllToGroup(GroupAccountManager)
 }

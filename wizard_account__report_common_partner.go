@@ -5,6 +5,7 @@ package account
 
 import (
 	"github.com/hexya-erp/hexya/src/models"
+	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/pool/h"
 	"github.com/hexya-erp/pool/m"
 )
@@ -15,7 +16,11 @@ func init() {
 	h.AccountCommonPartnerReport().InheritModel(h.AccountCommonReport())
 
 	h.AccountCommonPartnerReport().AddFields(map[string]models.FieldDefinition{
-		"ResultSelection": models.SelectionField{ /*result_selection = fields.Selection([('customer', 'Receivable Accounts'), ('supplier', 'Payable Accounts'), ('customer_supplier', 'Receivable and Payable Accounts')*/ },
+		"ResultSelection": models.SelectionField{
+			Selection: types.Selection{
+				"customer":          "Receivable Accounts",
+				"supplier":          "Payable Accounts",
+				"customer_supplier": "Receivable and Payable Accounts"}},
 	})
 	h.AccountCommonPartnerReport().Methods().PrePrintReport().DeclareMethod(
 		`PrePrintReport`,

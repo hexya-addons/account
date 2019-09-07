@@ -1,0 +1,5 @@
+ID,PropertyPaymentTerm,PropertySupplierPaymentTerm
+base_res_partner_2,account_account_payment_term_net,
+base_res_partner_12,account_account_payment_term,account_account_payment_term
+base_res_partner_4,,account_account_payment_term_net
+base_res_partner_1,,account_account_payment_term

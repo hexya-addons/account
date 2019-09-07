@@ -15,7 +15,9 @@ func init() {
 	h.AccountCommonJournalReport().InheritModel(h.AccountCommonReport())
 
 	h.AccountCommonJournalReport().AddFields(map[string]models.FieldDefinition{
-		"AmountCurrency": models.BooleanField{String: "With Currency" /*['With Currency']*/, Help: "Print Report with the currency column if the currency differs from the company currency."},
+		"AmountCurrency": models.BooleanField{
+			String: "With Currency",
+			Help:   "Print Report with the currency column if the currency differs from the company currency."},
 	})
 	h.AccountCommonJournalReport().Methods().PrePrintReport().DeclareMethod(
 		`PrePrintReport`,

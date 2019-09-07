@@ -1,7 +1,6 @@
 package account
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -188,8 +187,7 @@ Best Regards,`)},
 		func(rs m.CompanySet, digits int) {
 			accounts := h.AccountAccount().Search(rs.Env(),
 				q.AccountAccount().Company().Equals(rs)).OrderBy("code asc")
-			// FIXME
-			fmt.Println(accounts)
+			_ = accounts
 			//for _, account := range accounts.Records() {
 			// FIXME: normalement tu devrais pouvoir le gérer avec un simple Sprintf
 			//account.SetCode(strutils.LeftJustify(strings.TrimLeft(account.Code(), "0"), digits, "0"))

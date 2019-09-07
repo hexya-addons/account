@@ -71,10 +71,11 @@ func FormatLang(env models.Environment, value float64, currency models.RecordSet
 	if symPos == "before" {
 		symToLeft = true
 	}
+
 	//return strutils.FormatMonetary(value, digits, groupingLeft, groupingRight, separator, thSeparator, symbol, symToLeft)
 	// FIXME
 	fmt.Println(value, digits, groupingLeft, groupingRight, separator, thSeparator, symbol, symToLeft)
-	return "FIXME"
+	return ""
 }
 
 func init() {
@@ -186,6 +187,25 @@ or if you click the "Done" button.`},
 		"unique (code,company_id)",
 		"The code of the account must be unique per company !")
 
+	h.AccountAccount().Methods().GetDefaultAccountFromChart().DeclareMethod(
+		`GetDefaultAccountFromChart returns the default account with the given name from the installed chart of account. 
+		If there is no chart of account installed, then a dummy account is returned (and created if necessary)`,
+		func(rs m.AccountAccountSet, name string) m.AccountAccountSet {
+			company := h.Company().BrowseOne(rs.Env(), rs.Env().Context().GetInteger("force_company"))
+			if company.IsEmpty() {
+				company = h.User().NewSet(rs.Env()).CurrentUser().Company()
+				if company.IsEmpty() {
+					return nil
+				}
+			}
+			tmplExternalID := company.ChartTemplate().Get(name).(models.RecordSet).Collection().Wrap().(m.AccountAccountTemplateSet).HexyaExternalID()
+			if tmplExternalID == "" {
+				return nil
+			}
+			return h.AccountAccount().NewSet(rs.Env()).GetRecord(fmt.Sprintf("%d_%s", company.ID(), tmplExternalID))
+
+		})
+
 	h.AccountAccount().Methods().CheckReconcile().DeclareMethod(
 		`CheckReconcile`,
 		func(rs m.AccountAccountSet) {
@@ -199,16 +219,14 @@ or if you click the "Done" button.`},
 	h.AccountAccount().Methods().DefaultGet().Extend(
 		`If we're creating a new account through a many2one, there are chances that we typed the account code
 	instead of its name. In that case, switch both fields values.`,
-		func(rs m.AccountAccountSet) models.FieldMap {
+		func(rs m.AccountAccountSet) m.AccountAccountData {
 			defaultName := rs.Env().Context().GetString("default_name")
-			defaultCode := rs.Env().Context().GetInteger("default_code") //int??
+			defaultCode := rs.Env().Context().GetString("default_code")
 
-			if defaultName != "" && defaultCode == 0 {
-				i := -789098765
-				i, err := strconv.Atoi(defaultName)
-				if err == nil && i != -789098765 {
+			if defaultName != "" && defaultCode == "" {
+				if _, err := strconv.Atoi(defaultName); err == nil {
+					defaultCode = defaultName
 					defaultName = ""
-					defaultCode = int64(i)
 				}
 			}
 			return rs.WithContext(defaultName, defaultCode).Super().DefaultGet()
@@ -216,20 +234,19 @@ or if you click the "Done" button.`},
 
 	h.AccountAccount().Methods().SearchByName().Extend("",
 		func(rs m.AccountAccountSet, name string, op operator.Operator, additionalCond q.AccountAccountCondition, limit int) m.AccountAccountSet {
-			//Tovalid
-			//@api.model
-			/*def name_search(self, name, args=None, operator='ilike', limit=100):
-			  args = args or []
-			  domain = []
-			  if name:
-			      domain = ['|', ('code', '=ilike', name + '%'), ('name', operator, name)]
-			      if operator in expression.NEGATIVE_TERM_OPERATORS:
-			          domain = ['&', '!'] + domain[1:]
-			  accounts = self.search(domain + args, limit=limit)
-			  return accounts.name_get()
-
-			*/
-			return rs.Super().SearchByName(name, op, additionalCond, limit)
+			if name == "" {
+				return rs.Super().SearchByName(name, op, additionalCond, limit)
+			}
+			if op == "" {
+				op = operator.IContains
+			}
+			var cond q.AccountAccountCondition
+			if op.IsNegative() {
+				cond = q.AccountAccount().Name().AddOperator(op, name).AndNot().Code().ILike(fmt.Sprintf("%s%%", name))
+			} else {
+				cond = q.AccountAccount().Name().AddOperator(op, name).Or().Code().ILike(fmt.Sprintf("%s%%", name))
+			}
+			return h.AccountAccount().Search(rs.Env(), cond.AndCond(additionalCond)).Limit(limit)
 		})
 
 	h.AccountAccount().Methods().OnchangeInternalType().DeclareMethod(
@@ -425,26 +442,30 @@ them from invoices.`},
 same sequence for invoices and refunds made from this journal`,
 			Default: models.DefaultValue(false)},
 		"InboundPaymentMethods": models.Many2ManyField{
-			String:        "Debit Methods",
-			RelationModel: h.AccountPaymentMethod(),
-			JSON:          "inbound_payment_method_ids",
-			Filter:        q.AccountPaymentMethod().PaymentType().Equals("inbound"),
+			String:           "Debit Methods",
+			RelationModel:    h.AccountPaymentMethod(),
+			M2MLinkModelName: "AccountJournalInboundPaymentMethodRel",
+			M2MOurField:      "Journal",
+			M2MTheirField:    "InboundPaymentMethod",
+			JSON:             "inbound_payment_method_ids",
+			Filter:           q.AccountPaymentMethod().PaymentType().Equals("inbound"),
 			Default: func(env models.Environment) interface{} {
-				return h.AccountPaymentMethod().Search(env,
-					q.AccountPaymentMethod().HexyaExternalID().Equals("account_account_payment_method_manual_in"))
+				return h.AccountPaymentMethod().NewSet(env).GetRecord("account_account_payment_method_manual_in")
 			},
 			Help: `Means of payment for collecting money.
 Hexya modules offer various payments handling facilities,
 but you can always use the 'Manual' payment method in order
 to manage payments outside of the software.`},
 		"OutboundPaymentMethods": models.Many2ManyField{
-			String:        "Payment Methods",
-			RelationModel: h.AccountPaymentMethod(),
-			JSON:          "outbound_payment_method_ids",
-			Filter:        q.AccountPaymentMethod().PaymentType().Equals("outbound"),
+			String:           "Payment Methods",
+			M2MLinkModelName: "AccountJournalOutboundPaymentMethodRel",
+			M2MOurField:      "Journal",
+			M2MTheirField:    "OutboundPaymentMethod",
+			RelationModel:    h.AccountPaymentMethod(),
+			JSON:             "outbound_payment_method_ids",
+			Filter:           q.AccountPaymentMethod().PaymentType().Equals("outbound"),
 			Default: func(env models.Environment) interface{} {
-				return h.AccountPaymentMethod().Search(env,
-					q.AccountPaymentMethod().HexyaExternalID().Equals("account_account_payment_method_manual_out"))
+				return h.AccountPaymentMethod().NewSet(env).GetRecord("account_account_payment_method_manual_out")
 			},
 			Help: `Means of payment for sending money.
 Hexya modules offer various payments handling facilities
@@ -452,9 +473,11 @@ but you can always use the 'Manual' payment method in order
 to manage payments outside of the software.`},
 		"AtLeastOneInbound": models.BooleanField{
 			Compute: h.AccountJournal().Methods().MethodsCompute(),
+			Depends: []string{"InboundPaymentMethods", "OutboundPaymentMethods"},
 			Stored:  true},
 		"AtLeastOneOutbound": models.BooleanField{
 			Compute: h.AccountJournal().Methods().MethodsCompute(),
+			Depends: []string{"InboundPaymentMethods", "OutboundPaymentMethods"},
 			Stored:  true},
 		"ProfitAccount": models.Many2OneField{
 			RelationModel: h.AccountAccount(),
@@ -508,13 +531,22 @@ to manage payments outside of the software.`},
 		`CheckBankAccount`,
 		func(rs m.AccountJournalSet) {
 			if rs.Type() == "bank" && !rs.BankAccount().IsEmpty() {
-				if rs.BankAccount().Company() != rs.Company() {
-					panic(rs.T(`The bank account of a bank journal must belong to the same company (%s).`, rs.Company().Name()))
+				if !rs.BankAccount().Company().Equals(rs.Company()) {
+					panic(rs.T(`
+The Company of the bank account associated to this journal (%s) must be the same as this journal's company
+journal.Company: '%s' - ID_%d
+journal.BankAccount.Company: '%s' - ID_%d).
+`, rs.Name(), rs.Company().Name(), rs.Company().ID(), rs.BankAccount().Company().Name(), rs.BankAccount().Company().ID()))
 				}
 				// A bank account can belong to a customer/supplier, in which case their partner_id is the customer/supplier.
 				// Or they are part of a bank journal and their partner_id must be the company's partner_id.
-				if rs.BankAccount().Partner() != rs.Company().Partner() {
-					panic(rs.T(`The holder of a journal\'s bank account must be the company (%s).`, rs.Company().Name()))
+				if !rs.BankAccount().Partner().Equals(rs.Company().Partner()) {
+					panic(rs.T(`
+The holder of a journal\'s bank account must be this journal's (%s) company holder.
+account holder: '%s' - ID_%d
+journalCompany holder: '%s' - ID_%d
+`, rs.Name(), rs.BankAccount().Partner(), rs.BankAccount().Partner().ID(), rs.Company().Partner(), rs.Company().Partner().ID()))
+
 				}
 			}
 		})
@@ -567,7 +599,7 @@ to manage payments outside of the software.`},
 	h.AccountJournal().Methods().Write().Extend("",
 		func(rs m.AccountJournalSet, vals m.AccountJournalData) bool {
 			for _, journal := range rs.Records() {
-				if !vals.Company().IsEmpty() && journal.Company().ID() != vals.Company().ID() {
+				if !vals.Company().IsEmpty() && !journal.Company().Equals(vals.Company()) {
 					if !h.AccountMove().Search(rs.Env(), q.AccountMove().Journal().In(rs)).IsEmpty() {
 						panic(rs.T(`This journal already contains items, therefore you cannot modify its company.`))
 					}
@@ -601,14 +633,14 @@ to manage payments outside of the software.`},
 			result := rs.Super().Write(vals)
 			// Create the bank_account_id if necessary
 			if vals.BankAccNumber() != "" {
-				for _, journal := range rs.Filtered(func(rs m.AccountJournalSet) bool { return rs.Type() == "bank" && !rs.BankAccount().IsEmpty() }).Records() {
+				for _, journal := range rs.Filtered(func(r m.AccountJournalSet) bool { return r.Type() == "bank" && !rs.BankAccount().IsEmpty() }).Records() {
 					journal.DefineBankAccount(vals.BankAccNumber(), vals.Bank())
 				}
 			}
 			// Create the relevant refund sequence
-			if _, ok := vals.Get("RefundSequence"); ok {
-				for _, journal := range rs.Filtered(func(rs m.AccountJournalSet) bool {
-					return (rs.Type() == "sale" || rs.Type() == "purchase") && !rs.RefundEntrySequence().IsEmpty()
+			if val := vals.Get("RefundSequence"); val != nil {
+				for _, journal := range rs.Filtered(func(r m.AccountJournalSet) bool {
+					return (r.Type() == "sale" || r.Type() == "purchase") && !r.RefundEntrySequence().IsEmpty()
 				}).Records() {
 					jVals := h.AccountJournal().NewData()
 					jVals.SetName(journal.Name())
@@ -627,7 +659,7 @@ to manage payments outside of the software.`},
 			if refund {
 				prefix = "R" + prefix
 			}
-			return prefix + "/%(range_year)%/"
+			return prefix + "/%(range_year)s/"
 		})
 
 	h.AccountJournal().Methods().CreateSequence().DeclareMethod(
@@ -679,7 +711,7 @@ to manage payments outside of the software.`},
 				panic(rs.T("Cannot generate an unused account code."))
 			}
 			liquidityType := h.AccountAccountType().Search(rs.Env(),
-				q.AccountAccountType().HexyaExternalID().Equals("account.data_account_type_liquidity"))
+				q.AccountAccountType().HexyaExternalID().Equals("account_data_account_type_liquidity"))
 
 			return h.AccountAccount().NewData().
 				SetName(name).
@@ -798,11 +830,10 @@ to manage payments outside of the software.`},
 		`BelongToCompany`,
 		func(rs m.AccountJournalSet) m.AccountJournalData {
 			r := h.AccountJournal().NewData()
-			cond := rs.Company().Equals(h.User().NewSet(rs.Env()).CurrentUser().Company())
-			if rs.BelongsToCompany() != cond {
-				r.SetBelongsToCompany(cond)
+			r.SetBelongsToCompany(false)
+			if rs.Company().Equals(h.User().NewSet(rs.Env()).CurrentUser().Company()) {
+				r.SetBelongsToCompany(true)
 			}
-
 			return r
 		})
 
@@ -994,7 +1025,7 @@ to the same analytic account as the invoice line (if any)`},
 		func(rs m.AccountTaxSet) {
 			for _, child := range rs.ChildrenTaxes().Records() {
 				if !(child.TypeTaxUse() == "none" || child.TypeTaxUse() == rs.TypeTaxUse()) {
-					panic(rs.T(`The application scope of taxes in a group must be either the same as the group or "None".`))
+					panic(rs.T(`The application scope of taxes in a group must be either the same as the group or "none".`))
 				}
 			}
 		})
@@ -1030,9 +1061,9 @@ to the same analytic account as the invoice line (if any)`},
 			case "in_invoice", "in_refund":
 				cond = cond.And().TypeTaxUse().Equals("purchase")
 			}
-			jId := ctx.GetIntegerSlice(`journal_id`)
-			if len(jId) > 0 {
-				journal := h.AccountJournal().Browse(rs.Env(), jId)
+			jId := ctx.GetInteger(`journal_id`)
+			if jId != 0 {
+				journal := h.AccountJournal().BrowseOne(rs.Env(), jId)
 				if journal.Type() == "sale" || journal.Type() == "purchase" {
 					cond = cond.And().TypeTaxUse().Equals(journal.Type())
 				}
@@ -1153,8 +1184,11 @@ to the same analytic account as the invoice line (if any)`},
 			if rs.IsEmpty() {
 				company = h.User().NewSet(rs.Env()).CurrentUser().Company()
 			}
-			if currency.IsEmpty() {
+			if currency == nil || currency.IsEmpty() {
 				currency = company.Currency()
+			}
+			if partner == nil {
+				partner = h.Partner().NewSet(rs.Env())
 			}
 			var taxes []accounttypes.AppliedTaxData
 			// By default, for each tax, tax amount will first be computed
@@ -1262,9 +1296,10 @@ to the same analytic account as the invoice line (if any)`},
 		`Subtract tax amount from price when corresponding "price included" taxes do not apply`,
 		func(rs m.AccountTaxSet, price float64, prodTaxes, lineTaxes m.AccountTaxSet) float64 {
 			// FIXME get currency in param?
-			inclTax := prodTaxes.Filtered(func(r m.AccountTaxSet) bool { return !r.Subtract(lineTaxes).IsEmpty() && r.PriceInclude() })
-			if !inclTax.IsEmpty() {
-				//return inclTax.ComputeAll() //tovalid
+			inclTax := prodTaxes.Filtered(func(r m.AccountTaxSet) bool { return r.Intersect(lineTaxes).IsEmpty() && r.PriceInclude() })
+			if inclTax.IsNotEmpty() {
+				_, totalExcluded, _, _ := inclTax.ComputeAll(price, nil, 1, nil, nil)
+				return totalExcluded
 			}
 			return price
 		})

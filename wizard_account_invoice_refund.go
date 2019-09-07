@@ -4,8 +4,13 @@
 package account
 
 import (
+	"github.com/hexya-addons/web/domains"
+	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/hexya/src/models"
+	"github.com/hexya-erp/hexya/src/models/fieldtype"
 	"github.com/hexya-erp/hexya/src/models/types"
+	"github.com/hexya-erp/hexya/src/models/types/dates"
+	"github.com/hexya-erp/hexya/src/tools/strutils"
 	"github.com/hexya-erp/pool/h"
 	"github.com/hexya-erp/pool/m"
 )
@@ -15,138 +20,147 @@ func init() {
 	h.AccountInvoiceRefund().DeclareTransientModel()
 	h.AccountInvoiceRefund().Methods().GetReason().DeclareMethod(
 		`GetReason`,
-		func(rs m.AccountInvoiceRefundSet) {
-			//@api.model
-			/*def _get_reason(self):
-			    context = dict(self._context or {})
-			    active_id = context.get('active_id', False)
-			    if active_id:
-			        inv = self.env['account.invoice'].browse(active_id)
-			        return inv.name
-			    return ''
-
-			date_invoice = */
+		func(rs m.AccountInvoiceRefundSet) string {
+			context := rs.Env().Context()
+			activeID := context.GetInteger("active_id")
+			if activeID != 0 {
+				return h.AccountInvoice().BrowseOne(rs.Env(), activeID).Name()
+			}
+			return ""
 		})
 	h.AccountInvoiceRefund().AddFields(map[string]models.FieldDefinition{
-		"DateInvoice": models.DateField{String: "DateInvoice" /*[string 'Refund Date']*/ /*[ default fields.Date.context_today]*/ /*[ required True]*/},
-		"Date":        models.DateField{String: "Date" /*[string 'Accounting Date']*/},
-		"Description": models.CharField{String: "Description" /*[string 'Reason']*/, Required: true /*[ default _get_reason]*/},
-		"RefundOnly":  models.BooleanField{String: "RefundOnly" /*[string 'Technical field to hide filter_refund in case invoice is partially paid']*/ /*[ compute '_get_refund_only']*/},
-		"FilterRefund": models.SelectionField{String: "Refund Method", Selection: types.Selection{
-			"refund": "Create a draft refund",
-			"cancel": "Cancel: create refund and reconcile",
-			"modify": "Modify: create refund reconcile and create a new draft invoice",
-		}, /*[]*/ Default: models.DefaultValue("refund"), Required: true, Help: "Refund base on this type. You can not Modify and Cancel if the invoice is already reconciled"},
+		"DateInvoice": models.DateField{
+			String:   "Refund Date",
+			Required: true,
+			Default:  models.DefaultValue(dates.Today())},
+		"Date": models.DateField{
+			String: "Accounting Date"},
+		"Description": models.CharField{
+			String:   "Reason",
+			Required: true,
+			Default: func(env models.Environment) interface{} {
+				return h.AccountInvoiceRefund().NewSet(env).GetReason()
+			}},
+		"RefundOnly": models.BooleanField{
+			String:  "Technical field to hide filter_refund in case invoice is partially paid",
+			Compute: h.AccountInvoiceRefund().Methods().GetRefundOnly()},
+		"FilterRefund": models.SelectionField{
+			String: "Refund Method",
+			Selection: types.Selection{
+				"refund": "Create a draft refund",
+				"cancel": "Cancel: create refund and reconcile",
+				"modify": "Modify: create refund reconcile and create a new draft invoice"},
+			Default:  models.DefaultValue("refund"),
+			Required: true,
+			Help:     "Refund base on this type. You can not Modify and Cancel if the invoice is already reconciled"},
 	})
 	h.AccountInvoiceRefund().Methods().GetRefundOnly().DeclareMethod(
 		`GetRefundOnly`,
-		func(rs m.AccountInvoiceRefundSet) {
-			//@api.one
-			/*def _get_refund_only(self):
-			  invoice_id = self.env['account.invoice'].browse(self._context.get('active_id',False))
-			  if len(invoice_id.payment_move_line_ids) != 0 and invoice_id.state != 'paid':
-			      self.refund_only = True
-			  else:
-			      self.refund_only = False
-
-
-			*/
+		func(rs m.AccountInvoiceRefundSet) m.AccountInvoiceRefundData {
+			data := h.AccountInvoiceRefund().NewData()
+			invoice := h.AccountInvoice().BrowseOne(rs.Env(), rs.Env().Context().GetInteger("active_id"))
+			if invoice.PaymentMoveLines().IsNotEmpty() && invoice.State() != "paid" {
+				data.SetRefundOnly(true)
+			} else {
+				data.SetRefundOnly(false)
+			}
+			return data
 		})
+
 	h.AccountInvoiceRefund().Methods().ComputeRefund().DeclareMethod(
 		`ComputeRefund`,
-		func(rs m.AccountInvoiceRefundSet, args struct {
-			Mode interface{}
-		}) {
-			//@api.multi
-			/*def compute_refund(self, mode='refund'):
-			  inv_obj = self.env['account.invoice']
-			  inv_tax_obj = self.env['account.invoice.tax']
-			  inv_line_obj = self.env['account.invoice.line']
-			  context = dict(self._context or {})
-			  xml_id = False
+		func(rs m.AccountInvoiceRefundSet, mode string) *actions.Action {
+			if mode == "" {
+				mode = "refund"
+			}
+			var xmlID string
+			var createdInv []int64
 
-			  for form in self:
-			      created_inv = []
-			      date = False
-			      description = False
-			      for inv in inv_obj.browse(context.get('active_ids')):
-			          if inv.state in ['draft', 'proforma2', 'cancel']:
-			              raise UserError(_('Cannot refund draft/proforma/cancelled invoice.'))
-			          if inv.reconciled and mode in ('cancel', 'modify'):
-			              raise UserError(_('Cannot refund invoice which is already reconciled, invoice should be unreconciled first. You can only refund this invoice.'))
+			for _, form := range rs.Records() {
+				createdInv = []int64{}
+				for _, inv := range h.AccountInvoice().Browse(rs.Env(), rs.Env().Context().GetIntegerSlice("active_ids")).Records() {
+					if strutils.IsIn(inv.State(), "draft", "proforma2", "cancel") {
+						panic(rs.T(`Cannot refund draft/proforma/cancelled invoice.`))
+					}
+					if inv.Reconciled() && strutils.IsIn(mode, "cancel", "modify") {
+						panic(rs.T(`Cannot refund invoice which is already reconciled, invoice should be unreconciled first. You can only refund this invoice.`))
+					}
 
-			          date = form.date or False
-			          description = form.description or inv.name
-			          refund = inv.refund(form.date_invoice, date, description, inv.journal_id.id)
+					date := form.Date()
+					description := form.Description()
+					if description == "" {
+						description = inv.Name()
+					}
+					refund := inv.Refund(form.DateInvoice(), date, description, inv.Journal())
+					createdInv = append(createdInv, refund.ID())
 
-			          created_inv.append(refund.id)
-			          if mode in ('cancel', 'modify'):
-			              movelines = inv.move_id.line_ids
-			              to_reconcile_ids = {}
-			              to_reconcile_lines = self.env['account.move.line']
-			              for line in movelines:
-			                  if line.account_id.id == inv.account_id.id:
-			                      to_reconcile_lines += line
-			                      to_reconcile_ids.setdefault(line.account_id.id, []).append(line.id)
-			                  if line.reconciled:
-			                      line.remove_move_reconcile()
-			              refund.action_invoice_open()
-			              for tmpline in refund.move_id.line_ids:
-			                  if tmpline.account_id.id == inv.account_id.id:
-			                      to_reconcile_lines += tmpline
-			                      to_reconcile_lines.filtered(lambda l: l.reconciled == False).reconcile()
-			              if mode == 'modify':
-			                  invoice = inv.read(inv_obj._get_refund_modify_read_fields())
-			                  invoice = invoice[0]
-			                  del invoice['id']
-			                  invoice_lines = inv_line_obj.browse(invoice['invoice_line_ids'])
-			                  invoice_lines = inv_obj.with_context(mode='modify')._refund_cleanup_lines(invoice_lines)
-			                  tax_lines = inv_tax_obj.browse(invoice['tax_line_ids'])
-			                  tax_lines = inv_obj._refund_cleanup_lines(tax_lines)
-			                  invoice.update({
-			                      'type': inv.type,
-			                      'date_invoice': form.date_invoice,
-			                      'state': 'draft',
-			                      'number': False,
-			                      'invoice_line_ids': invoice_lines,
-			                      'tax_line_ids': tax_lines,
-			                      'date': date,
-			                      'origin': inv.origin,
-			                      'fiscal_position_id': inv.fiscal_position_id.id,
-			                  })
-			                  for field in inv_obj._get_refund_common_fields():
-			                      if inv_obj._fields[field].type == 'many2one':
-			                          invoice[field] = invoice[field] and invoice[field][0]
-			                      else:
-			                          invoice[field] = invoice[field] or False
-			                  inv_refund = inv_obj.create(invoice)
-			                  if inv_refund.payment_term_id.id:
-			                      inv_refund._onchange_payment_term_date_invoice()
-			                  created_inv.append(inv_refund.id)
-			          xml_id = (inv.type in ['out_refund', 'out_invoice']) and 'action_invoice_tree1' or \
-			                   (inv.type in ['in_refund', 'in_invoice']) and 'action_invoice_tree2'
-			          # Put the reason in the chatter
-			          subject = _("Invoice refund")
-			          body = description
-			          refund.message_post(body=body, subject=subject)
-			  if xml_id:
-			      result = self.env.ref('account.%s' % (xml_id)).read()[0]
-			      invoice_domain = safe_eval(result['domain'])
-			      invoice_domain.append(('id', 'in', created_inv))
-			      result['domain'] = invoice_domain
-			      return result
-			  return True
-
-			*/
+					if strutils.IsIn(mode, "cancel", "modify") {
+						movelines := inv.Move().Lines()
+						toReconcileLines := h.AccountMoveLine().NewSet(rs.Env())
+						for _, line := range movelines.Records() {
+							if line.Account().Equals(inv.Account()) {
+								toReconcileLines = toReconcileLines.Union(line)
+							}
+							if line.Reconciled() {
+								line.RemoveMoveReconcile()
+							}
+						}
+						refund.ActionInvoiceOpen()
+						for _, tmpline := range refund.Move().Lines().Records() {
+							if tmpline.Account().Equals(inv.Account()) {
+								toReconcileLines = toReconcileLines.Union(tmpline)
+								toReconcileLines.Filtered(func(set m.AccountMoveLineSet) bool {
+									return set.Reconciled() == false
+								})
+							}
+						}
+						if mode == "modify" {
+							invoice := inv.First().Copy()
+							invoice.UnsetID().
+								UnsetNumber().
+								SetDateInvoice(form.DateInvoice()).
+								SetState("draft").
+								SetDate(date)
+							for _, field := range h.AccountInvoice().NewSet(rs.Env()).GetRefundCommonFields() {
+								if h.AccountInvoice().NewSet(rs.Env()).FieldGet(field).Type == fieldtype.Many2One {
+									if val := invoice.Get(field.String()); val != nil {
+										invoice.Set(field.String(), val.(models.RecordSet).Collection().Records()[0])
+									}
+								}
+							}
+							invRefund := h.AccountInvoice().Create(rs.Env(), invoice)
+							if invRefund.PaymentTerm().IsNotEmpty() {
+								invRefund.OnchangePaymentTermDateInvoice()
+							}
+							createdInv = append(createdInv, invRefund.ID())
+						}
+					}
+					if strutils.IsIn(inv.Type(), "out_refund", "out_invoice") {
+						xmlID = "action_invoice_tree1"
+					} else if strutils.IsIn(inv.Type(), "in_refund", "in_invoice") {
+						xmlID = "action_invoice_tree2"
+					}
+					// Put the reason in the chatter
+					/* TODO module mail NYI
+						subject = _("Invoice refund")
+					  	body = description
+					  	refund.message_post(body=body, subject=subject)
+					*/
+				}
+			}
+			if xmlID != "" {
+				result := actions.Registry.GetById("account." + xmlID)
+				invoiceDomain := *domains.ParseString(result.Domain)
+				invoiceDomain = append(invoiceDomain, []interface{}{"id", "in", createdInv})
+				result.Domain = invoiceDomain.String()
+				return result
+			}
+			return nil
 		})
 	h.AccountInvoiceRefund().Methods().InvoiceRefund().DeclareMethod(
 		`InvoiceRefund`,
-		func(rs m.AccountInvoiceRefundSet) {
-			//@api.multi
-			/*def invoice_refund(self):
-			  data_refund = self.read(['filter_refund'])[0]['filter_refund']
-			  return self.compute_refund(data_refund)
-			*/
+		func(rs m.AccountInvoiceRefundSet) *actions.Action {
+			return rs.ComputeRefund(rs.FilterRefund())
 		})
 
 }

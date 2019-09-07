@@ -4,6 +4,11 @@
 package account
 
 import (
+	"fmt"
+	"strconv"
+
+	"github.com/hexya-addons/account/accounttypes"
+	"github.com/hexya-erp/hexya/src/models/types/dates"
 	"github.com/hexya-erp/pool/h"
 	"github.com/hexya-erp/pool/m"
 )
@@ -13,197 +18,262 @@ func init() {
 	h.ReportAccountReportAgedpartnerbalance().DeclareTransientModel()
 	h.ReportAccountReportAgedpartnerbalance().Methods().GetPartnerMoveLines().DeclareMethod(
 		`GetPartnerMoveLines`,
-		func(rs m.ReportAccountReportAgedpartnerbalanceSet, args struct {
-			AccountType  interface{}
-			DateFrom     interface{}
-			TargetMove   interface{}
-			PeriodLength interface{}
-		}) {
-			/*def _get_partner_move_lines(self, account_type, date_from, target_move, period_length):
-			  periods = {}
-			  start = datetime.strptime(date_from, "%Y-%m-%d")
-			  for i in range(5)[::-1]:
-			      stop = start - relativedelta(days=period_length)
-			      periods[str(i)] = {
-			          'name': (i!=0 and (str((5-(i+1)) * period_length) + '-' + str((5-i) * period_length)) or ('+'+str(4 * period_length))),
-			          'stop': start.strftime('%Y-%m-%d'),
-			          'start': (i!=0 and stop.strftime('%Y-%m-%d') or False),
-			      }
-			      start = stop - relativedelta(days=1)
+		func(rs m.ReportAccountReportAgedpartnerbalanceSet, accountType []string, dateFrom dates.Date, targetMove string,
+			periodLength int) ([]accounttypes.AgedBalanceReportValues, []float64, map[int64][]accounttypes.AgedBalanceReportLine) {
+			// This method can receive the context key 'include_nullified_amount' {Boolean}
+			// Do an invoice and a payment and unreconcile. The amount will be nullified
+			// By default, the partner wouldn't appear in this report.
+			// The context key allow it to appear
 
-			  res = []
-			  total = []
-			  cr = self.env.cr
-			  user_company = self.env.user.company_id.id
-			  move_state = ['draft', 'posted']
-			  if target_move == 'posted':
-			      move_state = ['posted']
-			  arg_list = (tuple(move_state), tuple(account_type))
-			  #build the reconciliation clause to see what partner needs to be printed
-			  reconciliation_clause = '(l.reconciled IS FALSE)'
-			  cr.execute('SELECT debit_move_id, credit_move_id FROM account_partial_reconcile where create_date > %s', (date_from,))
-			  reconciled_after_date = []
-			  for row in cr.fetchall():
-			      reconciled_after_date += [row[0], row[1]]
-			  if reconciled_after_date:
-			      reconciliation_clause = '(l.reconciled IS FALSE OR l.id IN %s)'
-			      arg_list += (tuple(reconciled_after_date),)
-			  arg_list += (date_from, user_company)
-			  query = '''
-			      SELECT DISTINCT l.partner_id, UPPER(res_partner.name)
-			      FROM account_move_line AS l left join res_partner on l.partner_id = res_partner.id, account_account, account_move am
-			      WHERE (l.account_id = account_account.id)
-			          AND (l.move_id = am.id)
-			          AND (am.state IN %s)
-			          AND (account_account.internal_type IN %s)
-			          AND ''' + reconciliation_clause + '''
-			          AND (l.date <= %s)
-			          AND l.company_id = %s
-			      ORDER BY UPPER(res_partner.name)'''
-			  cr.execute(query, arg_list)
+			periods := make(map[string]accounttypes.AgedBalancePeriod)
+			start := dateFrom
+			for i := 4; i >= 0; i-- {
+				stop := start.AddDate(0, 0, -periodLength)
+				ps := dates.Date{}
+				if i != 0 {
+					ps = stop
+				}
+				name := fmt.Sprintf("+%d", 4*periodLength)
+				if i != 0 {
+					name = fmt.Sprintf("%d-%d", (5-(i+1))*periodLength, (5-i)*periodLength)
+				}
+				periods[strconv.Itoa(i)] = accounttypes.AgedBalancePeriod{
+					Name:  name,
+					Start: ps,
+					Stop:  start,
+				}
+				start = stop.AddDate(0, 0, 1)
+			}
 
-			  partners = cr.dictfetchall()
-			  # put a total of 0
-			  for i in range(7):
-			      total.append(0)
+			var res []accounttypes.AgedBalanceReportValues
 
-			  # Build a string like (1,2,3) for easy use in SQL query
-			  partner_ids = [partner['partner_id'] for partner in partners if partner['partner_id']]
-			  lines = dict((partner['partner_id'] or False, []) for partner in partners)
-			  if not partner_ids:
-			      return [], [], []
+			userCompany := h.User().NewSet(rs.Env()).CurrentUser().Company()
+			userCurrency := userCompany.Currency()
+			companies := userCompany
+			if rs.Env().Context().HasKey("company_ids") {
+				companies = h.Company().Browse(rs.Env(), rs.Env().Context().GetIntegerSlice("company_ids"))
+			}
+			moveState := []string{"draft", "post"}
+			if targetMove == "posted" {
+				moveState = []string{"posted"}
+			}
 
-			  # This dictionary will store the not due amount of all partners
-			  undue_amounts = {}
-			  query = '''SELECT l.id
-			          FROM account_move_line AS l, account_account, account_move am
-			          WHERE (l.account_id = account_account.id) AND (l.move_id = am.id)
-			              AND (am.state IN %s)
-			              AND (account_account.internal_type IN %s)
-			              AND (COALESCE(l.date_maturity,l.date) > %s)\
-			              AND ((l.partner_id IN %s) OR (l.partner_id IS NULL))
-			          AND (l.date <= %s)
-			          AND l.company_id = %s'''
-			  cr.execute(query, (tuple(move_state), tuple(account_type), date_from, tuple(partner_ids), date_from, user_company))
-			  aml_ids = cr.fetchall()
-			  aml_ids = aml_ids and [x[0] for x in aml_ids] or []
-			  for line in self.env['account.move.line'].browse(aml_ids):
-			      partner_id = line.partner_id.id or False
-			      if partner_id not in undue_amounts:
-			          undue_amounts[partner_id] = 0.0
-			      line_amount = line.balance
-			      if line.balance == 0:
-			          continue
-			      for partial_line in line.matched_debit_ids:
-			          if partial_line.create_date[:10] <= date_from:
-			              line_amount += partial_line.amount
-			      for partial_line in line.matched_credit_ids:
-			          if partial_line.create_date[:10] <= date_from:
-			              line_amount -= partial_line.amount
-			      if not self.env.user.company_id.currency_id.is_zero(line_amount):
-			          undue_amounts[partner_id] += line_amount
-			          lines[partner_id].append({
-			              'line': line,
-			              'amount': line_amount,
-			              'period': 6,
-			          })
+			argsList := []interface{}{moveState, accountType}
+			// build the reconciliation clause to see which partner needs to be printed
+			reconciliationClause := `(l.reconciled IS FALSE)`
+			var reconciledAfterDate []struct {
+				DebitMoveID  int64 `db:"debit_move_id"`
+				CreditMoveID int64 `db:"credit_move_id"`
+			}
+			rs.Env().Cr().Select(&reconciledAfterDate,
+				`SELECT debit_move_id, credit_move_id FROM account_partial_reconcile where create_date > ?`,
+				dateFrom)
+			var reconciledIds []int64
+			for _, r := range reconciledAfterDate {
+				reconciledIds = append(reconciledIds, r.CreditMoveID, r.DebitMoveID)
+			}
 
-			  # Use one query per period and store results in history (a list variable)
-			  # Each history will contain: history[1] = {'<partner_id>': <partner_debit-credit>}
-			  history = []
-			  for i in range(5):
-			      args_list = (tuple(move_state), tuple(account_type), tuple(partner_ids),)
-			      dates_query = '(COALESCE(l.date_maturity,l.date)'
+			if len(reconciledAfterDate) > 0 {
+				reconciliationClause = `(l.reconciled IS FALSE or l.id in (?)`
+				argsList = append(argsList, reconciledIds)
+			}
+			argsList = append(argsList, dateFrom, companies.Ids())
 
-			      if periods[str(i)]['start'] and periods[str(i)]['stop']:
-			          dates_query += ' BETWEEN %s AND %s)'
-			          args_list += (periods[str(i)]['start'], periods[str(i)]['stop'])
-			      elif periods[str(i)]['start']:
-			          dates_query += ' >= %s)'
-			          args_list += (periods[str(i)]['start'],)
-			      else:
-			          dates_query += ' <= %s)'
-			          args_list += (periods[str(i)]['stop'],)
-			      args_list += (date_from, user_company)
+			query := fmt.Sprintf(`SELECT DISTINCT l.partner_id, UPPER(partner.name) as name
+					FROM account_move_line AS l
+						LEFT JOIN partner on l.partner_id = partner.id
+						LEFT JOIN account_account acc ON l.account_id = acc.id
+						LEFT JOIN account_move am ON l.move_id = am.id
+						LEFT JOIN account_account_type aat ON acc.user_type_id = aat.id
+					WHERE (am.state IN (?))
+						AND (aat.type IN (?))
+						AND %s
+						AND (am.date <= ?)
+						AND acc.company_id IN (?)
+					ORDER BY UPPER(partner.name)`, reconciliationClause)
+			var partners []struct {
+				PartnerID int64  `db:"partner_id"`
+				Name      string `db:"name"`
+			}
+			rs.Env().Cr().Select(&partners, query, argsList...)
 
-			      query = '''SELECT l.id
-			              FROM account_move_line AS l, account_account, account_move am
-			              WHERE (l.account_id = account_account.id) AND (l.move_id = am.id)
-			                  AND (am.state IN %s)
-			                  AND (account_account.internal_type IN %s)
-			                  AND ((l.partner_id IN %s) OR (l.partner_id IS NULL))
-			                  AND ''' + dates_query + '''
-			              AND (l.date <= %s)
-			              AND l.company_id = %s'''
-			      cr.execute(query, args_list)
-			      partners_amount = {}
-			      aml_ids = cr.fetchall()
-			      aml_ids = aml_ids and [x[0] for x in aml_ids] or []
-			      for line in self.env['account.move.line'].browse(aml_ids):
-			          partner_id = line.partner_id.id or False
-			          if partner_id not in partners_amount:
-			              partners_amount[partner_id] = 0.0
-			          line_amount = line.balance
-			          if line.balance == 0:
-			              continue
-			          for partial_line in line.matched_debit_ids:
-			              if partial_line.create_date[:10] <= date_from:
-			                  line_amount += partial_line.amount
-			          for partial_line in line.matched_credit_ids:
-			              if partial_line.create_date[:10] <= date_from:
-			                  line_amount -= partial_line.amount
+			total := []float64{0, 0, 0, 0, 0, 0, 0}
+			lines := make(map[int64][]accounttypes.AgedBalanceReportLine)
 
-			          if not self.env.user.company_id.currency_id.is_zero(line_amount):
-			              partners_amount[partner_id] += line_amount
-			              lines[partner_id].append({
-			                  'line': line,
-			                  'amount': line_amount,
-			                  'period': i + 1,
-			                  })
-			      history.append(partners_amount)
+			// Build a string like (1,2,3) for easy use in SQL query
+			var partnerIds []int64
+			for _, p := range partners {
+				if p.PartnerID != 0 {
+					partnerIds = append(partnerIds, p.PartnerID)
+				}
+			}
+			if len(partnerIds) == 0 {
+				return []accounttypes.AgedBalanceReportValues{}, []float64{}, map[int64][]accounttypes.AgedBalanceReportLine{}
+			}
 
-			  for partner in partners:
-			      if partner['partner_id'] is None:
-			          partner['partner_id'] = False
-			      at_least_one_amount = False
-			      values = {}
-			      undue_amt = 0.0
-			      if partner['partner_id'] in undue_amounts:  # Making sure this partner actually was found by the query
-			          undue_amt = undue_amounts[partner['partner_id']]
+			// This dictionary will store the not due amount of all partners
+			undueAmounts := make(map[int64]float64)
+			query = `SELECT l.id
+					FROM account_move_line AS l
+						LEFT JOIN account_account acc ON l.account_id = acc.id
+						LEFT JOIN account_move am ON l.move_id = am.id
+						LEFT JOIN account_account_type aat ON acc.user_type_id = aat.id
+					WHERE (am.state IN (?))
+						AND (aat.type IN (?))
+						AND (COALESCE(l.date_maturity,am.date) > ?)
+						AND ((l.partner_id IN (?)) OR (l.partner_id IS NULL))
+					AND (am.date <= ?)
+					AND acc.company_id IN (?)`
+			var amlIds []int64
+			rs.Env().Cr().Select(&amlIds, query, moveState, accountType, dateFrom, partnerIds, dateFrom, companies.Ids())
 
-			      total[6] = total[6] + undue_amt
-			      values['direction'] = undue_amt
-			      if not float_is_zero(values['direction'], precision_rounding=self.env.user.company_id.currency_id.rounding):
-			          at_least_one_amount = True
+			for _, line := range h.AccountMoveLine().Browse(rs.Env(), amlIds).Records() {
+				partnerID := line.Partner().ID()
+				if _, exists := undueAmounts[partnerID]; !exists {
+					undueAmounts[partnerID] = 0
+				}
+				lineAmount := line.Company().Currency().WithContext("date", dateFrom).Compute(line.Balance(), userCurrency, true)
+				if userCurrency.IsZero(lineAmount) {
+					continue
+				}
+				for _, partialLine := range line.MatchedDebits().Records() {
+					if partialLine.CreateDate().ToDate().LowerEqual(dateFrom) {
+						lineAmount += partialLine.Company().Currency().WithContext("date", dateFrom).Compute(partialLine.Amount(), userCurrency, true)
+					}
+				}
+				for _, partialLine := range line.MatchedCredits().Records() {
+					if partialLine.CreateDate().ToDate().LowerEqual(dateFrom) {
+						lineAmount -= partialLine.Company().Currency().WithContext("date", dateFrom).Compute(partialLine.Amount(), userCurrency, true)
+					}
+				}
+				if !h.User().NewSet(rs.Env()).CurrentUser().Company().Currency().IsZero(lineAmount) {
+					undueAmounts[partnerID] += lineAmount
+					lines[partnerID] = append(lines[partnerID], accounttypes.AgedBalanceReportLine{
+						LineID: line.ID(),
+						Amount: lineAmount,
+						Period: 6,
+					})
+				}
+			}
 
-			      for i in range(5):
-			          during = False
-			          if partner['partner_id'] in history[i]:
-			              during = [history[i][partner['partner_id']]]
-			          # Adding counter
-			          total[(i)] = total[(i)] + (during and during[0] or 0)
-			          values[str(i)] = during and during[0] or 0.0
-			          if not float_is_zero(values[str(i)], precision_rounding=self.env.user.company_id.currency_id.rounding):
-			              at_least_one_amount = True
-			      values['total'] = sum([values['direction']] + [values[str(i)] for i in range(5)])
-			      ## Add for total
-			      total[(i + 1)] += values['total']
-			      values['partner_id'] = partner['partner_id']
-			      if partner['partner_id']:
-			          browsed_partner = self.env['res.partner'].browse(partner['partner_id'])
-			          values['name'] = browsed_partner.name and len(browsed_partner.name) >= 45 and browsed_partner.name[0:40] + '...' or browsed_partner.name
-			          values['trust'] = browsed_partner.trust
-			      else:
-			          values['name'] = _('Unknown Partner')
-			          values['trust'] = False
+			// Use one query per period and store results in history (a list variable)
+			// Each history will contain: history[1] = {'<partner_id>': <partner_debit-credit>}
+			history := make([]map[int64]float64, 5)
+			for i := 0; i < 5; i++ {
+				period := periods[strconv.Itoa(i)]
+				argsList = []interface{}{moveState, accountType, partnerIds}
+				datesQuery := `(COALESCE(l.date_maturity, am.date)`
 
-			      if at_least_one_amount:
-			          res.append(values)
+				switch {
+				case !period.Start.IsZero() && !period.Stop.IsZero():
+					datesQuery += ` BETWEEN ? AND ?)`
+					argsList = append(argsList, period.Start, period.Stop)
+				case !period.Start.IsZero():
+					datesQuery += ` >= ?)`
+					argsList = append(argsList)
+				case !period.Stop.IsZero():
+					datesQuery += ` <= ?)`
+					argsList = append(argsList, period.Stop)
+				}
+				argsList = append(argsList, dateFrom, companies.Ids())
+				query := fmt.Sprintf(`SELECT l.id
+						FROM account_move_line AS l
+							LEFT JOIN account_account acc ON l.account_id = acc.id
+							LEFT JOIN account_move am ON l.move_id = am.id
+							LEFT JOIN account_account_type aat ON acc.user_type_id = aat.id
+						WHERE (am.state IN (?))
+							AND (aat.type IN (?))
+							AND ((l.partner_id IN (?)) OR (l.partner_id IS NULL))
+							AND %s
+						AND (am.date <= ?)
+						AND acc.company_id IN (?)`, datesQuery)
+				var amlIds []int64
+				partnersAmount := make(map[int64]float64)
+				rs.Env().Cr().Select(&amlIds, query, argsList...)
+				for _, line := range h.AccountMoveLine().Browse(rs.Env(), amlIds).Records() {
+					partnerID := line.Partner().ID()
+					if _, exists := partnersAmount[partnerID]; !exists {
+						partnersAmount[partnerID] = 0
+					}
+					lineAmount := line.Company().Currency().WithContext("date", dateFrom).Compute(line.Balance(), userCurrency, true)
+					if userCurrency.IsZero(lineAmount) {
+						continue
+					}
+					for _, partialLine := range line.MatchedDebits().Records() {
+						if partialLine.CreateDate().ToDate().LowerEqual(dateFrom) {
+							lineAmount += partialLine.Company().Currency().WithContext("date", dateFrom).Compute(partialLine.Amount(), userCurrency, true)
+						}
+					}
+					for _, partialLine := range line.MatchedCredits().Records() {
+						if partialLine.CreateDate().ToDate().LowerEqual(dateFrom) {
+							lineAmount -= partialLine.Company().Currency().WithContext("date", dateFrom).Compute(partialLine.Amount(), userCurrency, true)
+						}
+					}
+					if !h.User().NewSet(rs.Env()).CurrentUser().Company().Currency().IsZero(lineAmount) {
+						partnersAmount[partnerID] += lineAmount
+						lines[partnerID] = append(lines[partnerID], accounttypes.AgedBalanceReportLine{
+							LineID: line.ID(),
+							Amount: lineAmount,
+							Period: i + 1,
+						})
+					}
+				}
+				history[i] = partnersAmount
+			}
 
-			  return res, total, lines
+			for _, partner := range partners {
+				var (
+					atLeastOneAmount bool
+					values           accounttypes.AgedBalanceReportValues
+					undueAmount      float64
+				)
+				if _, exists := undueAmounts[partner.PartnerID]; exists {
+					// Making sure this partner actually was found by the query
+					undueAmount = undueAmounts[partner.PartnerID]
+				}
+				total[6] += undueAmount
+				values.Direction = undueAmount
+				if !h.User().NewSet(rs.Env()).CurrentUser().Company().Currency().IsZero(values.Direction) {
+					atLeastOneAmount = true
+				}
 
-			*/
+				for i := 0; i < 5; i++ {
+					var during float64
+					if _, exists := history[i][partner.PartnerID]; exists {
+						during = history[i][partner.PartnerID]
+					}
+					// Adding counter
+					total[i] += during
+					values.Values[i] = during
+					if !h.User().NewSet(rs.Env()).CurrentUser().Company().Currency().IsZero(values.Values[i]) {
+						atLeastOneAmount = true
+					}
+				}
+				values.Total = values.Direction
+				for _, val := range values.Values {
+					values.Total += val
+				}
+				// Add for total
+				total[5] += values.Total
+				values.PartnerID = partner.PartnerID
+				values.Name = rs.T("Unknown Partner")
+				if partner.PartnerID != 0 {
+					browsedPartner := h.Partner().BrowseOne(rs.Env(), partner.PartnerID)
+					values.Name = browsedPartner.Name()
+					if len(values.Name) >= 45 {
+						values.Name = values.Name[:40] + "..."
+					}
+					values.Trust = true
+				}
+
+				_, linesHasPartner := lines[partner.PartnerID]
+				if atLeastOneAmount || (rs.Env().Context().GetBool("include_nullified_amount") && linesHasPartner) {
+					res = append(res, values)
+				}
+			}
+			return res, total, lines
 		})
+
 	h.ReportAccountReportAgedpartnerbalance().Methods().RenderHtml().DeclareMethod(
 		`RenderHtml`,
 		func(rs m.ReportAccountReportAgedpartnerbalanceSet, args struct {

@@ -1,0 +1,3 @@
+ID,Value,ValueAmount,Sequence,Days,Option,Payment
+account_account_payment_term_line_1,balance,0,500,15,day_after_invoice_date,account_account_payment_term_15days
+account_account_payment_term_line_1,balance,0,500,30,day_after_invoice_date,account_account_payment_term_net

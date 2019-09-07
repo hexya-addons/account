@@ -4,6 +4,7 @@
 package account
 
 import (
+	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/pool/h"
 	"github.com/hexya-erp/pool/m"
 )
@@ -13,20 +14,22 @@ func init() {
 	h.ValidateAccountMove().DeclareTransientModel()
 	h.ValidateAccountMove().Methods().ValidateMove().DeclareMethod(
 		`ValidateMove`,
-		func(rs m.ValidateAccountMoveSet) {
-			//@api.multi
-			/*def validate_move(self):
-			  context = dict(self._context or {})
-			  moves = self.env['account.move'].browse(context.get('active_ids'))
-			  move_to_post = self.env['account.move']
-			  for move in moves:
-			      if move.state == 'draft':
-			          move_to_post += move
-			  if not move_to_post:
-			      raise UserError(_('There is no journal items in draft state to post.'))
-			  move_to_post.post()
-			  return {'type': 'ir.actions.act_window_close'}
-			*/
+		func(rs m.ValidateAccountMoveSet) *actions.Action {
+			context := rs.Env().Context()
+			moves := h.AccountMove().Browse(rs.Env(), context.GetIntegerSlice("active_ids"))
+			moveToPost := h.AccountMove().NewSet(rs.Env())
+			for _, move := range moves.Records() {
+				if move.State() == "draft" {
+					moveToPost = moves.Union(move)
+				}
+			}
+			if moveToPost.IsEmpty() {
+				panic(rs.T(`There is no journal items in draft state to post.`))
+			}
+			moveToPost.Post()
+			return &actions.Action{
+				Type: actions.ActionCloseWindow,
+			}
 		})
 
 }

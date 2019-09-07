@@ -15,20 +15,29 @@ func init() {
 
 	h.AccountCommonReport().DeclareMixinModel()
 	h.AccountCommonReport().AddFields(map[string]models.FieldDefinition{
-		"Company": models.Many2OneField{RelationModel: h.Company(), JSON: "company_id",
+		"Company": models.Many2OneField{
+			RelationModel: h.Company(),
+			JSON:          "company_id",
 			Default: func(env models.Environment) interface{} {
 				return h.User().NewSet(env).CurrentUser().Company()
 			}},
-		"Journals": models.Many2ManyField{RelationModel: h.AccountJournal(), JSON: "journal_ids",
+		"Journals": models.Many2ManyField{
+			RelationModel: h.AccountJournal(),
+			JSON:          "journal_ids",
 			Default: func(env models.Environment) interface{} {
 				return h.AccountJournal().NewSet(env).SearchAll()
 			}},
-		"DateFrom": models.DateField{String: "Start Date"},
-		"DateTo":   models.DateField{String: "End Date"},
-		"TargetMove": models.SelectionField{String: "Target Moves", Selection: types.Selection{
-			"posted": "All Posted Entries",
-			"all":    "All Entries",
-		}, Required: true, Default: models.DefaultValue("posted")},
+		"DateFrom": models.DateField{
+			String: "Start Date"},
+		"DateTo": models.DateField{
+			String: "End Date"},
+		"TargetMove": models.SelectionField{
+			String: "Target Moves",
+			Selection: types.Selection{
+				"posted": "All Posted Entries",
+				"all":    "All Entries"},
+			Required: true,
+			Default:  models.DefaultValue("posted")},
 	})
 
 	h.AccountCommonReport().Methods().BuildContexts().DeclareMethod(
@@ -36,6 +45,7 @@ func init() {
 		func(rs m.AccountCommonReportSet, args struct {
 			Data interface{}
 		}) {
+
 			/*def _build_contexts(self, data):
 			  result = {}
 			  result['journal_ids'] = 'journal_ids' in data['form'] and data['form']['journal_ids'] or False

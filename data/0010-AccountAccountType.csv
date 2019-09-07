@@ -1,0 +1,18 @@
+ID,Name,Type,IncludeInitialBalance
+account_data_account_type_receivable,Receivable,receivable,true
+account_data_account_type_payable,Payable,payable,true
+account_data_account_type_liquidity,Bank and Cash,liquidity,true
+account_data_account_type_credit_card,Credit Card,liquidity,true
+account_data_account_type_current_assets,Current Assets,other,true
+account_data_account_type_non_current_assets,Non-current Assets,other,true
+account_data_account_type_prepayments,Prepayments,other,true
+account_data_account_type_fixed_assets,Fixed Assets,other,true
+account_data_account_type_current_liabilities,Current Liabilities,other,true
+account_data_account_type_non_current_liabilities,Non-current Liabilities,other,true
+account_data_account_type_equity,Equity,,true
+account_data_unaffected_earnings,Current Year Earnings,,true
+account_data_account_type_other_income,Other Income,other,
+account_data_account_type_revenue,Income,other,
+account_data_account_type_depreciation,Depreciation,other,
+account_data_account_type_expenses,Expenses,other,
+account_data_account_type_direct_costs,Cost of Revenue,other,

@@ -4,11 +4,12 @@
 package account
 
 import (
-	// Import dependencies
 	_ "github.com/hexya-addons/analytic"
-	"github.com/hexya-addons/base"
-	"github.com/hexya-addons/web/controllers"
+	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/security"
+
+	// Import dependencies
+	"github.com/hexya-addons/web/controllers"
 	"github.com/hexya-erp/hexya/src/server"
 	"github.com/hexya-erp/hexya/src/tools/logging"
 )
@@ -19,15 +20,16 @@ var log logging.Logger
 
 func init() {
 	server.RegisterModule(&server.Module{
-		Name:     MODULE_NAME,
-		PostInit: func() {},
+		Name: MODULE_NAME,
+		PostInit: func() {
+			models.ExecuteInNewEnvironment(security.SuperUserID, func(env models.Environment) {
+				env.Cr().Execute(`ALTER TABLE "partner" ALTER COLUMN property_account_payable SET NOT NULL`)
+				env.Cr().Execute(`ALTER TABLE "partner" ALTER COLUMN property_account_receivable SET NOT NULL`)
+			})
+		},
 	})
 
 	log = logging.GetLogger("account")
-
-	GroupAccountInvoice = security.Registry.NewGroup("account_group_account_invoice", "Billing", base.GroupUser)
-	GroupAccountUser = security.Registry.NewGroup("account_group_account_user", "Accountant", GroupAccountInvoice)
-	GroupAccountManager = security.Registry.NewGroup("account_group_account_manager", "Adviser", GroupAccountUser)
 
 	controllers.BackendCSS = append(controllers.BackendCSS,
 		"/static/account/src/css/account_bank_and_cash.css",

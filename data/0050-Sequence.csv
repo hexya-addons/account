@@ -1,0 +1,7 @@
+ID,Name,Code,Prefix,NumberNext,NumberIncrement,Company,UseDateRange,Padding
+account_sequence_reconcile_seq,Account reconcile sequence,account.reconcile,A,"1","1",,,0
+account_sequence_payment_customer_invoice,Payments customer invoices sequence,account.payment.customer.invoice,CUST.IN/%(range_year)s/,"1","1",,true,4
+account_sequence_payment_customer_refund,Payments customer refunds sequence,account.payment.customer.refund,CUST.OUT/%(range_year)s/,"1","1",,true,4
+account_sequence_payment_supplier_invoice,Payments supplier invoices sequence,account.payment.supplier.invoice,SUPP.OUT/%(range_year)s/,"1","1",,true,4
+account_sequence_payment_supplier_refund,Payments supplier refunds sequence,account.payment.supplier.refund,SUPP.IN/%(range_year)s/,"1","1",,true,4
+account_sequence_payment_transfer,Payments transfer sequence,account.payment.transfer,TRANS/%(range_year)s/,"1","1",,true,4

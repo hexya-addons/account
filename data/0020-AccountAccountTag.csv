@@ -1,0 +1,4 @@
+ID,Name,Applicability
+account_account_tag_operating,Operating Activities,accounts
+account_account_tag_financing,Financing Activities,accounts
+account_account_tag_investing,Investing & Extraordinary Activities,accounts

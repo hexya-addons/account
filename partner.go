@@ -1,19 +1,15 @@
 package account
 
 import (
-	"fmt"
-	"strconv"
-
-	"github.com/hexya-addons/web/webdata"
-	"github.com/hexya-erp/hexya/src/tools/strutils"
-
 	"github.com/hexya-addons/base"
+	"github.com/hexya-addons/web/webdata"
 	"github.com/hexya-erp/hexya/src/actions"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/operator"
 	"github.com/hexya-erp/hexya/src/models/security"
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
+	"github.com/hexya-erp/hexya/src/tools/strutils"
 	"github.com/hexya-erp/pool/h"
 	"github.com/hexya-erp/pool/m"
 	"github.com/hexya-erp/pool/q"
@@ -70,13 +66,13 @@ func init() {
 			String:        "Federal States",
 			RelationModel: h.CountryState(),
 			JSON:          "state_ids"},
-		"ZipFrom": models.IntegerField{
+		"ZipFrom": models.CharField{
 			String:     "Zip Range From",
-			Default:    models.DefaultValue(0),
+			Default:    models.DefaultValue("0"),
 			Constraint: h.AccountFiscalPosition().Methods().CheckZip()},
-		"ZipTo": models.IntegerField{
+		"ZipTo": models.CharField{
 			String:     "Zip Range To",
-			Default:    models.DefaultValue(0),
+			Default:    models.DefaultValue("0"),
 			Constraint: h.AccountFiscalPosition().Methods().CheckZip()},
 		"StatesCount": models.IntegerField{
 			Compute: h.AccountFiscalPosition().Methods().ComputeStatesCount(),
@@ -153,8 +149,8 @@ func init() {
 			data := h.AccountFiscalPosition().NewData()
 			if rs.Country().IsNotEmpty() {
 				data.
-					SetZipFrom(0).
-					SetZipTo(0).
+					SetZipFrom("0").
+					SetZipTo("0").
 					SetCountryGroup(h.CountryGroup().NewSet(rs.Env())).
 					SetStates(h.CountryState().NewSet(rs.Env())).
 					SetStatesCount(rs.Country().States().Len())
@@ -168,8 +164,8 @@ func init() {
 			data := h.AccountFiscalPosition().NewData()
 			if rs.Country().IsNotEmpty() {
 				data.
-					SetZipFrom(0).
-					SetZipTo(0).
+					SetZipFrom("0").
+					SetZipTo("0").
 					SetCountry(h.Country().NewSet(rs.Env())).
 					SetStates(h.CountryState().NewSet(rs.Env()))
 			}
@@ -189,20 +185,19 @@ func init() {
 			if id := rs.Env().Context().GetInteger("force_company"); id != 0 {
 				baseCond = baseCond.And().CompanyFilteredOn(q.Company().ID().Equals(id))
 			}
-			nullStateCond := q.AccountFiscalPosition().States().Equals(h.CountryState().NewSet(rs.Env()))
+			nullStateCond := q.AccountFiscalPosition().States().Equals(nil)
 			stateCond := nullStateCond
-			nullZipCond := q.AccountFiscalPosition().ZipFrom().Equals(0).And().ZipTo().Equals(0)
+			nullZipCond := q.AccountFiscalPosition().ZipFrom().Equals("0").And().ZipTo().Equals("0")
 			zipCond := nullZipCond
-			nullCountryCond := q.AccountFiscalPosition().Country().Equals(h.Country().NewSet(rs.Env())).
-				And().CountryGroup().Equals(h.CountryGroup().NewSet(rs.Env()))
+			nullCountryCond := q.AccountFiscalPosition().Country().Equals(nil).
+				And().CountryGroup().Equals(nil)
 
-			var zipInt int64
-			if zipCode != "" {
-				if zip, err := strconv.Atoi(zipCode); err != nil {
-					zipCond = q.AccountFiscalPosition().ZipFrom().LowerOrEqual(int64(zip)).
-						And().ZipTo().GreaterOrEqual(int64(zip))
-					zipInt = int64(zip)
-				}
+			if zipCode == "" {
+				zipCode = "0"
+			}
+			if zipCode != "0" {
+				zipCond = q.AccountFiscalPosition().ZipFrom().LowerOrEqual(zipCode).
+					And().ZipTo().GreaterOrEqual(zipCode)
 			}
 			if state.IsNotEmpty() {
 				stateCond = q.AccountFiscalPosition().States().Equals(state)
@@ -212,25 +207,25 @@ func init() {
 			CondGroup := baseCond.And().CountryGroupFilteredOn(q.CountryGroup().Countries().Equals(country))
 
 			// Build domain to search records with exact matching criteria
-			fpos := rs.Search(CondCountry.AndCond(stateCond).AndCond(zipCond)).Limit(1)
+			fpos := h.AccountFiscalPosition().NewSet(rs.Env()).Search(CondCountry.AndCond(stateCond).AndCond(zipCond)).Limit(1)
 			// return records that fit the most the criteria, and fallback on less specific fiscal positions if any can be found
 			if fpos.IsEmpty() && state.IsNotEmpty() {
-				fpos = rs.Search(CondCountry.AndCond(nullStateCond).AndCond(zipCond)).Limit(1)
+				fpos = h.AccountFiscalPosition().NewSet(rs.Env()).Search(CondCountry.AndCond(nullStateCond).AndCond(zipCond)).Limit(1)
 			}
-			if fpos.IsEmpty() && zipInt != 0 {
-				fpos = rs.Search(CondCountry.AndCond(stateCond).AndCond(nullZipCond)).Limit(1)
+			if fpos.IsEmpty() && zipCode != "0" {
+				fpos = h.AccountFiscalPosition().NewSet(rs.Env()).Search(CondCountry.AndCond(stateCond).AndCond(nullZipCond)).Limit(1)
 			}
-			if fpos.IsEmpty() && state.IsNotEmpty() && zipInt != 0 {
-				fpos = rs.Search(CondCountry.AndCond(nullStateCond).AndCond(nullZipCond)).Limit(1)
+			if fpos.IsEmpty() && state.IsNotEmpty() && zipCode != "0" {
+				fpos = h.AccountFiscalPosition().NewSet(rs.Env()).Search(CondCountry.AndCond(nullStateCond).AndCond(nullZipCond)).Limit(1)
 			}
 
 			// fallback: country group with no state/zip range
 			if fpos.IsEmpty() {
-				fpos = rs.Search(CondGroup.AndCond(nullStateCond).AndCond(nullZipCond)).Limit(1)
+				fpos = h.AccountFiscalPosition().NewSet(rs.Env()).Search(CondGroup.AndCond(nullStateCond).AndCond(nullZipCond)).Limit(1)
 			}
 			if fpos.IsEmpty() {
 				// Fallback on catchall (no country, no group)
-				fpos = rs.Search(baseCond.AndCond(nullCountryCond)).Limit(1)
+				fpos = h.AccountFiscalPosition().NewSet(rs.Env()).Search(baseCond.AndCond(nullCountryCond)).Limit(1)
 			}
 			if fpos.IsEmpty() {
 				return h.AccountFiscalPosition().NewSet(rs.Env())
@@ -241,13 +236,11 @@ func init() {
 	h.AccountFiscalPosition().Methods().GetFiscalPosition().DeclareMethod(
 		`GetFiscalPosition`,
 		func(rs m.AccountFiscalPositionSet, partner, delivery m.PartnerSet) m.AccountFiscalPositionSet {
-			if partner.IsNotEmpty() {
+			if partner.IsEmpty() {
 				return h.AccountFiscalPosition().NewSet(rs.Env())
 			}
-			// This can be easily overridden to apply more complex fiscal rules
-			_ = 0
 
-			//if no delivery use invoicing
+			// if no delivery use invoicing
 			if delivery.IsEmpty() {
 				delivery = partner
 			}
@@ -268,10 +261,10 @@ func init() {
 			if fp.IsEmpty() && vatRequired {
 				fp = rs.GetFposByRegion(delivery.Country(), delivery.State(), delivery.Zip(), false)
 			}
-			if fp.IsNotEmpty() {
-				return fp
+			if fp.IsEmpty() {
+				return h.AccountFiscalPosition().NewSet(rs.Env())
 			}
-			return h.AccountFiscalPosition().NewSet(rs.Env())
+			return fp
 		})
 
 	h.AccountFiscalPositionTax().DeclareModel()
@@ -361,30 +354,42 @@ func init() {
 			Compute: h.Partner().Methods().ComputeIssuedTotal()},
 		"PropertyAccountPayable": models.Many2OneField{
 			String:        "Account Payable",
-			RelationModel: h.AccountAccount(), /*, CompanyDependent : true*/
+			RelationModel: h.AccountAccount(),
 			Filter:        q.AccountAccount().InternalType().Equals("payable").And().Deprecated().Equals(false),
 			Help:          "This account will be used instead of the default one as the payable account for the current partner",
-			//Required:      true,
+			Contexts:      base.CompanyDependent,
+			Default: func(env models.Environment) interface{} {
+				return h.AccountAccount().NewSet(env).GetDefaultAccountFromChart("PropertyAccountPayable")
+			},
 		},
 		"PropertyAccountReceivable": models.Many2OneField{
 			String:        "Account Receivable",
-			RelationModel: h.AccountAccount(), /*, CompanyDependent : true*/
+			RelationModel: h.AccountAccount(),
 			Filter:        q.AccountAccount().InternalType().Equals("receivable").And().Deprecated().Equals(false),
 			Help:          "This account will be used instead of the default one as the receivable account for the current partner",
-			//Required:      true,
+			Contexts:      base.CompanyDependent,
+			Default: func(env models.Environment) interface{} {
+				return h.AccountAccount().NewSet(env).GetDefaultAccountFromChart("PropertyAccountReceivable")
+			},
 		},
 		"PropertyAccountPosition": models.Many2OneField{
 			String:        "Fiscal Position",
-			RelationModel: h.AccountFiscalPosition(), /*, CompanyDependent : true*/
-			Help:          "The fiscal position will determine taxes and accounts used for the partner."},
+			RelationModel: h.AccountFiscalPosition(),
+			Help:          "The fiscal position will determine taxes and accounts used for the partner.",
+			Contexts:      base.CompanyDependent,
+		},
 		"PropertyPaymentTerm": models.Many2OneField{
 			String:        "Customer Payment Terms",
-			RelationModel: h.AccountPaymentTerm(), /*, CompanyDependent : true*/
-			Help:          "This payment term will be used instead of the default one for sale orders and customer invoices"},
+			RelationModel: h.AccountPaymentTerm(),
+			Help:          "This payment term will be used instead of the default one for sale orders and customer invoices",
+			Contexts:      base.CompanyDependent,
+		},
 		"PropertySupplierPaymentTerm": models.Many2OneField{
 			String:        "Vendor Payment Terms",
-			RelationModel: h.AccountPaymentTerm(), /*, CompanyDependent : true*/
-			Help:          "This payment term will be used instead of the default one for purchase orders and vendor bills"},
+			RelationModel: h.AccountPaymentTerm(),
+			Help:          "This payment term will be used instead of the default one for purchase orders and vendor bills",
+			Contexts:      base.CompanyDependent,
+		},
 		"RefCompanies": models.One2ManyField{
 			String:        "Companies that refers to partner",
 			RelationModel: h.Company(),
@@ -419,14 +424,14 @@ credit or if you click the "Done" button.`},
 				"good":   "Good Debtor",
 				"normal": "Normal Debtor",
 				"bad":    "Bad Debtor"},
-			Default: models.DefaultValue("normal") /*[ company_dependent True]*/},
+			Default:  models.DefaultValue("normal"),
+			Contexts: base.CompanyDependent},
 		"InvoiceWarn": models.SelectionField{
-			// TODO update hexya generate to master the Selection case below
 			Selection: base.WarningMessage,
 			String:    "Invoice",
-			/*Help: base.WarningHelp*/
-			Required: true,
-			Default:  models.DefaultValue("no-message")},
+			Help:      base.WarningHelp,
+			Required:  true,
+			Default:   models.DefaultValue("no-message")},
 		"InvoiceWarnMsg": models.TextField{
 			String: "Message for Invoice"},
 	})
@@ -513,64 +518,27 @@ credit or if you click the "Done" button.`},
 	h.Partner().Methods().ComputeTotalInvoiced().DeclareMethod(
 		`InvoiceTotal`,
 		func(rs m.PartnerSet) m.PartnerData {
-			var data m.PartnerData
-			var allPartnersAndChildren map[m.PartnerSet]m.PartnerSet
-			var allPartners m.PartnerSet
-			var currentUser m.UserSet
-			var sqlWhere string
-			var sqlParams []interface{}
-			var dest struct {
-				total     float64
-				partnerID int64
-			}
-
-			data = h.Partner().NewData()
+			data := h.Partner().NewData()
 			if rs.IsEmpty() {
 				return data.SetTotalInvoiced(0.0)
 			}
 
-			currentUser = h.User().NewSet(rs.Env()).CurrentUser()
-			allPartnersAndChildren = make(map[m.PartnerSet]m.PartnerSet)
-			allPartners = h.Partner().NewSet(rs.Env())
+			currentUser := h.User().NewSet(rs.Env()).CurrentUser()
+			allPartners := h.Partner().NewSet(rs.Env()).WithContext("active_test", false).Search(q.Partner().ID().ChildOf(rs.ID()))
 
-			for _, partner := range rs.Records() {
-				// price_total is in the company currency
-				allPartnersAndChildren[partner] = rs.Search(q.Partner().ID().ChildOf(partner.ID()))
-				allPartners = allPartners.Union(allPartnersAndChildren[partner])
-			}
-
-			// searching account.invoice.report via the orm is comparatively expensive
-			// (generates queries "id in []" forcing to build the full table).
-			// In simple cases where all invoices are in the same currency than the user's company
-			// access directly these elements
-
-			// generate where clause to include multicompany rules
 			condition := q.AccountInvoiceReport().Partner().In(allPartners).
 				And().State().NotIn([]string{"draft", "cancel"}).
 				And().Company().Equals(currentUser.Company()).
 				And().Type().In([]string{"out_invoice", "out_refund"})
-			/*
-				tovalid are those needed?
-				where_query = account_invoice_report._where_calc(condition)
-				  account_invoice_report._apply_ir_rules(where_query, 'read')
-			*/
-			// FIXME
-			fmt.Println(condition)
-			//sqlWhere, sqlParams = rs.SqlFromCondition(condition)
 
-			//price_total is in the company currency
-			rs.Env().Cr().Get(&dest, `
-			            SELECT SUM(price_total) as total, partner_id
-			              FROM account_invoice_report account_invoice_report
-			             WHERE `+sqlWhere+`
-			             GROUP BY partner_id
-			          `, sqlParams)
-
-			data.SetTotalInvoiced(dest.total)
-			/* tovalid all this method will clearly not work as intended
-			odoo makes a sum of with all partners found,
-			hexya, with its singleton recordsets given to comupte funcs, dont
-			*/
+			aggs := h.AccountInvoiceReport().Search(rs.Env(), condition).
+				GroupBy(h.AccountInvoiceReport().Fields().Partner()).
+				Aggregates(
+					h.AccountInvoiceReport().Fields().Partner(),
+					h.AccountInvoiceReport().Fields().PriceTotal())
+			if len(aggs) > 0 {
+				data.SetTotalInvoiced(aggs[0].Values().PriceTotal())
+			}
 			return data
 		})
 
@@ -705,7 +673,7 @@ credit or if you click the "Done" button.`},
 	h.Partner().Methods().FindAccountingPartner().DeclareMethod(
 		`FindAccountingPartner finds the partner for which the accounting entries will be created`,
 		func(rs m.PartnerSet, partner m.PartnerSet) m.PartnerSet {
-			return rs.CommercialPartner()
+			return partner.CommercialPartner()
 		})
 
 	h.Partner().Methods().CommercialFields().Extend("",
@@ -725,5 +693,4 @@ credit or if you click the "Done" button.`},
 			//action.Domain = domains.Domain(cond.Serialize()).String()
 			return action
 		})
-
 }
