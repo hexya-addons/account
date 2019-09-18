@@ -229,7 +229,9 @@ or if you click the "Done" button.`},
 					defaultName = ""
 				}
 			}
-			return rs.WithContext(defaultName, defaultCode).Super().DefaultGet()
+			return rs.WithContext("default_name", defaultName).
+				WithContext("default_code", defaultCode).
+				Super().DefaultGet()
 		})
 
 	h.AccountAccount().Methods().SearchByName().Extend("",
@@ -340,8 +342,7 @@ or if you click the "Done" button.`},
 		`ActionOpenReconcile`,
 		func(rs m.AccountAccountSet) *actions.Action {
 			rs.EnsureOne()
-			var ctx *types.Context
-			ctx = ctx.WithKey("show_mode_selector", false)
+			ctx := types.NewContext().WithKey("show_mode_selector", false)
 			// Open reconciliation view for this account
 			if rs.InternalType() == `payable` {
 				ctx = ctx.WithKey("mode", "suppliers")
