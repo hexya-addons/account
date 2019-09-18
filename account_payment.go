@@ -640,8 +640,7 @@ set to draft and re-processed again." `},
 			// Write line corresponding to invoice payment
 			counterpartAmlDict := rs.GetSharedMoveLineVals(debit, credit, amountCurrency, move, h.AccountInvoice().NewSet(env))
 			counterpartAmlDict.SetCurrency(currency)
-			undrlyng := counterpartAmlDict.Underlying()
-			undrlyng.MergeWith(rs.GetCounterpartMoveLineVals(rs.Invoices()).Underlying().FieldMap, h.AccountMoveLine().Model)
+			counterpartAmlDict.MergeWith(rs.GetCounterpartMoveLineVals(rs.Invoices()))
 			counterpartAml := amlObj.Create(counterpartAmlDict)
 
 			// Reconcile with the invoices
@@ -693,7 +692,7 @@ set to draft and re-processed again." `},
 				amountCurrency = 0
 			}
 			liquidityAmlDict := rs.GetSharedMoveLineVals(credit, debit, -amountCurrency, move, h.AccountInvoice().NewSet(env))
-			liquidityAmlDict.Underlying().MergeWith(rs.GetLiquidityMoveLineVals(-amount).Underlying().FieldMap, h.AccountMoveLine().Model)
+			liquidityAmlDict.MergeWith(rs.GetLiquidityMoveLineVals(-amount))
 			amlObj.Create(liquidityAmlDict)
 			move.Post()
 			return move
