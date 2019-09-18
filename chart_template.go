@@ -1055,7 +1055,7 @@ set of tax defined for the chosen template is complete`},
 			condition := q.AccountAccount().Deprecated().Equals(false).
 				And().Name().NotEquals("Chart For Automated Tests").
 				AndNotCond(q.AccountAccount().Name().Like("%(test)"))
-			var configuredCmp m.CompanySet
+			configuredCmp := h.Company().NewSet(rs.Env())
 			for _, cmp := range h.AccountAccount().Search(rs.Env(), condition).Records() {
 				configuredCmp = configuredCmp.Union(cmp.Company())
 			}
