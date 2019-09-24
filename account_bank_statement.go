@@ -238,17 +238,14 @@ func init() {
 	h.AccountBankStatement().Methods().EndBalance().DeclareMethod(
 		`EndBalance`,
 		func(rs m.AccountBankStatementSet) m.AccountBankStatementData {
-			res := h.AccountBankStatement().NewData()
-			value := 0.0
+			var value float64
 			for _, line := range rs.Lines().Records() {
 				value += line.Amount()
 			}
-			if rs.TotalEntryEncoding() != value {
-				res.SetTotalEntryEncoding(value)
-				res.SetBalanceEnd(rs.BalanceStart() + res.TotalEntryEncoding())
-				res.SetDifference(rs.BalanceEndReal() - res.BalanceEnd())
-			}
-			return res
+			return h.AccountBankStatement().NewData().
+				SetTotalEntryEncoding(value).
+				SetBalanceEnd(rs.BalanceStart() + rs.TotalEntryEncoding()).
+				SetDifference(rs.BalanceEndReal() - rs.BalanceStart() - rs.TotalEntryEncoding())
 		})
 
 	h.AccountBankStatement().Methods().ComputeIsDifferenceZero().DeclareMethod(
@@ -262,15 +259,7 @@ func init() {
 	h.AccountBankStatement().Methods().ComputeCurrency().DeclareMethod(
 		`ComputeCurrency`,
 		func(rs m.AccountBankStatementSet) m.AccountBankStatementData {
-			res := h.AccountBankStatement().NewData()
-			value := rs.Journal().Currency()
-			if value.IsEmpty() {
-				value = rs.Company().Currency()
-			}
-			if !rs.Currency().Equals(value) {
-				res.SetCurrency(value)
-			}
-			return res
+			return h.AccountBankStatement().NewData().SetCurrency(h.Currency().Coalesce(rs.Journal().Currency(), rs.Company().Currency()))
 		})
 
 	h.AccountBankStatement().Methods().CheckLinesReconciled().DeclareMethod(
@@ -283,11 +272,7 @@ func init() {
 					break
 				}
 			}
-			res := h.AccountBankStatement().NewData()
-			if rs.AllLinesReconciled() != value {
-				res.SetAllLinesReconciled(value)
-			}
-			return res
+			return h.AccountBankStatement().NewData().SetAllLinesReconciled(value)
 		})
 
 	h.AccountBankStatement().Methods().DefaultJournal().DeclareMethod(
@@ -336,32 +321,29 @@ func init() {
 		`BalanceCheck`,
 		func(rs m.AccountBankStatementSet) bool {
 			for _, stmt := range rs.Records() {
-				if !stmt.Currency().IsZero(stmt.Difference()) {
-					if stmt.JournalType() == "cash" {
-						var account m.AccountAccountSet
-						var name string
-						if stmt.Difference() < 0.0 {
-							account = stmt.Journal().LossAccount()
-							name = rs.T("Loss")
-						} else {
-							account = stmt.Journal().ProfitAccount()
-							name = rs.T("Profit")
-						}
-						if account.IsEmpty() {
-							panic(rs.T(`There is no account defined on the journal %s for %s involved in a cash difference.`, stmt.Journal().Name(), name))
-						}
-						values := h.AccountBankStatementLine().NewData()
-						values.SetStatement(stmt)
-						values.SetAccount(account)
-						values.SetAmount(stmt.Difference())
-						values.SetName(rs.T(`Cash difference observed during the counting (%s)`, name))
-						h.AccountBankStatementLine().NewSet(rs.Env()).Create(values)
-					} else {
-						stmt.Currency()
-						blcEndReal := FormatLang(rs.Env(), stmt.BalanceEndReal(), stmt.Currency())
-						blcEnd := FormatLang(rs.Env(), stmt.BalanceEnd(), stmt.Currency())
-						panic(rs.T(`The ending balance is incorrect !\nThe expected balance (%s) is different from the computed one. (%s)`, blcEndReal, blcEnd))
+				if stmt.Currency().IsZero(stmt.Difference()) {
+					continue
+				}
+				if stmt.JournalType() == "cash" {
+					account := stmt.Journal().ProfitAccount()
+					name := rs.T("Profit")
+					if stmt.Difference() < 0.0 {
+						account = stmt.Journal().LossAccount()
+						name = rs.T("Loss")
 					}
+					if account.IsEmpty() {
+						panic(rs.T(`There is no account defined on the journal %s for %s involved in a cash difference.`, stmt.Journal().Name(), name))
+					}
+					values := h.AccountBankStatementLine().NewData().
+						SetStatement(stmt).
+						SetAccount(account).
+						SetAmount(stmt.Difference()).
+						SetName(rs.T(`Cash difference observed during the counting (%s)`, name))
+					h.AccountBankStatementLine().NewSet(rs.Env()).Create(values)
+				} else {
+					blcEndReal := FormatLang(rs.Env(), stmt.BalanceEndReal(), stmt.Currency())
+					blcEnd := FormatLang(rs.Env(), stmt.BalanceEnd(), stmt.Currency())
+					panic(rs.T(`The ending balance is incorrect !\nThe expected balance (%s) is different from the computed one. (%s)`, blcEndReal, blcEnd))
 				}
 			}
 			return true

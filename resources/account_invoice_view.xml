@@ -97,14 +97,14 @@
         <view id="account_invoice_tree" model="AccountInvoice">
             <tree decoration-info="state == &apos;draft&apos;" decoration-muted="state == &apos;cancel&apos;"
                   string="Invoice">
-                <field name="partner_id" groups="base.group_user" string="Customer"/>
+                <field name="partner_id" groups="base_group_user" string="Customer"/>
                 <field name="date_invoice"/>
                 <field name="number"/>
                 <field name="commercial_partner_id" invisible="1"/>
                 <field name="reference" invisible="1"/>
                 <field name="name" invisible="1"/>
                 <field name="journal_id" invisible="1"/>
-                <field name="company_id" groups="base.group_multi_company" options="{&apos;no_create&apos;: True}"/>
+                <field name="company_id" groups="base_group_multi_company" options="{&apos;no_create&apos;: True}"/>
                 <field name="user_id"/>
                 <field name="date_due"/>
                 <field name="origin"/>

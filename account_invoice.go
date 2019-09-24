@@ -921,7 +921,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 	h.AccountInvoice().Methods().ActionInvoiceCancel().DeclareMethod(
 		`ActionInvoiceCancel`,
 		func(rs m.AccountInvoiceSet) bool {
-			if rs.Filtered(func(r m.AccountInvoiceSet) bool { return strutils.IsIn(r.State(), "proforma2", "draft", "open") }).IsNotEmpty() {
+			if rs.Filtered(func(r m.AccountInvoiceSet) bool { return !strutils.IsIn(r.State(), "proforma2", "draft", "open") }).IsNotEmpty() {
 				panic(rs.T(`Invoice must be in draft, Pro-forma or open state in order to be cancelled.`))
 			}
 			return rs.ActionCancel()

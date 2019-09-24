@@ -418,7 +418,8 @@ credit or if you click the "Done" button.`},
 			ReadOnly:      true},
 		"BankAccountCount": models.IntegerField{
 			String:  "Bank",
-			Compute: h.Partner().Methods().ComputeBankCount()},
+			Compute: h.Partner().Methods().ComputeBankCount(),
+			GoType:  new(int)},
 		"Trust": models.SelectionField{
 			String: "Degree of trust you have in this debtor", Selection: types.Selection{
 				"good":   "Good Debtor",
@@ -440,35 +441,39 @@ credit or if you click the "Done" button.`},
 		`CreditDebitGet`,
 		func(rs m.PartnerSet) m.PartnerData {
 			type tDest struct {
-				typ string
-				val float64
+				Typ string  `db:"typ"`
+				Val float64 `db:"val"`
 			}
 			var whereClause string
 			var whereParams []interface{}
-			var out tDest
+			var out []tDest
 
-			whereClause, whereParams = h.AccountMoveLine().NewSet(rs.Env()).QueryGet(q.AccountMoveLineCondition{})
+			whereClause, whereParams = h.AccountMoveLine().NewSet(rs.Env()).QueryGet(q.AccountMoveLine().NewCondition())
 			whereParams = append([]interface{}{rs.Ids()}, whereParams...)
 			if whereClause != "" {
 				whereClause = "AND " + whereClause
 			}
-			rs.Env().Cr().Get(&out, `SELECT act.type, SUM(account_move_line.amount_residual)
+			rs.Env().Cr().Select(&out, `SELECT act.type as typ, SUM(account_move_line.amount_residual) as val
 			                FROM account_move_line
 			                LEFT JOIN account_account a ON (account_move_line.account_id=a.id)
 			                LEFT JOIN account_account_type act ON (a.user_type_id=act.id)
 			                WHERE act.type IN ('receivable','payable')
-			                AND account_move_line.partner_id IN %s
+			                AND account_move_line.partner_id IN (?)
 			                AND account_move_line.reconciled IS FALSE
 			                `+whereClause+`
 			                GROUP BY account_move_line.partner_id, act.type
 							LIMIT 1
-			                `, whereParams)
+			                `, whereParams...)
 
-			partner := h.Partner().NewData()
-			if out.typ == "receivable" {
-				partner.SetCredit(out.val)
-			} else if out.typ == "payable" {
-				partner.SetDebit(-out.val)
+			partner := h.Partner().NewData().SetDebit(0).SetCredit(0)
+			if len(out) == 0 {
+				return partner
+			}
+			switch out[0].Typ {
+			case "receivable":
+				partner.SetCredit(out[0].Val)
+			case "payable":
+				partner.SetDebit(-out[0].Val)
 			}
 			return partner
 		})
@@ -612,9 +617,9 @@ credit or if you click the "Done" button.`},
 			              FROM
 			                  account_move_line l
 			                  RIGHT JOIN account_account a ON (a.id = l.account_id)
-			                  RIGHT JOIN res_partner p ON (l.partner_id = p.id)
+			                  RIGHT JOIN partner p ON (l.partner_id = p.id)
 			              WHERE
-			                  p.id = %s
+			                  p.id = ?
 			                  AND EXISTS (
 			                      SELECT 1
 			                      FROM account_move_line l
@@ -656,18 +661,8 @@ credit or if you click the "Done" button.`},
 	h.Partner().Methods().ComputeBankCount().DeclareMethod(
 		`ComputeBankCount`,
 		func(rs m.PartnerSet) m.PartnerData {
-			bankData := h.BankAccount().NewSet(rs.Env()).ReadGroup(webdata.ReadGroupParams{
-				Domain:  q.BankAccount().Partner().In(rs).Serialize(),
-				Fields:  []string{"Partner"},
-				GroupBy: []string{"Partner"},
-			})
-			var value int64 = 0
-			var val interface{}
-			val, ok := bankData[0].Get("PartnerCount", h.BankAccount().Model)
-			if ok {
-				value = val.(int64)
-			}
-			return h.Partner().NewData().SetBankAccountCount(value)
+			return h.Partner().NewData().SetBankAccountCount(
+				h.BankAccount().Search(rs.Env(), q.BankAccount().Partner().Equals(rs)).SearchCount())
 		})
 
 	h.Partner().Methods().FindAccountingPartner().DeclareMethod(
