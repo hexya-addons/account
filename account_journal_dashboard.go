@@ -85,8 +85,7 @@ func init() {
 				Date       dates.Date
 				BalanceEnd float64
 			}
-			{
-				query := `
+			query := `
 				SELECT a.date, a.balance_end
 					FROM account_bank_statement AS a,
 						(SELECT c.date, max(c.id) AS stmt_id
@@ -97,8 +96,8 @@ func init() {
 			                GROUP BY date, id
 			                ORDER BY date, id) AS b
 			        WHERE a.id = b.stmt_id;`
-				rs.Env().Cr().Select(&bankStmt, query, rs.ID(), lastMonth, today)
-			}
+			rs.Env().Cr().Select(&bankStmt, query, rs.ID(), lastMonth, today)
+
 			query := q.AccountBankStatement().Journal().In(rs).And().Date().LowerOrEqual(lastMonth)
 			lastBankStmt := h.AccountBankStatement().Search(rs.Env(), query).OrderBy("date desc", "id desc").Limit(1)
 			startBalance := lastBankStmt.BalanceEnd()

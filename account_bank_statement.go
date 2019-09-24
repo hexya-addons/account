@@ -520,14 +520,14 @@ func init() {
 					args = append(args, stlToAssignPartner.Ids())
 				}
 				var results []struct {
-					partner_id int64
-					id         int64
+					PartnerID int64 `db:"partner_id"`
+					ID        int64 `db:"id"`
 				}
 				rs.Env().Cr().Select(&results, sqlQuery, args...)
 				stL := h.AccountBankStatementLine()
 				for _, res := range results {
 					data := stL.NewData()
-					data.SetPartner(h.Partner().Browse(rs.Env(), []int64{res.partner_id}))
+					data.SetPartner(h.Partner().Browse(rs.Env(), []int64{res.partnerID}))
 					stL.Browse(rs.Env(), []int64{res.id}).Write(data)
 				}
 			}

@@ -1190,7 +1190,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 				if value == 0.0 {
 					value = actualCredit
 				}
-				amountStr := FormatLang(rs.Env(), math.Abs(actualCredit), targetCurrency)
+				amountStr := FormatLang(rs.Env(), math.Abs(value), targetCurrency)
 				totalAmountStr := FormatLang(rs.Env(), totalAmount, targetCurrency)
 				retLine["debit"] = math.Abs(actualDebit)
 				retLine["credit"] = math.Abs(actualCredit)

@@ -538,7 +538,7 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 					`date`:         payment.Date(),
 					`payment_id`:   payment.ID(),
 					`move_id`:      payment.Move().ID(),
-					`ref`:          payment.Ref(),
+					`ref`:          paymentRef,
 				})
 			}
 			str, err := json.Marshal(info)
@@ -932,9 +932,8 @@ A Company bank account if this is a Customer Invoice or Vendor Refund, otherwise
 		func(rs m.AccountInvoiceSet) string {
 			if strutils.IsIn(rs.Type(), "in_invoice", "in_refund") {
 				return views.MakeViewRef("account.invoice_supplier_form").ID()
-			} else {
-				return views.MakeViewRef(`account.invoice_form`).ID()
 			}
+			return views.MakeViewRef(`account.invoice_form`).ID()
 		})
 
 	h.AccountInvoice().Methods().PrepareTaxLineVals().DeclareMethod(
