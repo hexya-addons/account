@@ -9,6 +9,7 @@ import (
 
 	"github.com/hexya-addons/account/accounttypes"
 	"github.com/hexya-erp/hexya/src/actions"
+	"github.com/hexya-erp/hexya/src/i18n"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
@@ -341,8 +342,9 @@ func init() {
 						SetName(rs.T(`Cash difference observed during the counting (%s)`, name))
 					h.AccountBankStatementLine().NewSet(rs.Env()).Create(values)
 				} else {
-					blcEndReal := FormatLang(rs.Env(), stmt.BalanceEndReal(), stmt.Currency())
-					blcEnd := FormatLang(rs.Env(), stmt.BalanceEnd(), stmt.Currency())
+					locale := i18n.GetLocale(rs.Env().Context().GetString("lang"))
+					blcEndReal := locale.FormatMonetary(stmt.BalanceEndReal(), stmt.Currency())
+					blcEnd := locale.FormatMonetary(stmt.BalanceEnd(), stmt.Currency())
 					panic(rs.T(`The ending balance is incorrect !\nThe expected balance (%s) is different from the computed one. (%s)`, blcEndReal, blcEnd))
 				}
 			}
@@ -520,15 +522,15 @@ func init() {
 					args = append(args, stlToAssignPartner.Ids())
 				}
 				var results []struct {
-					partner_id int64
-					id         int64
+					PartnerID int64 `db:"partner_id"`
+					ID        int64 `db:"id"`
 				}
 				rs.Env().Cr().Select(&results, sqlQuery, args...)
 				stL := h.AccountBankStatementLine()
 				for _, res := range results {
 					data := stL.NewData()
-					data.SetPartner(h.Partner().Browse(rs.Env(), []int64{res.partner_id}))
-					stL.Browse(rs.Env(), []int64{res.id}).Write(data)
+					data.SetPartner(h.Partner().Browse(rs.Env(), []int64{res.PartnerID}))
+					stL.Browse(rs.Env(), []int64{res.ID}).Write(data)
 				}
 			}
 			return stLinesLeft, []string{}, rs.Name(), 0
@@ -775,15 +777,16 @@ set to draft and re-processed again.`},
 	h.AccountBankStatementLine().Methods().GetStatementLineForReconciliationWidget().DeclareMethod(
 		`Returns the data required by the bank statement reconciliation widget to display a statement line`,
 		func(rs m.AccountBankStatementLineSet) map[string]interface{} {
+			locale := i18n.GetLocale(rs.Env().Context().GetString("lang"))
 			stmtCurrency := h.Currency().Coalesce(rs.Journal().Currency(), rs.Journal().Company().Currency())
 			amtCurrencyStr := ""
 			amount := rs.Amount()
 			if rs.AmountCurrency() != 0.0 && rs.Currency().IsNotEmpty() {
 				amount = rs.AmountCurrency()
 				amountCurrency := math.Abs(rs.Amount())
-				amtCurrencyStr = FormatLang(rs.Env(), amountCurrency, stmtCurrency)
+				amtCurrencyStr = locale.FormatMonetary(amountCurrency, stmtCurrency)
 			}
-			amountStr := FormatLang(rs.Env(), math.Abs(amount), h.Currency().Coalesce(rs.Currency(), stmtCurrency))
+			amountStr := locale.FormatMonetary(math.Abs(amount), h.Currency().Coalesce(rs.Currency(), stmtCurrency))
 			data := map[string]interface{}{
 				"id":                         rs.ID(),
 				"ref":                        rs.Ref(),

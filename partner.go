@@ -653,9 +653,8 @@ credit or if you click the "Done" button.`},
 		func(rs m.PartnerSet) m.PartnerData {
 			if rs.Company().IsNotEmpty() {
 				return h.Partner().NewData().SetCurrency(rs.Sudo().Company().Currency())
-			} else {
-				return h.Partner().NewData().SetCurrency(h.User().NewSet(rs.Env()).CurrentUser().Company().Currency())
 			}
+			return h.Partner().NewData().SetCurrency(h.User().NewSet(rs.Env()).CurrentUser().Company().Currency())
 		})
 
 	h.Partner().Methods().ComputeBankCount().DeclareMethod(

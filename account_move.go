@@ -13,6 +13,7 @@ import (
 	"github.com/hexya-addons/decimalPrecision"
 	"github.com/hexya-addons/web/webdata"
 	"github.com/hexya-erp/hexya/src/actions"
+	"github.com/hexya-erp/hexya/src/i18n"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
@@ -1082,6 +1083,7 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 			      :param target_currency: currency (browse_record or ID) you want the move line debit/credit converted into
 			      :param target_date: date to use for the monetary conversion`,
 		func(rs m.AccountMoveLineSet, targetCurrency m.CurrencySet, targetDate dates.Date) []map[string]interface{} {
+			locale := i18n.GetLocale(rs.Env().Context().GetString("lang"))
 			var out []map[string]interface{}
 
 			for _, line := range rs.Records() {
@@ -1173,8 +1175,8 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 					if actualDebit != 0.0 {
 						value = actualDebit
 					}
-					amountCurrencyStr = FormatLang(rs.Env(), math.Abs(value), lineCurrency)
-					totalAmountCurrencyStr = FormatLang(rs.Env(), totalAmount, lineCurrency)
+					amountCurrencyStr = locale.FormatMonetary(math.Abs(value), lineCurrency)
+					totalAmountCurrencyStr = locale.FormatMonetary(totalAmount, lineCurrency)
 				}
 				if !currency.Equals(targetCurrency) {
 					value := targetDate
@@ -1190,8 +1192,8 @@ but with the module account_tax_cash_basis, some will become exigible only when 
 				if value == 0.0 {
 					value = actualCredit
 				}
-				amountStr := FormatLang(rs.Env(), math.Abs(actualCredit), targetCurrency)
-				totalAmountStr := FormatLang(rs.Env(), totalAmount, targetCurrency)
+				amountStr := locale.FormatMonetary(math.Abs(value), targetCurrency)
+				totalAmountStr := locale.FormatMonetary(totalAmount, targetCurrency)
 				retLine["debit"] = math.Abs(actualDebit)
 				retLine["credit"] = math.Abs(actualCredit)
 				retLine["amount_str"] = amountStr

@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/hexya-erp/hexya/src/actions"
+	"github.com/hexya-erp/hexya/src/i18n"
 	"github.com/hexya-erp/hexya/src/models"
 	"github.com/hexya-erp/hexya/src/models/types"
 	"github.com/hexya-erp/hexya/src/models/types/dates"
@@ -85,8 +86,7 @@ func init() {
 				Date       dates.Date
 				BalanceEnd float64
 			}
-			{
-				query := `
+			query := `
 				SELECT a.date, a.balance_end
 					FROM account_bank_statement AS a,
 						(SELECT c.date, max(c.id) AS stmt_id
@@ -97,19 +97,16 @@ func init() {
 			                GROUP BY date, id
 			                ORDER BY date, id) AS b
 			        WHERE a.id = b.stmt_id;`
-				rs.Env().Cr().Select(&bankStmt, query, rs.ID(), lastMonth, today)
-			}
-			query := q.AccountBankStatement().Journal().In(rs).And().Date().LowerOrEqual(lastMonth)
-			lastBankStmt := h.AccountBankStatement().Search(rs.Env(), query).OrderBy("date desc", "id desc").Limit(1)
+			rs.Env().Cr().Select(&bankStmt, query, rs.ID(), lastMonth, today)
+
+			cond := q.AccountBankStatement().Journal().In(rs).And().Date().LowerOrEqual(lastMonth)
+			lastBankStmt := h.AccountBankStatement().Search(rs.Env(), cond).OrderBy("date desc", "id desc").Limit(1)
 			startBalance := lastBankStmt.BalanceEnd()
-			locale := rs.Env().Context().GetString("lang")
-			if locale == "" {
-				locale = "en_US"
-			}
+			locale := i18n.GetLocale(rs.Env().Context().GetString("lang"))
 			showDate := lastMonth
 			// get date in locale format
-			name := ""      //format_date(show_date, 'd LLLL Y', locale=locale) //tovalid hexya format_date?
-			shortName := "" //format_date(show_date, 'd MMM', locale=locale)
+			name := locale.FormatDate(showDate)
+			shortName := locale.FormatDate(showDate)
 			data := []map[string]interface{}{{
 				"x":    shortName,
 				"y":    startBalance,
@@ -122,8 +119,8 @@ func init() {
 				for i := 0; i <= numberDayToAdd; i++ {
 					showDate = showDate.AddDate(0, 0, 1)
 					// get date in locale format
-					name := ""      //format_date(show_date, 'd LLLL Y', locale=locale) //tovalid hexya format_date?
-					shortName := "" //format_date(show_date, 'd MMM', locale=locale)
+					name := locale.FormatDate(showDate)
+					shortName := locale.FormatDate(showDate)
 					data = append(data, map[string]interface{}{
 						"x":    shortName,
 						"y":    lastBalance,
@@ -140,8 +137,8 @@ func init() {
 				for i := 0; i <= numberDayToAdd; i++ {
 					showDate = showDate.AddDate(0, 0, 1)
 					// get date in locale format
-					name := ""      //format_date(show_date, 'd LLLL Y', locale=locale) //tovalid hexya format_date?
-					shortName := "" //format_date(show_date, 'd MMM', locale=locale)
+					name := locale.FormatDate(showDate)
+					shortName := locale.FormatDate(showDate)
 					data = append(data, map[string]interface{}{
 						"x":    shortName,
 						"y":    lastBalance,
@@ -166,6 +163,7 @@ func init() {
 			}}
 			dayOfWeek := int(today.Weekday()) // int(format_datetime(today, 'e', locale=self._context.get('lang') or 'en_US')) // tovalid hexya format_datetime
 			firstDayOfWeek := today.AddDate(0, 0, -dayOfWeek+1)
+			locale := i18n.GetLocale(rs.Env().Context().GetString("lang"))
 			for i := -1; i < 4; i++ {
 				curData := map[string]interface{}{
 					"value": 0.0,
@@ -184,11 +182,10 @@ func init() {
 					endWeek := startWeek.AddDate(0, 0, 6)
 					if startWeek.Month() == endWeek.Month() {
 						curData["label"] = fmt.Sprintf("%d-%d %s", startWeek.Day(), endWeek.Day(),
-							"") //  format_date(end_week, 'MMM', locale=self._context.get('lang') or 'en_US') //tovalid hexya format_date
+							locale.FormatDate(endWeek))
 					} else {
 						curData["label"] = fmt.Sprintf("%s-%s",
-							"", /*format_date(start_week, 'd MMM', locale=self._context.get('lang') or 'en_US')*/
-							"" /*format_date(end_week, 'd MMM', locale=self._context.get('lang') or 'en_US')*/)
+							locale.FormatDate(startWeek), locale.FormatDate(endWeek))
 					}
 				}
 				data = append(data, curData)
@@ -312,22 +309,23 @@ func init() {
 					sumLate += result.Currency().Compute(result.AmountTotal(), currency, true) * factor
 				}
 			}
+			locale := i18n.GetLocale(rs.Env().Context().GetString("lang"))
 			ret := map[string]interface{}{
 				`number_to_reconcile`:    numberToReconcile,
-				`account_balance`:        FormatLang(rs.Env(), accountSum, currency),
-				`last_balance`:           FormatLang(rs.Env(), lastBalance, currency),
+				`account_balance`:        locale.FormatMonetary(accountSum, currency),
+				`last_balance`:           locale.FormatMonetary(lastBalance, currency),
 				`number_draft`:           numberDraft,
 				`number_waiting`:         numberWaiting,
 				`number_late`:            numberLate,
-				`sum_draft`:              FormatLang(rs.Env(), sumDraft, currency),
-				`sum_waiting`:            FormatLang(rs.Env(), sumWaiting, currency),
-				`sum_late`:               FormatLang(rs.Env(), sumLate, currency),
+				`sum_draft`:              locale.FormatMonetary(sumDraft, currency),
+				`sum_waiting`:            locale.FormatMonetary(sumWaiting, currency),
+				`sum_late`:               locale.FormatMonetary(sumLate, currency),
 				`currency_id`:            currency,
 				`bank_statements_source`: rs.BankStatementsSource(),
 				`title`:                  title,
 			}
 			if val := lastBalance - accountSum; val != 0.0 {
-				ret["difference"] = FormatLang(rs.Env(), val, currency)
+				ret["difference"] = locale.FormatMonetary(val, currency)
 			}
 			return ret
 		})
