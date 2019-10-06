@@ -34,7 +34,6 @@ func (bs TestBankStatementReconciliationStruct) createInvoice(amount float64) m.
 		SetName("-").
 		SetCurrency(h.User().NewSet(bs.Env).CurrentUser().Company().Currency())
 
-	vals = h.AccountInvoice().NewSet(bs.Env).UpdateDataForPartner(bs.PartnerAgrolait, vals)
 	invoice := h.AccountInvoice().Create(bs.Env, vals)
 
 	h.AccountInvoiceLine().Create(bs.Env,

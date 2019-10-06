@@ -19,7 +19,7 @@ var (
 )
 
 func init() {
-	GroupAccountInvoice = security.Registry.NewGroup("account_group_account_invoice", "Billing", GroupUser)
+	GroupAccountInvoice = security.Registry.NewGroup("account_group_account_invoice", "Billing", base.GroupUser)
 	GroupAccountUser = security.Registry.NewGroup("account_group_account_user", "Accountant", GroupAccountInvoice)
 	GroupAccountManager = security.Registry.NewGroup("account_group_account_manager", "Adviser", GroupAccountUser)
 
